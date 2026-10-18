@@ -85,7 +85,10 @@ describe.each([['app', app], ['edge', edge]])('advance rules (%s)', (_name, m) =
   })
   it('formatRequestStatusReply', () => {
     const none = { leave: { recent: [], personalLeft: 4, sickLeft: 28 }, advances: m.summarizeAdvances([], []) }
-    expect(m.formatRequestStatusReply(none, fmt)).toBe('ยังไม่มีคำขอครับ')
+    // Days left always show when known, even with no leave requests.
+    expect(m.formatRequestStatusReply(none, fmt)).toBe('🏖️ การลา\nลากิจคงเหลือ 4 วัน · ลาป่วยคงเหลือ 28 วัน')
+    expect(m.formatRequestStatusReply({ leave: null, advances: m.summarizeAdvances([], []) }, fmt)).toBe('ยังไม่มีคำขอครับ')
+    expect(m.formatRequestStatusReply({ leave: { recent: [] }, advances: null }, fmt)).toBe('ยังไม่มีคำขอครับ')
     const t = m.formatRequestStatusReply({
       leave: { recent: [
         { type: 'leave_personal', from: '2026-10-20', to: '2026-10-22', status: 'approved' },
@@ -99,6 +102,32 @@ describe.each([['app', app], ['edge', edge]])('advance rules (%s)', (_name, m) =
     expect(t).toContain('ลากิจคงเหลือ 4 วัน · ลาป่วยคงเหลือ 28 วัน')
     expect(t).toContain('💸 เบิกเงิน')
     expect(t).toContain('• ด่วน 500 บาท — รออนุมัติ')
-    expect(m.formatRequestStatusReply({ leave: none.leave, advances: null }, fmt)).toBe('ยังไม่มีคำขอครับ')
+    expect(m.formatRequestStatusReply({ leave: none.leave, advances: null }, fmt)).toBe('🏖️ การลา\nลากิจคงเหลือ 4 วัน · ลาป่วยคงเหลือ 28 วัน')
+    const withAdv = m.formatRequestStatusReply({
+      leave: { recent: [], personalLeft: 0, sickLeft: 30 },
+      advances: m.summarizeAdvances([{ id: 'c', title: 'ด่วน', amount: 500, installments: 1, status: 'pending' }], []),
+    }, fmt)
+    expect(withAdv.startsWith('🏖️ การลา\nลากิจคงเหลือ 0 วัน · ลาป่วยคงเหลือ 30 วัน\n\n💸 เบิกเงิน')).toBe(true)
+  })
+  it('money guard: a rename never drops the built-in เบิกเงิน / ยอดเบิก', () => {
+    expect(m.matchAdvanceAction('ขอเบิกเงิน', { advance_request: ['เงินด่วน'] })).toBe('advance_request')
+    expect(m.matchAdvanceAction('เงินด่วน', { advance_request: ['เงินด่วน'] })).toBe('advance_request')
+    expect(m.matchAdvanceAction('ยอดเบิก', { advance_status: ['ขอยอด'] })).toBe('advance_status')
+    // request menus are not money: their rename replaces the default
+    expect(m.matchAdvanceAction('ยื่นคำขอ', { request_menu: ['เมนูคำขอ'] })).toBeNull()
+  })
+  it('"ยอดเบิกของ" is not the advance status (stays material)', () => {
+    expect(m.matchAdvanceAction('ยอดเบิกของ')).toBeNull()
+    expect(m.matchAdvanceAction('ยอดเบิกของเดือนนี้')).toBeNull()
+    expect(m.matchAdvanceAction('ยอดเบิก')).toBe('advance_status')
+    expect(m.matchAdvanceAction('ยอดเบิกเงิน')).toBe('advance_status')
+  })
+  it('closed lines: every line counts toward deducted, only lines above 0 count as installments', () => {
+    const s = m.summarizeAdvances([{ id: 'a', title: 'x', amount: 3000, installments: 3, status: 'approved' }], [
+      { advance_id: 'a', amount: 1000 }, { advance_id: 'a', amount: 0 }, { advance_id: 'a', amount: 500 },
+    ])
+    expect(s.items[0].deducted).toBe(1500)
+    expect(s.items[0].paidInstallments).toBe(2)
+    expect(s.outstanding).toBe(1500)
   })
 })

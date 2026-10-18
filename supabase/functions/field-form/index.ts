@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
         return json({ actionType: tok.action_type, workerName, siteName: site.name })
       }
       if (tok.action_type === 'leave') {
-        const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(admin, worker.id, worker.annual_leave_days ?? 0, worker.annual_sick_leave_days ?? 0)
+        const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(admin, worker.id, worker.annual_leave_days ?? 0, worker.annual_sick_leave_days ?? 0, worker.tenant_id)
         // The worker's own latest requests with their outcome: LINE no longer pushes the result,
         // so opening the leave link is how a worker finds out.
         const { data: recent } = await admin.from('leave_requests')

@@ -70,11 +70,23 @@ describe('matchDMAction: salary advance + request menus', () => {
       expect(matchDMAction(c.text, {})).toBe({ 'ขอลา': 'leave', 'ขอเบิกของ': 'material_request', 'เบิกเงิน': 'advance_request' }[c.text])
     }
   })
-  it('uses renamed advance phrases (and the default no longer matches)', () => {
+  it('uses renamed advance phrases, and keeps the built-in money phrases as a guard', () => {
     const s = { advance_request: { command_key: 'advance_request', enabled_dm: true, enabled_group: false, custom_phrase: 'ขอเงินล่วงหน้า, เงินด่วน' } }
     expect(matchDMAction('ขอเงินล่วงหน้า', s)).toBe('advance_request')
     expect(matchDMAction('เงินด่วน', s)).toBe('advance_request')
-    expect(matchDMAction('เบิกเงิน', s)).toBe(null)
+    expect(matchDMAction('เบิกเงิน', s)).toBe('advance_request')
+    // money guard: never the material flow after a rename
+    expect(matchDMAction('ขอเบิกเงิน', s)).toBe('advance_request')
+    const st = { advance_status: { command_key: 'advance_status', enabled_dm: true, enabled_group: false, custom_phrase: 'ขอยอดเงิน' } }
+    expect(matchDMAction('ยอดเบิก', st)).toBe('advance_status')
+  })
+  it('a problem report wins over the advance match', () => {
+    expect(matchDMAction('แจ้งปัญหา เบิกเงินไม่ได้', {})).toBe('issue_report')
+    expect(matchDMAction('ไม่มีปัญหา ขอเบิกเงิน', {})).toBe('advance_request')
+  })
+  it('"ยอดเบิกของ" falls through to material, as before', () => {
+    expect(matchDMAction('ยอดเบิกของ', {})).toBe('material_request')
+    expect(matchDMAction('ยอดเบิก', {})).toBe('advance_status')
   })
   it('matches even when the command is off (caller replies "disabled")', () => {
     const s = { advance_status: { command_key: 'advance_status', enabled_dm: false, enabled_group: false, custom_phrase: null } }
@@ -96,6 +108,25 @@ describe('group path', () => {
     expect(groupAdvanceHint('ขอเบิกเงิน', {})).toBe('hint')
     expect(groupAdvanceHint('เบิกเงิน', {})).toBe('hint')
     expect(groupAdvanceHint('ยอดเบิก', {})).toBe('hint')
+  })
+  it('money guard in a group after a rename: still the hint, never material', () => {
+    const s = { advance_request: { command_key: 'advance_request', enabled_dm: true, enabled_group: false, custom_phrase: 'เงินด่วน' } }
+    expect(groupAdvanceHint('ขอเบิกเงิน', s)).toBe('hint')
+    expect(groupAdvanceHint('เงินด่วน', s)).toBe('hint')
+  })
+  it('a problem report in a group is not swallowed by the hint', () => {
+    expect(groupAdvanceHint('แจ้งปัญหา เบิกเงินไม่ได้', {})).toBe(null)
+    expect(matchGroupAction('แจ้งปัญหา เบิกเงินไม่ได้')).toBe('issue_report')
+  })
+  it('hint only for a short message (<= 30 chars trimmed); longer chatter is ignored', () => {
+    const long = 'เมื่อวานพี่เขาบอกว่าจะไปเบิกเงินที่ธนาคารตอนบ่ายครับ'
+    expect(long.trim().length).toBeGreaterThan(30)
+    expect(groupAdvanceHint(long, {})).toBe('ignore')
+    expect(groupAdvanceHint('  ขอเบิกเงิน 3000 ครับ  ', {})).toBe('hint')
+  })
+  it('"ยอดเบิกของ" in a group is not money', () => {
+    expect(groupAdvanceHint('ยอดเบิกของ', {})).toBe(null)
+    expect(matchGroupAction('ยอดเบิกของ')).toBe('material_request')
   })
   it('request menus are ignored silently in a group', () => {
     expect(groupAdvanceHint('ยื่นคำขอ', {})).toBe('ignore')

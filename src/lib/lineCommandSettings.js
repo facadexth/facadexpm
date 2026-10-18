@@ -73,6 +73,9 @@ export const ADVANCE_COMMAND_LABELS = {
   request_status: 'สถานะคำขอ',
 }
 
+// Shortest custom phrase allowed for the 4 keys above.
+export const ADVANCE_MIN_PHRASE_LENGTH = 3
+
 // Commands whose phrase the owner can change.
 export const RENAMABLE_COMMAND_KEYS = [...SCHEDULE_COMMAND_KEYS, ...ADVANCE_COMMAND_KEYS]
 const RENAMABLE_COMMAND_LABELS = { ...SCHEDULE_COMMAND_LABELS, ...ADVANCE_COMMAND_LABELS }
@@ -151,6 +154,10 @@ export function validateCustomPhrase(candidateInput, commandKey, settingsByKey) 
   if (candidates.length === 0) return { valid: true } // blank = fall back to default, always fine
 
   for (const trimmed of candidates) {
+    // A very short phrase for a money/request command would fire on ordinary chat.
+    if (ADVANCE_COMMAND_KEYS.includes(commandKey) && trimmed.length < ADVANCE_MIN_PHRASE_LENGTH) {
+      return { valid: false, reason: `"${trimmed}" สั้นเกินไป -- ต้องยาวอย่างน้อย ${ADVANCE_MIN_PHRASE_LENGTH} ตัวอักษร` }
+    }
     for (const reserved of RESERVED_PHRASES) {
       if (phrasesCollide(trimmed, reserved)) {
         return { valid: false, reason: `"${trimmed}" ชนกับคำสั่งเดิมในระบบ ("${reserved}") -- กรุณาใช้คำอื่น` }

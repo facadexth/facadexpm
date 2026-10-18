@@ -64,9 +64,12 @@ export function advancePhrasesFromSettings(settingsByKey: CommandSettingsByKey):
 // Simple substring match, tuned against real collisions found in review: a bare
 // "ปัญหา" also matches "ไม่มีปัญหา"/"ไม่ปัญหา" ("no problem"), and a bare "ลา"
 // matches ordinary words like ตลาด/ปลา/ฉลาด. Used by the crew GROUP path.
+export function isIssueReportText(text: string): boolean {
+  return text.includes('ปัญหา') && !text.includes('ไม่มีปัญหา') && !text.includes('ไม่ปัญหา')
+}
+
 export function matchGroupAction(text: string): GroupActionType | null {
-  const isIssueReport = text.includes('ปัญหา') && !text.includes('ไม่มีปัญหา') && !text.includes('ไม่ปัญหา')
-  if (isIssueReport) return 'issue_report'
+  if (isIssueReportText(text)) return 'issue_report'
   const isMaterialRequest = ['อยากเบิก', 'ขอเบิก', 'เบิกของ'].some((kw) => text.includes(kw))
   if (isMaterialRequest) return 'material_request'
   const isLeaveRequest = ['ลากิจ', 'ลาป่วย', 'ขอลา', 'อยากลา'].some((kw) => text.includes(kw))
@@ -82,7 +85,11 @@ export function matchDMAction(text: string, commandSettings: CommandSettingsByKe
   // be read as a plain check-in.
   if (text.includes(TIME_CLOCK_PHRASE)) return 'time_clock'
   if (text.includes(SCHEDULE_MENU_PHRASE)) return 'schedule_menu'
-  // Money before material: "ขอเบิกเงิน" contains the material keyword "ขอเบิก".
+  // A problem report wins first ("แจ้งปัญหา เบิกเงินไม่ได้" is a report), exactly as
+  // matchGroupAction would decide it. Then money before material: "ขอเบิกเงิน"
+  // contains the material keyword "ขอเบิก". matchAdvanceAction always keeps the
+  // built-in เบิกเงิน / ยอดเบิก on top of any rename (money guard).
+  if (isIssueReportText(text)) return 'issue_report'
   const advance = matchAdvanceAction(text, advancePhrasesFromSettings(commandSettings)) as AdvanceActionType | null
   if (advance) return advance
   const base = matchGroupAction(text)
@@ -113,13 +120,16 @@ export const advanceLinkMessage = (link: string) => `💸 กดลิงก์�
 
 // In a group the money commands never run (money is private). Returns what the
 // group path does with this text BEFORE matchGroupAction:
-//   'hint'   -- reply ADVANCE_DM_ONLY_MESSAGE once and stop (เบิกเงิน / ยอดเบิก),
-//               so "ขอเบิกเงิน" can never open a material form in a group;
-//   'ignore' -- stop silently (ยื่นคำขอ / สถานะคำขอ are personal DM menus);
-//   null     -- not an advance phrase, carry on as before.
+//   'hint'   -- reply ADVANCE_DM_ONLY_MESSAGE once and stop (เบิกเงิน / ยอดเบิก in a
+//               short message), so "ขอเบิกเงิน" can never open a material form in a group;
+//   'ignore' -- stop silently: ยื่นคำขอ / สถานะคำขอ (personal DM menus), or a longer
+//               message that merely mentions เบิกเงิน (ordinary chatter);
+//   null     -- not an advance phrase (or a problem report), carry on as before.
+export const GROUP_HINT_MAX_CHARS = 30
 export function groupAdvanceHint(text: string, commandSettings: CommandSettingsByKey): 'hint' | 'ignore' | null {
+  if (isIssueReportText(text)) return null // matchGroupAction files it as a problem report
   const a = matchAdvanceAction(text, advancePhrasesFromSettings(commandSettings))
-  if (a === 'advance_request' || a === 'advance_status') return 'hint'
+  if (a === 'advance_request' || a === 'advance_status') return text.trim().length <= GROUP_HINT_MAX_CHARS ? 'hint' : 'ignore'
   if (a === 'request_menu' || a === 'request_status') return 'ignore'
   return null
 }

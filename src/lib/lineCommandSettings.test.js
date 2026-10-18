@@ -170,4 +170,12 @@ describe('salary advance + request menu commands (DM only, renamable)', () => {
     expect(validateCustomPhrase('ขอเงินล่วงหน้า', 'advance_request', {})).toEqual({ valid: true })
     expect(validateCustomPhrase('เบิกเงิน', 'advance_request', { advance_request: { custom_phrase: 'เบิกเงิน' } })).toEqual({ valid: true })
   })
+  it('rejects a custom phrase shorter than 3 characters for the 4 new keys only', () => {
+    for (const k of ADVANCE_COMMAND_KEYS) {
+      expect(validateCustomPhrase('เง', k, {}).valid).toBe(false)
+      expect(validateCustomPhrase('ขอดูหน่อย', k, {}).valid).toBe(true)
+    }
+    expect(validateCustomPhrase('ab', 'today_job', {}).valid).toBe(true) // schedule keys unchanged
+    expect(validateCustomPhrase('ยอดเงินxx, ab', 'advance_status', {}).reason).toMatch(/สั้นเกินไป/)
+  })
 })

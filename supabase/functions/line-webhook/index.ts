@@ -633,7 +633,8 @@ async function handleScheduleMenu(
 // below filters on both explicitly, since this client is the service role.
 
 // The worker's advances, with deductions from CLOSED payroll periods only -- the same
-// join and the same "closed, amount > 0" rule as useAdvances in src/hooks/usePayroll.js.
+// join and the same rule as useAdvances in src/hooks/usePayroll.js (sum every closed
+// line; count an installment only where amount > 0).
 // null on a lookup error.
 async function loadAdvanceSummaryForReply(tenantId: string, workerId: string) {
   const { data: advances, error } = await admin.from('salary_advances')
@@ -652,7 +653,8 @@ async function loadAdvanceSummaryForReply(tenantId: string, workerId: string) {
     for (const l of (lines ?? []) as Array<Record<string, any>>) {
       const rec = Array.isArray(l.salary_records) ? l.salary_records[0] : l.salary_records
       const period = Array.isArray(rec?.payroll_periods) ? rec.payroll_periods[0] : rec?.payroll_periods
-      if (period?.status === 'closed' && Number(l.amount) > 0) closedLines.push({ advance_id: l.advance_id as string, amount: Number(l.amount) })
+      // Every closed line; summarizeAdvances counts an installment only when amount > 0 (as useAdvances).
+      if (period?.status === 'closed') closedLines.push({ advance_id: l.advance_id as string, amount: Number(l.amount) })
     }
   }
   const summary = summarizeAdvances(rows, closedLines)
@@ -661,7 +663,7 @@ async function loadAdvanceSummaryForReply(tenantId: string, workerId: string) {
 }
 
 async function handleAdvanceRequest(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
-  if (await linkRequestsThrottled(admin, worker.id, 'advance')) {
+  if (await linkRequestsThrottled(admin, worker.id, 'advance', settings.tenant_id)) {
     await sendLineReply(settings.channel_access_token, replyToken, THROTTLED_LINK_MESSAGE)
     return
   }
@@ -717,16 +719,10 @@ async function handleRequestStatus(
     return
   }
   const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(
-    admin, worker.id, Number(workerRes.data?.annual_leave_days ?? 0), Number(workerRes.data?.annual_sick_leave_days ?? 0),
+    admin, worker.id, Number(workerRes.data?.annual_leave_days ?? 0), Number(workerRes.data?.annual_sick_leave_days ?? 0), settings.tenant_id,
   )
-  let advances: Awaited<ReturnType<typeof loadAdvanceSummaryForReply>> = null
-  if (hasPayroll) {
-    advances = await loadAdvanceSummaryForReply(settings.tenant_id, worker.id)
-    if (!advances) {
-      await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-      return
-    }
-  }
+  // An advance lookup error (null) still gets the leave section, just without advances.
+  const advances = hasPayroll ? await loadAdvanceSummaryForReply(settings.tenant_id, worker.id) : null
   const recent = ((leaveRes.data ?? []) as Array<Record<string, any>>).map((r) => ({
     type: r.leave_type as string, from: r.date_from as string, to: r.date_to as string, status: r.status as string,
   }))

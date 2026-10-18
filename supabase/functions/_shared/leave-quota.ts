@@ -18,13 +18,15 @@ export function leaveRemainingFromCounts(personalRows: number, sickRows: number,
   return { remainingPersonal: annualLeaveDays - personalRows * 0.5, remainingSick: annualSickDays - sickRows * 0.5 }
 }
 
-export async function leaveQuotaRemaining(admin: SupabaseClient, workerId: string, annualLeaveDays: number, annualSickDays: number) {
+// tenantId (optional) adds an explicit tenant filter on top of the worker id.
+export async function leaveQuotaRemaining(admin: SupabaseClient, workerId: string, annualLeaveDays: number, annualSickDays: number, tenantId?: string) {
   const year = bangkokYear()
   const from = `${year}-01-01`
   const to = `${year}-12-31`
+  const scoped = (q: any) => (tenantId ? q.eq('tenant_id', tenantId) : q)
   const [personalRes, sickRes] = await Promise.all([
-    admin.from('worker_assignments').select('id').eq('worker_id', workerId).in('type', ['leave_personal', 'leave']).gte('date', from).lte('date', to),
-    admin.from('worker_assignments').select('id').eq('worker_id', workerId).eq('type', 'leave_sick').gte('date', from).lte('date', to),
+    scoped(admin.from('worker_assignments').select('id').eq('worker_id', workerId).in('type', ['leave_personal', 'leave']).gte('date', from).lte('date', to)),
+    scoped(admin.from('worker_assignments').select('id').eq('worker_id', workerId).eq('type', 'leave_sick').gte('date', from).lte('date', to)),
   ])
   return leaveRemainingFromCounts(personalRes.data?.length ?? 0, sickRes.data?.length ?? 0, annualLeaveDays, annualSickDays)
 }

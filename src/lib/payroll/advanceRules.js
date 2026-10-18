@@ -7,12 +7,18 @@ export const ADVANCE_PHRASES = {
   request_status: ["สถานะคำขอ"]
 };
 const CHECK_ORDER = ["request_status", "advance_status", "request_menu", "advance_request"];
+// The built-in money phrases always count, on top of any custom ones: a rename must
+// never send "ขอเบิกเงิน" to the material-request flow ("ขอเบิก" is a material keyword).
+const MONEY_GUARD_KEYS = ["advance_request", "advance_status"];
 export function matchAdvanceAction(text, phrasesByKey = {}) {
   const t = String(text ?? "");
   if (!t) return null;
   for (const key of CHECK_ORDER) {
-    const phrases = phrasesByKey?.[key]?.length ? phrasesByKey[key] : ADVANCE_PHRASES[key];
-    if (phrases.some((p) => p && t.includes(p))) return key;
+    const custom = phrasesByKey?.[key]?.length ? phrasesByKey[key] : null;
+    const phrases = !custom ? ADVANCE_PHRASES[key] : MONEY_GUARD_KEYS.includes(key) ? [...custom, ...ADVANCE_PHRASES[key]] : custom;
+    // "ยอดเบิกของ" (a material wording) is not "ยอดเบิก": drop เบิกของ before the status check.
+    const hay = key === "advance_status" ? t.split("เบิกของ").join("") : t;
+    if (phrases.some((p) => p && hay.includes(p))) return key;
   }
   return null;
 }
@@ -35,7 +41,9 @@ export function summarizeAdvances(advances, closedLines, exceptId) {
   const countBy = /* @__PURE__ */ new Map();
   for (const l of closedLines || []) {
     deductedBy.set(l.advance_id, (deductedBy.get(l.advance_id) || 0) + (Number(l.amount) || 0));
-    countBy.set(l.advance_id, (countBy.get(l.advance_id) || 0) + 1);
+    // Same rule as useAdvances: every closed line counts toward the total, only a
+    // line above 0 counts as a paid installment.
+    if (Number(l.amount) > 0) countBy.set(l.advance_id, (countBy.get(l.advance_id) || 0) + 1);
   }
   let outstanding = 0;
   let pendingOther = 0;
@@ -108,7 +116,9 @@ function leaveRange(from, to) {
 export function formatRequestStatusReply(data, fmt) {
   const sections = [];
   const recent = data?.leave?.recent || [];
-  if (recent.length) {
+  const hasDaysLeft = typeof data?.leave?.personalLeft === "number" && typeof data?.leave?.sickLeft === "number";
+  // Days left always show when known; requests are listed only when there are any.
+  if (recent.length || hasDaysLeft) {
     const lines = recent.map((r) => `• ${LEAVE_TYPE_TH[r.type] || r.type} ${leaveRange(r.from, r.to)} — ${LEAVE_STATUS_TH[r.status] || r.status}`);
     lines.push(`ลากิจคงเหลือ ${data.leave.personalLeft ?? 0} วัน · ลาป่วยคงเหลือ ${data.leave.sickLeft ?? 0} วัน`);
     sections.push(["🏖️ การลา", ...lines].join("\n"));

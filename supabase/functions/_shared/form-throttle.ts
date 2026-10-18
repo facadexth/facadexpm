@@ -19,10 +19,13 @@ export function bangkokDayStartISO(now = Date.now()): string {
   return new Date(Date.UTC(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate()) - 7 * 3600 * 1000).toISOString()
 }
 
-export async function linkRequestsThrottled(admin: SupabaseClient, workerId: string, actionType: string): Promise<boolean> {
+// tenantId (optional) adds an explicit tenant filter; existing callers pass none.
+export async function linkRequestsThrottled(admin: SupabaseClient, workerId: string, actionType: string, tenantId?: string): Promise<boolean> {
   const since = new Date(Date.now() - 3600 * 1000).toISOString()
-  const { count, error } = await admin.from('line_deep_link_tokens').select('id', { count: 'exact', head: true })
+  let q = admin.from('line_deep_link_tokens').select('id', { count: 'exact', head: true })
     .eq('worker_id', workerId).eq('action_type', actionType).gte('created_at', since)
+  if (tenantId) q = q.eq('tenant_id', tenantId)
+  const { count, error } = await q
   if (error) { console.error('link throttle lookup failed', error.message); return true } // fail closed
   return atLimit(count ?? 0, LINKS_PER_HOUR)
 }
