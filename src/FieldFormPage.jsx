@@ -18,8 +18,11 @@
 // the pin to any point on the map before sending (confirmed exploitable
 // live: a user checked in from ~685m away by moving the shared pin). A
 // browser permission prompt has no such manual-placement UI.
-import { useState, useEffect, useCallback } from 'react'
-import { supabase } from './lib/supabase.js'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { supabase, fmt } from './lib/supabase.js'
+import { PayslipSheetView } from './pages/hr/Payslip.jsx'
+import { downloadPDF } from './lib/pdf.js'
+import { MONTHS_TH } from './lib/payroll/period.js'
 import { removeBlockOrClear } from './lib/rowEditing.js'
 import { parseAdvanceAmount } from './lib/payroll/advanceRules.js'
 
@@ -133,6 +136,119 @@ function CheckInFlow({ token, actionType, workerName, siteName }) {
   )
 }
 
+const SHEET_W = 794
+const SHEET_H = 559
+
+// สลิปเงินเดือน: list of closed months -> tap one -> A5 slip + save as PDF.
+// The 794px sheet is scaled down with a CSS transform to fit a phone; the
+// scale is dropped to 1 while html2pdf captures it so the PDF stays full size.
+function PayslipFlow({ token, workerName, months }) {
+  const [slip, setSlip] = useState(null) // { year, month, data }
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [fit, setFit] = useState(true)
+  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : SHEET_W)
+  const boxRef = useRef(null)
+
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return undefined
+    const measure = () => {
+      const w = el.getBoundingClientRect().width || el.clientWidth
+      setWidth(w || (typeof window !== 'undefined' ? window.innerWidth : SHEET_W))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [slip])
+
+  const openMonth = async (m) => {
+    if (loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const { data, error: err } = await supabase.functions.invoke('field-form', { body: { action: 'slip', token, year: m.year, month: m.month } })
+      if (err) {
+        let msg = null
+        try { msg = (await err.context?.json?.())?.error } catch { /* not JSON */ }
+        throw msg ? new Error(msg) : err
+      }
+      if (data?.reason === 'no_slip') { setError('ไม่พบสลิปเดือนนี้'); return }
+      if (data?.reason) { setError(REASON_MESSAGES[data.reason] || 'เกิดข้อผิดพลาด กรุณาลองใหม่'); return }
+      if (data?.error) throw new Error(data.error)
+      setSlip({ year: m.year, month: m.month, data })
+    } catch (e) {
+      setError(e.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const savePdf = async () => {
+    if (saving || !slip) return
+    setSaving(true)
+    setFit(false)
+    try {
+      await new Promise(r => requestAnimationFrame(() => r()))
+      const label = (slip.data.worker?.nickname || slip.data.worker?.name || workerName || 'slip').replace(/\s+/g, '_')
+      await downloadPDF('payslip-a5', `สลิปเงินเดือน_${label}_${MONTHS_TH[slip.month - 1]}${slip.year + 543}.pdf`, { format: 'a5', orientation: 'landscape', margin: 0 })
+    } catch (e) {
+      setError(e.message || 'บันทึก PDF ไม่สำเร็จ')
+    } finally {
+      setFit(true)
+      setSaving(false)
+    }
+  }
+
+  if (slip) {
+    const d = slip.data
+    const s = fit ? Math.min(1, width / SHEET_W) : 1
+    return (
+      <Shell wide>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>🧾 สลิปเงินเดือน</div>
+        <div ref={boxRef} style={{ width: '100%', overflow: fit ? 'hidden' : 'visible' }}>
+          <div style={{ height: SHEET_H * s }}>
+            <div style={{ width: SHEET_W, transform: `scale(${s})`, transformOrigin: 'top left' }}>
+              <PayslipSheetView record={{ ...d.record, workers: d.worker }} year={slip.year} month={slip.month} period={d.period} tenant={d.tenant} otItem={d.otItem} ytd={d.ytd} />
+            </div>
+          </div>
+        </div>
+        {error && <div className="alert alert-error" style={{ fontSize: 12.5, marginTop: 10 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-ghost" disabled={saving} onClick={() => { setSlip(null); setError(null) }}>← เลือกเดือนอื่น</button>
+          <button type="button" className="btn btn-primary" disabled={saving} onClick={savePdf}>{saving ? '⏳ กำลังสร้าง PDF...' : '⬇️ บันทึก PDF'}</button>
+        </div>
+      </Shell>
+    )
+  }
+
+  return (
+    <Shell>
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🧾 สลิปเงินเดือน</div>
+      <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 18 }}>สวัสดีครับคุณ{workerName}</div>
+      {(months || []).length === 0 ? (
+        <div style={{ textAlign: 'center', color: 'var(--text3)', padding: '20px 0' }}>ยังไม่มีสลิปที่ปิดงวดแล้วใน 12 เดือนล่าสุด</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {months.map(m => (
+            <button key={`${m.year}-${m.month}`} type="button" className="btn btn-ghost" disabled={loading} style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+              onClick={() => openMonth(m)}>
+              {MONTHS_TH[m.month - 1]} {m.year + 543} · สุทธิ {fmt(m.netPay)} บาท
+            </button>
+          ))}
+        </div>
+      )}
+      {error && <div className="alert alert-error" style={{ fontSize: 12.5, marginTop: 12 }}>{error}</div>}
+    </Shell>
+  )
+}
+
 const LEAVE_TYPES = [
   { value: 'leave_personal', label: '🏖️ ลากิจ' },
   { value: 'leave_sick', label: '🤒 ลาป่วย' },
@@ -156,10 +272,10 @@ function newLine() {
   return { id: `line-${++lineSeq}`, categoryId: '', itemId: '', itemQuery: '', manualName: '', manualUnit: '', quantity: '' }
 }
 
-function Shell({ children }) {
+function Shell({ children, wide }) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20 }}>
-      <div className="card" style={{ maxWidth: 420, width: '100%', padding: '28px 24px', marginTop: 20 }}>
+      <div className="card" style={{ maxWidth: wide ? 840 : 420, width: '100%', padding: wide ? '20px 16px' : '28px 24px', marginTop: 20 }}>
         {children}
       </div>
     </div>
@@ -274,6 +390,10 @@ export default function FieldFormPage({ token }) {
 
   if (state.actionType === 'check_in' || state.actionType === 'check_out') {
     return <CheckInFlow token={token} actionType={state.actionType} workerName={state.workerName} siteName={state.siteName} />
+  }
+
+  if (state.actionType === 'payslip') {
+    return <PayslipFlow token={token} workerName={state.workerName} months={state.months} />
   }
 
   if (submitted) {
