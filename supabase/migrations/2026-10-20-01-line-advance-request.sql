@@ -22,6 +22,7 @@ ALTER TABLE salary_advances
 CREATE OR REPLACE FUNCTION approve_salary_advance_edit(
   p_id UUID, p_amount NUMERIC, p_installments INT, p_start_year INT, p_start_month INT)
 RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_pstatus TEXT;
 BEGIN
   IF NOT (is_owner() AND has_module_access('payroll')) THEN
     RAISE EXCEPTION 'อนุมัติได้เฉพาะเจ้าของ' USING ERRCODE = 'insufficient_privilege';
@@ -32,12 +33,13 @@ BEGIN
   IF p_installments IS NULL OR p_installments NOT BETWEEN 1 AND 60 THEN
     RAISE EXCEPTION 'จำนวนงวดต้องอยู่ระหว่าง 1 ถึง 60' USING ERRCODE = 'check_violation';
   END IF;
-  IF p_start_year IS NULL OR p_start_month IS NULL OR p_start_month NOT BETWEEN 1 AND 12 THEN
+  IF p_start_year IS NULL OR p_start_year NOT BETWEEN 2000 AND 2100 OR p_start_month IS NULL OR p_start_month NOT BETWEEN 1 AND 12 THEN
     RAISE EXCEPTION 'เดือนที่เริ่มหักไม่ถูกต้อง' USING ERRCODE = 'check_violation';
   END IF;
-  IF EXISTS (SELECT 1 FROM payroll_periods
-              WHERE tenant_id = current_tenant_id() AND year = p_start_year AND month = p_start_month
-                AND status IN ('confirmed','closed')) THEN
+  SELECT status INTO v_pstatus FROM payroll_periods
+   WHERE tenant_id = current_tenant_id() AND year = p_start_year AND month = p_start_month
+   FOR SHARE;
+  IF v_pstatus IN ('confirmed','closed') THEN
     RAISE EXCEPTION 'เดือนที่เริ่มหักยืนยันหรือปิดงวดแล้ว เลือกเดือนถัดไป' USING ERRCODE = 'check_violation';
   END IF;
   UPDATE salary_advances
@@ -51,6 +53,31 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION approve_salary_advance_edit(UUID, NUMERIC, INT, INT, INT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION approve_salary_advance_edit(UUID, NUMERIC, INT, INT, INT) TO authenticated;
+
+-- 4b. the old one-click approve gets the same start-month lock
+CREATE OR REPLACE FUNCTION approve_salary_advance(p_id UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_y INT; v_m INT; v_pstatus TEXT;
+BEGIN
+  IF NOT (is_owner() AND has_module_access('payroll')) THEN
+    RAISE EXCEPTION 'อนุมัติได้เฉพาะเจ้าของ' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  SELECT start_year, start_month INTO v_y, v_m FROM salary_advances
+   WHERE id = p_id AND tenant_id = current_tenant_id() AND status = 'pending';
+  IF FOUND THEN
+    SELECT status INTO v_pstatus FROM payroll_periods
+     WHERE tenant_id = current_tenant_id() AND year = v_y AND month = v_m
+     FOR SHARE;
+    IF v_pstatus IN ('confirmed','closed') THEN
+      RAISE EXCEPTION 'เดือนที่เริ่มหักยืนยันหรือปิดงวดแล้ว เลือกเดือนถัดไป' USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  UPDATE salary_advances SET status = 'approved', approved_by = auth.email(), approved_at = now()
+   WHERE id = p_id AND tenant_id = current_tenant_id() AND status = 'pending';
+  IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบคำขอที่รออนุมัติ'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION approve_salary_advance(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION approve_salary_advance(UUID) TO authenticated;
 
 -- 5. bell count: + advances_pending (live body otherwise unchanged)
 CREATE OR REPLACE FUNCTION public.pending_counts()
