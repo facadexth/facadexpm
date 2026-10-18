@@ -84,6 +84,7 @@ const TABS = [
     { id: 'cheques',        label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
   ] },
   { id: 'inventory',       label: '📦 คลังสินค้า',   minRole: 'ADMIN', module: 'purchase_orders' },
+  { id: 'hr',              label: '👷 บุคคล',        minRole: 'WORKER', module: 'payroll' },
   { label: '🧮 ประเมินราคา', children: [
     { id: 'estimation',    label: '📐 ประเมินราคา (BOM)', minRole: 'ADMIN', module: 'estimation' },
     { id: 'bom_templates', label: '🧩 BOM Templates',     minRole: 'ADMIN', module: 'estimation' },
@@ -96,8 +97,7 @@ const TABS = [
     // the page, not at this tab-routing level.
     { id: 'settings',        label: 'ทั่วไป',          minRole: 'WORKER', module: null },
     { id: 'starting_guide',  label: '🚀 เริ่มต้นใช้งาน', minRole: 'OWNER', module: null },
-    { id: 'hr',              label: '👷 บุคคล',        minRole: 'WORKER', module: 'payroll' },
-    { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
+    { id: 'categories',     label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
     { id: 'clients',         label: '🏢 ลูกค้า',      minRole: 'ADMIN', module: null },
     { id: 'suppliers',       label: '🏭 ผู้จำหน่าย',     minRole: 'ADMIN', module: null },
     { id: 'catalog_items',   label: '📦 รายการสินค้า', minRole: 'ADMIN', module: 'quotations' },
