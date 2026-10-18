@@ -4,8 +4,13 @@ import * as edge from '../../../supabase/functions/_shared/advance-logic.ts'
 
 const fmt = n => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
+it('phrase tables are identical', () => {
+  expect(edge.ADVANCE_PHRASES).toEqual(app.ADVANCE_PHRASES)
+})
+
 describe.each([['app', app], ['edge', edge]])('advance rules (%s)', (_name, m) => {
   it('matches phrases', () => {
+    expect(m.matchAdvanceAction('เบิกเงิน')).toBe('advance_request')
     expect(m.matchAdvanceAction('ขอเบิกเงิน 3000')).toBe('advance_request')
     expect(m.matchAdvanceAction('อยากเบิกเงิน')).toBe('advance_request')
     expect(m.matchAdvanceAction('ยอดเบิก')).toBe('advance_status')
@@ -18,10 +23,14 @@ describe.each([['app', app], ['edge', edge]])('advance rules (%s)', (_name, m) =
   it('uses custom phrases', () => {
     expect(m.matchAdvanceAction('เบิกล่วงหน้า', { advance_request: ['เบิกล่วงหน้า'] })).toBe('advance_request')
     expect(m.matchAdvanceAction('ขอยอด', { advance_status: ['ขอยอด'] })).toBe('advance_status')
+    expect(m.matchAdvanceAction('เมนูคำขอ', { request_menu: ['เมนูคำขอ'] })).toBe('request_menu')
+    expect(m.matchAdvanceAction('เช็คคำขอ', { request_status: ['เช็คคำขอ'] })).toBe('request_status')
   })
   it('parses amounts', () => {
     expect(m.parseAdvanceAmount('5,000')).toEqual({ ok: true, amount: 5000 })
     expect(m.parseAdvanceAmount(' 5 000 ')).toEqual({ ok: true, amount: 5000 })
+    expect(m.parseAdvanceAmount('๕,๐๐๐')).toEqual({ ok: true, amount: 5000 })
+    expect(m.parseAdvanceAmount('５０００')).toEqual({ ok: true, amount: 5000 })
     expect(m.parseAdvanceAmount('5000.505')).toEqual({ ok: true, amount: 5000.51 })
     expect(m.parseAdvanceAmount(1000000).ok).toBe(true)
     for (const bad of ['0', '-1', 'abc', '2000000']) expect(m.parseAdvanceAmount(bad).ok).toBe(false)

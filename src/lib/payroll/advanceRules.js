@@ -17,7 +17,7 @@ export function matchAdvanceAction(text, phrasesByKey = {}) {
   return null;
 }
 export function parseAdvanceAmount(raw) {
-  const s = String(raw ?? "").replace(/[,\s]/g, "");
+  const s = String(raw ?? "").replace(/[๐-๙]/g, (d) => String(d.charCodeAt(0) - 0x0e50)).replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)).replace(/[,\s]/g, "");
   if (s === "") return { ok: false, error: "กรุณาใส่จำนวนเงิน" };
   const bad = { ok: false, error: "จำนวนเงินต้องมากกว่า 0 และไม่เกิน 1,000,000 บาท" };
   if (!/^-?\d+(\.\d+)?$/.test(s)) return bad;
