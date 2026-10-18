@@ -130,7 +130,7 @@ export function groupAdvanceHint(text: string, commandSettings: CommandSettingsB
   if (isIssueReportText(text)) return null // matchGroupAction files it as a problem report
   const a = matchAdvanceAction(text, advancePhrasesFromSettings(commandSettings))
   if (a === 'advance_request' || a === 'advance_status') return text.trim().length <= GROUP_HINT_MAX_CHARS ? 'hint' : 'ignore'
-  if (a === 'request_menu' || a === 'request_status' || a === 'payslip_request') return 'ignore'
+  if (a === 'request_menu' || a === 'request_status') return 'ignore'
   return null
 }
 

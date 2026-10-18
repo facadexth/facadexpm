@@ -54,9 +54,9 @@ describe('FieldFormPage advance', () => {
   const submitErr = (context) => invoke.mockImplementation(async (_n, { body }) => (body.action === 'info' ? { data: info, error: null } : { data: null, error: { message: 'FunctionsHttpError', context } }))
 
   it('shows the server message of a 400', async () => {
-    submitErr({ json: async () => ({ error: 'x' }) })
+    submitErr({ json: async () => ({ error: 'ข้อมูลไม่ถูกต้อง' }) })
     await fillAndSubmit()
-    expect(await screen.findByText('x')).toBeTruthy()
+    expect(await screen.findByText('ข้อมูลไม่ถูกต้อง')).toBeTruthy()
   })
 
   it('falls back to a non-empty message when the 400 body is not JSON', async () => {

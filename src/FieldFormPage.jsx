@@ -33,7 +33,13 @@ const REASON_MESSAGES = {
   no_site: 'ไม่พบงานที่มอบหมายวันนี้ — กรุณาติดต่อแอดมิน',
   network_error: 'เชื่อมต่อไม่สำเร็จ — เช็คสัญญาณอินเทอร์เน็ตแล้วลองใหม่ หรือกดปุ่มในไลน์อีกครั้ง',
   payroll_disabled: 'ยังขอเบิกเงินผ่านไลน์ไม่ได้ กรุณาติดต่อเจ้าของบริษัท',
+  payslip_disabled: 'ยังขอสลิปผ่าน LINE ไม่ได้ ติดต่อแอดมินครับ',
   line_bot_disabled: 'ฟีเจอร์นี้ไม่ได้เปิดใช้งานสำหรับบริษัทของคุณ — กรุณาติดต่อแอดมิน',
+}
+
+// Never show a non-Thai (raw server/network) message to a worker.
+export function thaiOr(msg, fallback) {
+  return typeof msg === 'string' && /[\u0E00-\u0E7F]/.test(msg) ? msg : fallback
 }
 
 // Maps navigator.geolocation's error.code to a clear Thai instruction --
@@ -180,11 +186,11 @@ function PayslipFlow({ token, workerName, months }) {
         throw msg ? new Error(msg) : err
       }
       if (data?.reason === 'no_slip') { setError('ไม่พบสลิปเดือนนี้'); return }
-      if (data?.reason) { setError(REASON_MESSAGES[data.reason] || 'เกิดข้อผิดพลาด กรุณาลองใหม่'); return }
+      if (data?.reason) { setError(REASON_MESSAGES[data.reason === 'payroll_disabled' ? 'payslip_disabled' : data.reason] || 'เกิดข้อผิดพลาด กรุณาลองใหม่'); return }
       if (data?.error) throw new Error(data.error)
       setSlip({ year: m.year, month: m.month, data })
     } catch (e) {
-      setError(e.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่')
+      setError(thaiOr(e.message, 'ส่งไม่สำเร็จ กรุณาลองใหม่'))
     } finally {
       setLoading(false)
     }
@@ -199,7 +205,7 @@ function PayslipFlow({ token, workerName, months }) {
       const label = (slip.data.worker?.nickname || slip.data.worker?.name || workerName || 'slip').replace(/\s+/g, '_')
       await downloadPDF('payslip-a5', `สลิปเงินเดือน_${label}_${MONTHS_TH[slip.month - 1]}${slip.year + 543}.pdf`, { format: 'a5', orientation: 'landscape', margin: 0 })
     } catch (e) {
-      setError(e.message || 'บันทึก PDF ไม่สำเร็จ')
+      setError(thaiOr(e.message, 'บันทึก PDF ไม่สำเร็จ กรุณาลองใหม่'))
     } finally {
       setFit(true)
       setSaving(false)
@@ -244,6 +250,7 @@ function PayslipFlow({ token, workerName, months }) {
           ))}
         </div>
       )}
+      {loading && <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 12, textAlign: 'center' }}>กำลังโหลดสลิป…</div>}
       {error && <div className="alert alert-error" style={{ fontSize: 12.5, marginTop: 12 }}>{error}</div>}
     </Shell>
   )
@@ -365,7 +372,7 @@ export default function FieldFormPage({ token }) {
       if (data?.error) throw new Error(data.error)
       setSubmitted(true)
     } catch (e) {
-      setSubmitError(e.message || 'ส่งไม่สำเร็จ กรุณาลองใหม่')
+      setSubmitError(thaiOr(e.message, 'ส่งไม่สำเร็จ กรุณาลองใหม่'))
     } finally {
       setSubmitting(false)
     }

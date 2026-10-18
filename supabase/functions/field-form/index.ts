@@ -242,7 +242,7 @@ Deno.serve(async (req) => {
       }
       if (tok.action_type === 'payslip') {
         // Same eligibility as advance: active worker, linked to LINE, tenant has payroll.
-        if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+        if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payslip_disabled' }, 200)
         const loaded = await loadPayslipMonths(worker.tenant_id, worker.id)
         if ('error' in loaded) return json({ error: PAYSLIP_ERR }, 500)
         const months = loaded.records
@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
       const { tok, worker } = result
       if (!(await tenantHasModuleAccess(admin, worker.tenant_id, 'line_bot'))) return json({ reason: 'line_bot_disabled' }, 200)
       if (tok.action_type !== 'payslip') return json({ reason: 'not_found' }, 200)
-      if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+      if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payslip_disabled' }, 200)
       const year = body?.year, month = body?.month
       if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return json({ error: 'invalid_input' }, 400)
 

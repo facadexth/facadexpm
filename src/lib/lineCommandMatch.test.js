@@ -144,7 +144,10 @@ describe('group path', () => {
 describe('payslip_request', () => {
   it('routes in DM, ignored in a group, never material or leave', () => {
     expect(matchDMAction('ขอสลิปเงินเดือน', {})).toBe('payslip_request')
-    expect(groupAdvanceHint('ขอสลิปเงินเดือน', {})).toBe('ignore')
+    expect(groupAdvanceHint('ขอสลิปเงินเดือน', {})).toBe(null)
+    expect(matchGroupAction('ขอสลิปเงินเดือน')).toBe(null) // bare payslip text stays silent in a group
+    expect(groupAdvanceHint('ขอเบิกปูน 2 ถุง ขอสลิปด้วย', {})).toBe(null)
+    expect(matchGroupAction('ขอเบิกปูน 2 ถุง ขอสลิปด้วย')).toBe('material_request')
     expect(ADVANCE_COMMAND_KEYS).toContain('payslip_request')
     expect(appSettings.ADVANCE_COMMAND_KEYS).toEqual(ADVANCE_COMMAND_KEYS)
   })

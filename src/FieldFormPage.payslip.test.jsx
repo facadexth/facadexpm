@@ -10,7 +10,7 @@ vi.mock('./lib/supabase.js', () => ({
 }))
 vi.mock('./lib/pdf.js', () => ({ downloadPDF: (...a) => downloadPDF(...a) }))
 
-import FieldFormPage from './FieldFormPage.jsx'
+import FieldFormPage, { thaiOr } from './FieldFormPage.jsx'
 
 const info = { actionType: 'payslip', workerName: 'สมชาย', months: [{ year: 2026, month: 9, netPay: 15000 }, { year: 2026, month: 8, netPay: 14000.5 }] }
 const slip = {
@@ -90,5 +90,49 @@ describe('FieldFormPage payslip', () => {
     render(<FieldFormPage token="t" />)
     fireEvent.click(await screen.findByText(/ก.ย. 2569/))
     expect(await screen.findByText('ข้อมูลไม่ถูกต้อง')).toBeTruthy()
+  })
+
+  it('thaiOr keeps Thai text and replaces anything else', () => {
+    expect(thaiOr('ข้อมูลไม่ถูกต้อง', 'x')).toBe('ข้อมูลไม่ถูกต้อง')
+    expect(thaiOr('Failed to fetch', 'ส่งไม่สำเร็จ กรุณาลองใหม่')).toBe('ส่งไม่สำเร็จ กรุณาลองใหม่')
+    expect(thaiOr(undefined, 'f')).toBe('f')
+  })
+
+  it('never shows a non-Thai request error', async () => {
+    setup(info, { data: null, error: { message: 'Failed to fetch' } })
+    render(<FieldFormPage token="t" />)
+    fireEvent.click(await screen.findByText(/ก.ย. 2569/))
+    expect(await screen.findByText('ส่งไม่สำเร็จ กรุณาลองใหม่')).toBeTruthy()
+  })
+
+  it('never shows a non-Thai PDF error', async () => {
+    downloadPDF.mockRejectedValue(new Error('canvas boom'))
+    render(<FieldFormPage token="t" />)
+    fireEvent.click(await screen.findByText(/ก.ย. 2569/))
+    fireEvent.click(await screen.findByText('⬇️ บันทึก PDF'))
+    expect(await screen.findByText('บันทึก PDF ไม่สำเร็จ กรุณาลองใหม่')).toBeTruthy()
+  })
+
+  it('payslip_disabled from info, and old payroll_disabled from slip, read as payslip copy', async () => {
+    setup({ reason: 'payslip_disabled' })
+    render(<FieldFormPage token="t" />)
+    expect(await screen.findByText('ยังขอสลิปผ่าน LINE ไม่ได้ ติดต่อแอดมินครับ')).toBeTruthy()
+    cleanup()
+    setup(info, { data: { reason: 'payroll_disabled' }, error: null })
+    render(<FieldFormPage token="t" />)
+    fireEvent.click(await screen.findByText(/ก.ย. 2569/))
+    expect(await screen.findByText('ยังขอสลิปผ่าน LINE ไม่ได้ ติดต่อแอดมินครับ')).toBeTruthy()
+  })
+
+  it('shows กำลังโหลดสลิป… while a month loads', async () => {
+    let release
+    invoke.mockImplementation((_n, { body }) => body.action === 'info'
+      ? Promise.resolve({ data: info, error: null })
+      : new Promise(r => { release = () => r({ data: slip, error: null }) }))
+    render(<FieldFormPage token="t" />)
+    fireEvent.click(await screen.findByText(/ก.ย. 2569/))
+    expect(await screen.findByText('กำลังโหลดสลิป…')).toBeTruthy()
+    release()
+    await waitFor(() => expect(screen.queryByText('กำลังโหลดสลิป…')).toBeNull())
   })
 })
