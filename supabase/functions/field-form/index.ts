@@ -42,6 +42,7 @@ import { dailySubmitLimitReached, DAILY_LIMIT_MESSAGE } from '../_shared/form-th
 import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
 import { parseAdvanceAmount, defaultStartMonth } from '../_shared/advance-logic.ts'
 import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
+import { payslipWindow, inPayslipWindow, pickYtd } from '../_shared/payslip-data.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -58,6 +59,25 @@ function json(body: unknown, status = 200) {
 // Bangkok has no DST -- a fixed +7h offset from UTC is always correct.
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+// Payslip link: this worker's closed-period salary records inside the 12-month window.
+// Plain separate queries (no embeds), every one filtered by tenant_id.
+const PAYSLIP_ERR = 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง'
+async function loadPayslipMonths(tenantId: string, workerId: string): Promise<{ error: true } | { periods: any[]; records: any[] }> {
+  const win = payslipWindow(bangkokToday())
+  const { data: periods, error: pErr } = await admin.from('payroll_periods')
+    .select('id, year, month, status, paid_date')
+    .eq('tenant_id', tenantId).eq('status', 'closed')
+    .gte('year', win.from.year).lte('year', win.to.year)
+  if (pErr) return { error: true }
+  const inWin = (periods ?? []).filter((p: any) => inPayslipWindow(win, p.year, p.month))
+  if (inWin.length === 0) return { periods: [], records: [] }
+  const { data: records, error: rErr } = await admin.from('salary_records')
+    .select('id, worker_id, year, month, net_pay, paid_date, facts, period_id')
+    .eq('tenant_id', tenantId).eq('worker_id', workerId).in('period_id', inWin.map((p: any) => p.id))
+  if (rErr) return { error: true }
+  return { periods: inWin, records: records ?? [] }
 }
 
 // Shared by both actions: loads the token row plus the worker's own
@@ -220,7 +240,78 @@ Deno.serve(async (req) => {
         if (!loaded) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
         return json({ actionType: 'advance', workerName, outstanding: loaded.summary.outstanding, pendingOther: loaded.summary.pendingOther, installmentOptions: [1, 2, 3, 4, 5, 6] })
       }
+      if (tok.action_type === 'payslip') {
+        // Same eligibility as advance: active worker, linked to LINE, tenant has payroll.
+        if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+        const loaded = await loadPayslipMonths(worker.tenant_id, worker.id)
+        if ('error' in loaded) return json({ error: PAYSLIP_ERR }, 500)
+        const months = loaded.records
+          .map((r: any) => ({ year: r.year as number, month: r.month as number, netPay: Number(r.net_pay) }))
+          .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month))
+        return json({ actionType: 'payslip', workerName, months })
+      }
       return json({ actionType: tok.action_type, workerName })
+    }
+
+    if (action === 'slip') {
+      // Read-only: never claims the token or sets used_at.
+      const result = await loadToken(token)
+      if ('reason' in result) return json({ reason: result.reason }, 200)
+      const { tok, worker } = result
+      if (!(await tenantHasModuleAccess(admin, worker.tenant_id, 'line_bot'))) return json({ reason: 'line_bot_disabled' }, 200)
+      if (tok.action_type !== 'payslip') return json({ reason: 'not_found' }, 200)
+      if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+      const year = body?.year, month = body?.month
+      if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return json({ error: 'invalid_input' }, 400)
+
+      const tenantId = worker.tenant_id as string
+      const loaded = await loadPayslipMonths(tenantId, worker.id)
+      if ('error' in loaded) return json({ error: PAYSLIP_ERR }, 500)
+      const rec = loaded.records.find((r: any) => r.year === year && r.month === month)
+      const per = loaded.periods.find((p: any) => p.year === year && p.month === month)
+      if (!rec || !per) return json({ reason: 'no_slip' }, 200)
+
+      // YTD: closed months of that year up to the requested month, this worker only.
+      const { data: ytdPeriods, error: ypErr } = await admin.from('payroll_periods').select('id, month')
+        .eq('tenant_id', tenantId).eq('status', 'closed').eq('year', year).lte('month', month)
+      if (ypErr) return json({ error: PAYSLIP_ERR }, 500)
+      const ytdPeriodIds = (ytdPeriods ?? []).map((p: any) => p.id)
+      const { data: ytdRecs, error: yrErr } = ytdPeriodIds.length
+        ? await admin.from('salary_records').select('id').eq('tenant_id', tenantId).eq('worker_id', worker.id).in('period_id', ytdPeriodIds)
+        : { data: [], error: null }
+      if (yrErr) return json({ error: PAYSLIP_ERR }, 500)
+      const ytdRecIds = (ytdRecs ?? []).map((r: any) => r.id)
+
+      const [tenantRes, workerRes, linesRes, otRes, itemsRes, ytdLinesRes] = await Promise.all([
+        admin.from('tenants').select('company_name, tax_id').eq('id', tenantId).maybeSingle(),
+        admin.from('workers').select('name, nickname, employee_code, position, bank_account_name').eq('id', worker.id).eq('tenant_id', tenantId).maybeSingle(),
+        admin.from('salary_record_lines').select('id, pay_item_id, name, side, sort_order, amount, quantity, rate, note')
+          .eq('tenant_id', tenantId).eq('salary_record_id', rec.id).order('sort_order'),
+        admin.from('pay_items').select('id, name, sort_order').eq('tenant_id', tenantId).eq('method', 'ot').eq('active', true).limit(1),
+        admin.from('pay_items').select('id, method, system_key').eq('tenant_id', tenantId),
+        ytdRecIds.length
+          ? admin.from('salary_record_lines').select('side, amount, pay_item_id').eq('tenant_id', tenantId).in('salary_record_id', ytdRecIds)
+          : Promise.resolve({ data: [], error: null }),
+      ])
+      if (tenantRes.error || workerRes.error || linesRes.error || otRes.error || itemsRes.error || ytdLinesRes.error) return json({ error: PAYSLIP_ERR }, 500)
+      const itemById = new Map((itemsRes.data ?? []).map((i: any) => [i.id, i]))
+      const ytd = pickYtd((ytdLinesRes.data ?? []).map((l: any) => ({ side: l.side, amount: l.amount, pay_items: itemById.get(l.pay_item_id) ?? null })))
+
+      return json({
+        tenant: { company_name: tenantRes.data?.company_name ?? null, tax_id: tenantRes.data?.tax_id ?? null },
+        worker: {
+          name: workerRes.data?.name ?? worker.name, nickname: workerRes.data?.nickname ?? null,
+          employee_code: workerRes.data?.employee_code ?? null, position: workerRes.data?.position ?? null,
+          bank_account_name: workerRes.data?.bank_account_name ?? null,
+        },
+        record: {
+          worker_id: rec.worker_id, net_pay: rec.net_pay, paid_date: rec.paid_date, facts: rec.facts ?? {},
+          salary_record_lines: linesRes.data ?? [],
+        },
+        period: { status: per.status, paid_date: per.paid_date },
+        otItem: otRes.data?.[0] ?? null,
+        ytd,
+      })
     }
 
     if (action === 'submit') {

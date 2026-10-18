@@ -63,12 +63,19 @@ const CSS = `
 .payslip-a5 .wm{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:90px;font-weight:700;color:rgba(154,91,0,.14);transform:rotate(-12deg);pointer-events:none}
 `
 
+// App wrapper: fetches tenant / pay items / year-to-date via hooks, then renders the pure view.
 export function PayslipSheet({ record, year, month, period }) {
   const { tenant } = useTenant()
-  const w = record.workers || {}
   const { data: payItems } = usePayItems()
   // the OT row always shows (owner's choice), as 0.00 in a month without OT
   const otItem = (payItems || []).find(i => i.method === 'ot' && i.active)
+  const ytd = useYearToDate(record.worker_id, year, month)
+  return <PayslipSheetView record={record} year={year} month={month} period={period} tenant={tenant} otItem={otItem} ytd={ytd} />
+}
+
+// Pure: all data via props, no supabase calls (also used by the public LINE payslip page).
+export function PayslipSheetView({ record, year, month, period, tenant, otItem, ytd }) {
+  const w = record.workers || {}
   const saved = record.salary_record_lines || []
   const otRow = otItem && !saved.some(l => l.pay_item_id === otItem.id)
     ? [{ id: 'ot-zero', pay_item_id: otItem.id, name: otItem.name, side: 'earning', sort_order: otItem.sort_order, amount: 0 }] : []
@@ -79,7 +86,6 @@ export function PayslipSheet({ record, year, month, period }) {
   const f = record.facts || {}
   const hasFacts = Object.keys(f).length > 0
   const fv = (v, d = 0) => (hasFacts ? (v ?? d) : '—')
-  const ytd = useYearToDate(record.worker_id, year, month)
   const isDraft = (period?.status || 'draft') === 'draft'
   const row = l => (
     <tr key={l.id}>
