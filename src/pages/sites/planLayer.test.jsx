@@ -22,6 +22,7 @@ vi.mock('../../lib/supabase.js', () => ({
 }))
 let mockRole = 'OWNER'
 vi.mock('../../hooks/useUserRole.js', () => ({ useUserRole: () => ({ role: mockRole }) }))
+vi.mock('../../hooks/useTenant.js', () => ({ useTenant: () => ({ hasModuleAccess: () => false }) }))
 vi.mock('recharts', async () => {
   const React = await import('react')
   const Box = ({ children }) => <div>{children}</div>

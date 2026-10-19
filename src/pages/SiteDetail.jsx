@@ -4,6 +4,8 @@
 // site name click. Not a visible nav tab -- see App.jsx's ALL_TAB_ENTRIES.
 // ============================================================
 import { useState } from 'react'
+import { useTenant } from '../hooks/useTenant.js'
+import CustomerInviteModal from '../components/CustomerInviteModal.jsx'
 import { useSiteOverview } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -32,6 +34,8 @@ export default function SiteDetail({ navState, navigateTo }) {
   const isPhone = useIsPhone()
   const phoneLike = usePhoneLike()
   const { role } = useUserRole()
+  const { hasModuleAccess } = useTenant()
+  const [showInvite, setShowInvite] = useState(false)
   const progressReady = useProgressSchemaReady()
   const showBoq = progressReady && canManageSites(role) // OWNER/ADMIN/PM; hidden until migration 07 is live
   const canEdit = canManageSites(role) && canEditPage(role, 'sites')
@@ -54,9 +58,27 @@ export default function SiteDetail({ navState, navigateTo }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
         <button className="btn btn-sm btn-ghost" onClick={() => navigateTo('sites')}>← ไซท์งานทั้งหมด</button>
       </div>
-      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 14 }}>
-        {site?.site_number ? `${site.site_number} · ` : ''}{site?.name || siteName || 'ไซท์งาน'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 18, fontWeight: 700, flex: 1 }}>
+          {site?.site_number ? `${site.site_number} · ` : ''}{site?.name || siteName || 'ไซท์งาน'}
+        </div>
+        {canEdit && hasModuleAccess('line_bot') && (
+          <button
+            className="btn btn-sm btn-primary"
+            disabled={!site?.client_id}
+            title={!site?.client_id ? 'ไซท์นี้ยังไม่ได้ผูก client' : undefined}
+            onClick={() => setShowInvite(true)}
+          >เชิญลูกค้า</button>
+        )}
       </div>
+      {showInvite && (
+        <CustomerInviteModal
+          siteId={siteId}
+          siteName={site?.name || siteName || ''}
+          canUnlink={role === 'OWNER' || role === 'ADMIN'}
+          onClose={() => setShowInvite(false)}
+        />
+      )}
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }} data-phone="chips">
         <button
