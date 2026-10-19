@@ -29,7 +29,7 @@ import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { useProgressSchemaReady } from '../../lib/progressSchema.js'
-import { canManagePlan } from '../../lib/roles.js'
+import { canManagePlan, canManageSites } from '../../lib/roles.js'
 import { auditLog } from '../../lib/audit.js'
 import RecordProgressDialog from './RecordProgressDialog.jsx'
 import SplitTaskDialog from './SplitTaskDialog.jsx'
@@ -270,7 +270,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const fetchPhotos = async () => {
     const [{ data: assignedRows }, { data: unassignedRows }] = await Promise.all([
       supabase.from('line_site_photos').select('task_id').eq('site_id', site.id).not('task_id', 'is', null),
-      supabase.from('line_site_photos').select('id, photo_path, worker_id, workers(name, nickname), created_at').eq('site_id', site.id).is('task_id', null).order('created_at', { ascending: false }).limit(40),
+      supabase.from('line_site_photos').select('id, photo_path, worker_id, workers(name, nickname), created_at, customer_visible').eq('site_id', site.id).is('task_id', null).order('created_at', { ascending: false }).limit(40),
     ])
     const counts = {}
     ;(assignedRows || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1 })
@@ -340,6 +340,15 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     }
     setViewingPhotos(rows.map((p) => ({ ...p, url: urlByPath[p.photo_path] })))
     setLoadingViewPhotos(false)
+  }
+
+  // Optimistic flip of "ให้ลูกค้าเห็น" on a tray photo; reverts on error.
+  const handleToggleCustomerVisible = async (photo) => {
+    const next = !photo.customer_visible
+    const setVisible = (v) => setUnassignedPhotos((list) => list.map((x) => (x.id === photo.id ? { ...x, customer_visible: v } : x)))
+    setVisible(next)
+    const { error } = await supabase.rpc('set_customer_visible', { p_kind: 'line_site_photo', p_id: photo.id, p_visible: next })
+    if (error) { setVisible(!next); alert('Error: ' + error.message) }
   }
 
   const handleTogglePhotoSelected = (photoId) => {
@@ -873,6 +882,20 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                       position: 'absolute', top: 2, right: 2, zIndex: 1, minWidth: 26, minHeight: 26, padding: 0,
                       border: 'none', borderRadius: 6, background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 14, lineHeight: 1, cursor: 'pointer',
                     }}>⤢</button>
+                  {canManageSites(role) && (
+                    <button
+                      type="button"
+                      aria-label="ให้ลูกค้าเห็น"
+                      aria-pressed={!!p.customer_visible}
+                      title="ให้ลูกค้าเห็น"
+                      onClick={(e) => { e.stopPropagation(); handleToggleCustomerVisible(p) }}
+                      style={{
+                        position: 'absolute', top: 30, right: 2, zIndex: 1, minWidth: 26, minHeight: 26, padding: 0,
+                        border: p.customer_visible ? '2px solid var(--accent, #ff8c00)' : 'none', borderRadius: 6, fontSize: 14, lineHeight: 1, cursor: 'pointer',
+                        background: p.customer_visible ? 'var(--accent, #ff8c00)' : 'rgba(0,0,0,.6)', color: '#fff',
+                        opacity: p.customer_visible ? 1 : 0.75, boxSizing: 'border-box',
+                      }}>👁</button>
+                  )}
                   <div
                     data-testid="photo-thumb"
                     draggable={canEdit}

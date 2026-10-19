@@ -8,13 +8,16 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { sanitizeStorageFileName } from '../lib/storageKey.js'
+import { isCustomerImage } from '../lib/customerVisible.js'
 
-export default function AttachmentsSection({ table, bucket, foreignKey, entityId, tenantId }) {
+export default function AttachmentsSection({ table, bucket, foreignKey, entityId, tenantId, customerVisibleKind }) {
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
 
   const load = async () => {
-    const { data } = await supabase.from(table).select('*').eq(foreignKey, entityId).order('uploaded_at')
+    // customer_visible only exists on tables that opted in via customerVisibleKind.
+    const cols = customerVisibleKind ? '*, customer_visible' : '*'
+    const { data } = await supabase.from(table).select(cols).eq(foreignKey, entityId).order('uploaded_at')
     setAttachments(data || [])
   }
   useEffect(() => { load() }, [entityId])
@@ -61,6 +64,16 @@ export default function AttachmentsSection({ table, bucket, foreignKey, entityId
     }
   }
 
+  const handleToggleVisible = async (att, visible) => {
+    const prev = att.customer_visible
+    setAttachments(list => list.map(a => a.id === att.id ? { ...a, customer_visible: visible } : a))
+    const { error } = await supabase.rpc('set_customer_visible', { p_kind: customerVisibleKind, p_id: att.id, p_visible: visible })
+    if (error) {
+      setAttachments(list => list.map(a => a.id === att.id ? { ...a, customer_visible: prev } : a))
+      alert('Error: ' + error.message)
+    }
+  }
+
   return (
     <div>
       <label className="label">ไฟล์แนบ</label>
@@ -68,6 +81,12 @@ export default function AttachmentsSection({ table, bucket, foreignKey, entityId
         {attachments.map(att => (
           <div key={att.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => handleDownload(att)}>📎 {att.file_name}</button>
+            {customerVisibleKind && isCustomerImage(att.file_name) && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!att.customer_visible} onChange={e => handleToggleVisible(att, e.target.checked)} />
+                ให้ลูกค้าเห็น
+              </label>
+            )}
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => handleRemove(att)}>✕</button>
           </div>
         ))}

@@ -120,6 +120,36 @@ export default function CommunicationCenter({ navState }) {
   }
   useEffect(() => { fetchLineSettings() }, [tenant?.id])
 
+  // ---- Customer requests from the company's customer LINE OA. handled_by is
+  // always the logged-in user's own email, never form input. ----
+  const [custRequests, setCustRequests] = useState([])
+  const [hasCustChannel, setHasCustChannel] = useState(false)
+  const [closingReqId, setClosingReqId] = useState(null)
+  const fetchCustRequests = async () => {
+    const [{ data: reqs, error: e1 }, { data: ch, error: e2 }] = await Promise.all([
+      supabase.from('customer_line_requests').select('id, kind, display_name, created_at, clients(name)').is('handled_at', null).order('created_at', { ascending: false }),
+      supabase.from('customer_line_channels').select('tenant_id').maybeSingle(),
+    ])
+    if (!e1) setCustRequests(reqs || [])
+    if (!e2) setHasCustChannel(!!ch)
+  }
+  useEffect(() => { if (tenant?.id) fetchCustRequests() }, [tenant?.id])
+
+  const handleCloseCustRequest = async (id) => {
+    if (!user?.email) { alert('Error: ไม่พบอีเมลผู้ใช้'); return }
+    setClosingReqId(id)
+    try {
+      const { error } = await supabase.from('customer_line_requests')
+        .update({ handled_at: new Date().toISOString(), handled_by: user.email }).eq('id', id)
+      if (error) throw error
+      setCustRequests(list => list.filter(r => r.id !== id))
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setClosingReqId(null)
+    }
+  }
+
   const { groups, limit, loading: loadingGroups, refetch: refetchGroups } = useLineGroups()
   const isOwner = isAtLeast('OWNER')
   const atCap = limit !== null && groups.length >= limit
@@ -511,6 +541,30 @@ export default function CommunicationCenter({ navState }) {
   return (
     <div>
       <h2 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>💬 การสื่อสาร — บอทไลน์ทีมงาน</h2>
+
+      {(custRequests.length > 0 || hasCustChannel) && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>💬 ลูกค้าทักทาง LINE</div>
+          <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
+            ตอบลูกค้าในแชท LINE OA Manager แล้วกดปิดเรื่อง
+          </div>
+          {custRequests.length === 0 ? (
+            <div style={{ padding: 16, fontSize: 13, color: 'var(--text3)' }}>ไม่มีเรื่องค้าง</div>
+          ) : custRequests.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>
+                  {r.kind === 'repair' ? 'แจ้งซ่อม' : 'ขอใบเสนอราคา'} · {r.display_name || '-'}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                  {r.clients?.name ? `${r.clients.name} · ` : ''}{new Date(r.created_at).toLocaleString('th-TH')}
+                </div>
+              </div>
+              <button type="button" className="btn btn-sm" disabled={closingReqId === r.id} onClick={() => handleCloseCustRequest(r.id)}>ปิดเรื่อง</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div ref={offboardCardRef} style={{ scrollMarginTop: 120 }}>
         <PendingFocusChip focus={offboardFocus} pendingKey="offboarded_in_group" style={{ marginBottom: 8 }} />

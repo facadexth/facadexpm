@@ -946,7 +946,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
           />
           {editSite && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <AttachmentsSection table="site_attachments" bucket="site-attachments" foreignKey="site_id" entityId={editSite.id} tenantId={tenant.id} />
+              <AttachmentsSection table="site_attachments" bucket="site-attachments" foreignKey="site_id" entityId={editSite.id} tenantId={tenant.id} customerVisibleKind="site_attachment" />
             </div>
           )}
           {!editSite && (
