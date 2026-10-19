@@ -36,6 +36,38 @@ CREATE TRIGGER sites_warranty_followup_reset
   BEFORE UPDATE ON public.sites
   FOR EACH ROW EXECUTE FUNCTION public.sites_warranty_followup_reset_fn();
 
+REVOKE EXECUTE ON FUNCTION public.sites_warranty_followup_reset_fn() FROM PUBLIC, anon;
+
+-- Fallback (created after the backfill): a site that becomes Completed without a handover date gets
+-- handover_date = end_date, or today in Bangkok. Covers the admin status select, quotation-created sites,
+-- ExcelUpload, the demo reset and stale bundles. An explicit handover_date is never overwritten.
+-- Postgres fires BEFORE triggers in name order: sites_handover_fallback < sites_warranty_followup_reset, so the
+-- reset trigger sees the filled date. The fallback also clears warranty_followup_at itself, so the result
+-- does not depend on that order.
+CREATE OR REPLACE FUNCTION public.sites_handover_fallback_fn()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status = 'Completed' AND NEW.handover_date IS NULL THEN
+    NEW.handover_date := COALESCE(NEW.end_date, (now() AT TIME ZONE 'Asia/Bangkok')::date);
+    IF TG_OP = 'UPDATE' THEN
+      IF NEW.handover_date IS DISTINCT FROM OLD.handover_date THEN
+        NEW.warranty_followup_at := NULL;
+      END IF;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.sites_handover_fallback_fn() FROM PUBLIC, anon;
+
+CREATE TRIGGER sites_handover_fallback
+  BEFORE INSERT OR UPDATE ON public.sites
+  FOR EACH ROW EXECUTE FUNCTION public.sites_handover_fallback_fn();
+
 CREATE OR REPLACE VIEW public.site_retention_summary WITH (security_invoker = true) AS
  SELECT s.id AS site_id,
     s.site_number,
@@ -116,7 +148,7 @@ $function$;
 DO $t$
 DECLARE
   v_tenant uuid := '8b61c890-0a90-4223-91d3-b5f8f4e89908';
-  v_site uuid; v_site2 uuid; n int; n0 int; d date; f timestamptz; cnt jsonb; k text; opts text[];
+  v_site uuid; v_site2 uuid; v_site3 uuid; n int; n0 int; d date; f timestamptz; cnt jsonb; k text; opts text[];
   v_today date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
 BEGIN
   SELECT count(*) INTO n FROM sites WHERE status = 'Completed' AND handover_date IS NULL;
@@ -168,6 +200,36 @@ BEGIN
     IF NOT (cnt ? k) THEN RAISE EXCEPTION 'FAIL (e): missing key %', k; END IF;
   END LOOP;
   RAISE NOTICE 'PASS (e)';
+
+  -- (f) an Ongoing site finished by a bare status update gets handover_date = end_date
+  INSERT INTO sites (tenant_id, site_number, name, status)
+    VALUES (v_tenant, 'ZZW-F', 'ZZ warranty F', 'Ongoing') RETURNING id INTO v_site3;
+  UPDATE sites SET status = 'Completed', end_date = DATE '2026-05-01' WHERE id = v_site3;
+  SELECT handover_date INTO d FROM sites WHERE id = v_site3;
+  IF d IS DISTINCT FROM DATE '2026-05-01' THEN RAISE EXCEPTION 'FAIL (f): handover_date %', d; END IF;
+  RAISE NOTICE 'PASS (f)';
+
+  -- (g) INSERT of a Completed site with no end_date gets the Bangkok today date
+  INSERT INTO sites (tenant_id, site_number, name, status)
+    VALUES (v_tenant, 'ZZW-G', 'ZZ warranty G', 'Completed') RETURNING handover_date INTO d;
+  IF d IS DISTINCT FROM v_today THEN RAISE EXCEPTION 'FAIL (g): handover_date % expected %', d, v_today; END IF;
+  RAISE NOTICE 'PASS (g)';
+
+  -- (h) an explicit handover_date is never overwritten (insert and update)
+  INSERT INTO sites (tenant_id, site_number, name, status, end_date, handover_date)
+    VALUES (v_tenant, 'ZZW-H', 'ZZ warranty H', 'Completed', DATE '2026-03-01', DATE '2026-02-15') RETURNING id, handover_date INTO v_site3, d;
+  IF d IS DISTINCT FROM DATE '2026-02-15' THEN RAISE EXCEPTION 'FAIL (h): insert overwrote handover_date %', d; END IF;
+  UPDATE sites SET end_date = DATE '2026-04-01', name = 'ZZ warranty H2' WHERE id = v_site3;
+  SELECT handover_date INTO d FROM sites WHERE id = v_site3;
+  IF d IS DISTINCT FROM DATE '2026-02-15' THEN RAISE EXCEPTION 'FAIL (h): update overwrote handover_date %', d; END IF;
+  RAISE NOTICE 'PASS (h)';
+
+  -- (i) anon cannot execute either trigger function
+  IF has_function_privilege('anon', 'public.sites_handover_fallback_fn()', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.sites_warranty_followup_reset_fn()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAIL (i): anon can execute a warranty trigger function';
+  END IF;
+  RAISE NOTICE 'PASS (i)';
 END
 $t$;
 

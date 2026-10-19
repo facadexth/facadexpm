@@ -32,6 +32,38 @@ CREATE TRIGGER sites_warranty_followup_reset
   BEFORE UPDATE ON public.sites
   FOR EACH ROW EXECUTE FUNCTION public.sites_warranty_followup_reset_fn();
 
+REVOKE EXECUTE ON FUNCTION public.sites_warranty_followup_reset_fn() FROM PUBLIC, anon;
+
+-- Fallback (created after the backfill): a site that becomes Completed without a handover date gets
+-- handover_date = end_date, or today in Bangkok. Covers the admin status select, quotation-created sites,
+-- ExcelUpload, the demo reset and stale bundles. An explicit handover_date is never overwritten.
+-- Postgres fires BEFORE triggers in name order: sites_handover_fallback < sites_warranty_followup_reset, so the
+-- reset trigger sees the filled date. The fallback also clears warranty_followup_at itself, so the result
+-- does not depend on that order.
+CREATE OR REPLACE FUNCTION public.sites_handover_fallback_fn()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status = 'Completed' AND NEW.handover_date IS NULL THEN
+    NEW.handover_date := COALESCE(NEW.end_date, (now() AT TIME ZONE 'Asia/Bangkok')::date);
+    IF TG_OP = 'UPDATE' THEN
+      IF NEW.handover_date IS DISTINCT FROM OLD.handover_date THEN
+        NEW.warranty_followup_at := NULL;
+      END IF;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.sites_handover_fallback_fn() FROM PUBLIC, anon;
+
+CREATE TRIGGER sites_handover_fallback
+  BEFORE INSERT OR UPDATE ON public.sites
+  FOR EACH ROW EXECUTE FUNCTION public.sites_handover_fallback_fn();
+
 CREATE OR REPLACE VIEW public.site_retention_summary WITH (security_invoker = true) AS
  SELECT s.id AS site_id,
     s.site_number,
