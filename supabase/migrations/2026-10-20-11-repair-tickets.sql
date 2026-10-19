@@ -7,7 +7,7 @@ CREATE TABLE public.repair_tickets (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id           uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   ticket_number       text NOT NULL,
-  site_id             uuid NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE,
+  site_id             uuid NOT NULL REFERENCES public.sites(id) ON DELETE RESTRICT,
   client_id           uuid REFERENCES public.clients(id) ON DELETE SET NULL,
   source              text NOT NULL DEFAULT 'staff' CHECK (source IN ('line','staff')),
   line_user_id        text,

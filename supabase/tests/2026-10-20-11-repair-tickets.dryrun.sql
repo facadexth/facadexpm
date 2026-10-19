@@ -11,7 +11,7 @@ CREATE TABLE public.repair_tickets (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id           uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   ticket_number       text NOT NULL,
-  site_id             uuid NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE,
+  site_id             uuid NOT NULL REFERENCES public.sites(id) ON DELETE RESTRICT,
   client_id           uuid REFERENCES public.clients(id) ON DELETE SET NULL,
   source              text NOT NULL DEFAULT 'staff' CHECK (source IN ('line','staff')),
   line_user_id        text,
@@ -328,9 +328,12 @@ BEGIN
   END;
   RAISE NOTICE 'PASS (e)';
 
-  INSERT INTO workers (tenant_id, name, monthly_salary) VALUES (v_tenant, 'ZZ Repair Worker', 0) RETURNING id INTO v_worker;
+  SELECT id INTO v_worker FROM workers WHERE tenant_id = v_tenant LIMIT 1;
+  IF v_worker IS NULL THEN
+    INSERT INTO workers (tenant_id, name, monthly_salary) VALUES (v_tenant, 'ZZ Repair Worker', 0) RETURNING id INTO v_worker;
+  END IF;
   INSERT INTO worker_assignments (tenant_id, worker_id, site_id, date, repair_ticket_id)
-    VALUES (v_tenant, v_worker, v_site, DATE '2026-12-01', v_t1) RETURNING id INTO v_wa;
+    VALUES (v_tenant, v_worker, v_site, DATE '2099-12-01', v_t1) RETURNING id INTO v_wa;
   DELETE FROM repair_tickets WHERE id = v_t1;
   SELECT repair_ticket_id INTO ra FROM worker_assignments WHERE id = v_wa;
   IF ra IS NOT NULL THEN RAISE EXCEPTION 'FAIL (f): repair_ticket_id not nulled'; END IF;
