@@ -103,7 +103,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       return urls
     },
     async getContact() {
-      const { data: ch } = await admin.from('customer_line_channels').select('contact_phone, contact_hours')
+      const { data: ch } = await admin.from('customer_line_channels').select('contact_phone, contact_hours, display_name')
         .eq('tenant_id', tenantId).maybeSingle()
       const { data: t, error: tError } = await admin.from('tenants').select('company_name, phone').eq('id', tenantId).maybeSingle()
       if (tError) throw tError
@@ -111,6 +111,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         companyName: (t?.company_name as string) ?? '',
         phone: (ch?.contact_phone as string | null) || (t?.phone as string | null) || null,
         hours: (ch?.contact_hours as string | null) || null,
+        brandName: (ch?.display_name as string | null) || (t?.company_name as string) || '',
       }
     },
     async openRequest(kind, lineUserId, clientId, displayName) {

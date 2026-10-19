@@ -3,6 +3,7 @@
 
 export type LineMessage =
   | { type: 'text'; text: string }
+  | { type: 'flex'; altText: string; contents: object }
   | { type: 'image'; originalContentUrl: string; previewImageUrl: string }
 
 const LINE_REPLY_URL = 'https://api.line.me/v2/bot/message/reply'

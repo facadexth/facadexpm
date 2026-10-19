@@ -2,14 +2,14 @@ import { describe, it, expect, vi } from 'vitest'
 import { handleCustomerEvent } from '../../supabase/functions/_shared/customer-line-handler.ts'
 import {
   inviteOkText, inviteInvalidText, notLinkedText, quoteText, repairTempText,
-  repairStatusTempText, warrantyText, contactText, statusText,
+  repairStatusTempText, warrantyFlex, contactText, statusText,
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
 
 const ctx = { tenantId: 't1', today: '2026-10-19' }
 const txt = (text) => ({ type: 'message', replyToken: 'rt', source: { type: 'user', userId: 'U1' }, message: { type: 'text', text } })
 const T = (text) => ({ type: 'text', text })
 const site = { name: 'งาน A', status: 'Ongoing', pct: 40, phases: ['ติดตั้ง'], endDate: '2026-12-01', handoverDate: null, warrantyMonths: 12 }
-const contact = { companyName: 'บจก.', phone: '02', hours: '8-17' }
+const contact = { companyName: 'บจก.', phone: '02', hours: '8-17', brandName: 'แชงค์' }
 
 function deps(over = {}) {
   return {
@@ -55,7 +55,7 @@ describe('handleCustomerEvent', () => {
   })
   it.each(['สถานะงาน', 'แจ้งซ่อม', 'สถานะแจ้งซ่อม', 'ประกันของฉัน'])('unlinked + %s -> notLinked', async (c) => {
     const d = deps()
-    expect(await handleCustomerEvent(txt(c), ctx, d)).toEqual([T(notLinkedText())])
+    expect(await handleCustomerEvent(txt(c), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
     expect(d.openRequest).not.toHaveBeenCalled()
   })
   it('unlinked quote opens request once', async () => {
@@ -72,7 +72,7 @@ describe('handleCustomerEvent', () => {
   it('linked repair_status and warranty', async () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
     expect(await handleCustomerEvent(txt('สถานะแจ้งซ่อม'), ctx, d)).toEqual([T(repairStatusTempText())])
-    expect(await handleCustomerEvent(txt('ประกันของฉัน'), ctx, d)).toEqual([T(warrantyText([site], ctx.today))])
+    expect(await handleCustomerEvent(txt('ประกันของฉัน'), ctx, d)).toEqual([warrantyFlex([site], ctx.today, 'แชงค์')])
   })
   it('linked status with photos', async () => {
     const d = deps({
@@ -81,7 +81,7 @@ describe('handleCustomerEvent', () => {
     })
     const r = await handleCustomerEvent(txt('สถานะงาน'), ctx, d)
     expect(r).toEqual([
-      T(statusText([site], '2026-10-19')),
+      T(statusText([site], '2026-10-19', 'แชงค์')),
       { type: 'image', originalContentUrl: 'https://x/1.jpg', previewImageUrl: 'https://x/1.jpg' },
       { type: 'image', originalContentUrl: 'https://x/2.jpg', previewImageUrl: 'https://x/2.jpg' },
     ])

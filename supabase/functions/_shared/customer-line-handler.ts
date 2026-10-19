@@ -4,7 +4,7 @@
 import { matchCustomerCommand, looksLikeInviteCode } from './customer-line-commands.ts'
 import {
   inviteOkText, inviteInvalidText, notLinkedText, quoteText, repairTempText,
-  repairStatusTempText, warrantyText, contactText, statusText, type SiteStatus,
+  repairStatusTempText, warrantyFlex, contactText, statusText, type SiteStatus,
 } from './customer-line-replies.ts'
 import type { LineMessage } from './line-reply.ts'
 
@@ -14,7 +14,7 @@ export type CustomerDeps = {
   getDisplayName: (lineUserId: string) => Promise<string | null>
   loadSites: (clientId: string) => Promise<SiteStatus[]>
   loadPhotos: (clientId: string) => Promise<{ url: string }[]>
-  getContact: () => Promise<{ companyName: string; phone: string | null; hours: string | null }>
+  getContact: () => Promise<{ companyName: string; phone: string | null; hours: string | null; brandName: string }>
   openRequest: (kind: 'quote' | 'repair', lineUserId: string, clientId: string | null, displayName: string | null) => Promise<void>
   touchAccount: (lineUserId: string) => Promise<void>
 }
@@ -51,7 +51,7 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
     return txt(quoteText())
   }
 
-  if (!account) return txt(notLinkedText())
+  if (!account) return txt(notLinkedText((await deps.getContact()).brandName))
 
   if (cmd === 'repair') {
     await deps.openRequest('repair', userId, account.clientId, await deps.getDisplayName(userId))
@@ -60,12 +60,13 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
   if (cmd === 'repair_status') return txt(repairStatusTempText())
 
   const sites = await deps.loadSites(account.clientId)
-  if (cmd === 'warranty') return txt(warrantyText(sites, ctx.today))
+  if (cmd === 'warranty') return [warrantyFlex(sites, ctx.today, (await deps.getContact()).brandName)]
 
   // status
   const photos = await deps.loadPhotos(account.clientId)
+  const { brandName } = await deps.getContact()
   return [
-    { type: 'text', text: statusText(sites, ctx.today) },
+    { type: 'text', text: statusText(sites, ctx.today, brandName) },
     ...photos.map((p): LineMessage => ({ type: 'image', originalContentUrl: p.url, previewImageUrl: p.url })),
   ]
 }
