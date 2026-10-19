@@ -61,7 +61,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         const { data: pct } = await admin.rpc('site_progress_pct', { p_site_id: s.id })
         const prow = Array.isArray(pct) ? pct[0] : pct
         const { data: phases } = await admin.from('site_phases').select('name')
-          .eq('tenant_id', tenantId).eq('site_id', s.id).eq('status', 'in_progress').order('sort_order')
+          .eq('tenant_id', tenantId).eq('site_id', s.id).eq('status', 'in_progress').eq('is_issue_phase', false).order('sort_order')
         const cp = prow?.contract_pct
         out.push({
           name: s.name as string,
