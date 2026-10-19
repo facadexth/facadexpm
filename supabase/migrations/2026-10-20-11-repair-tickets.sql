@@ -102,13 +102,31 @@ REVOKE ALL ON public.repair_ticket_media FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.repair_tickets TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.repair_ticket_media TO authenticated;
 
-CREATE POLICY admin_full_access ON public.repair_tickets FOR ALL TO authenticated
-  USING ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()))
-  WITH CHECK ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()));
+CREATE POLICY admin_select ON public.repair_tickets FOR SELECT TO authenticated
+  USING ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()));
 
-CREATE POLICY admin_full_access ON public.repair_ticket_media FOR ALL TO authenticated
-  USING ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()))
-  WITH CHECK ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()));
+CREATE POLICY admin_insert ON public.repair_tickets FOR INSERT TO authenticated
+  WITH CHECK ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()) AND (SELECT tenant_can_write()));
+
+CREATE POLICY admin_update ON public.repair_tickets FOR UPDATE TO authenticated
+  USING ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()) AND (SELECT tenant_can_write()))
+  WITH CHECK ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()) AND (SELECT tenant_can_write()));
+
+CREATE POLICY admin_delete ON public.repair_tickets FOR DELETE TO authenticated
+  USING ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()) AND (SELECT tenant_can_write()));
+
+CREATE POLICY admin_select ON public.repair_ticket_media FOR SELECT TO authenticated
+  USING ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()));
+
+CREATE POLICY admin_insert ON public.repair_ticket_media FOR INSERT TO authenticated
+  WITH CHECK ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()) AND (SELECT tenant_can_write()));
+
+CREATE POLICY admin_update ON public.repair_ticket_media FOR UPDATE TO authenticated
+  USING ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()) AND (SELECT tenant_can_write()))
+  WITH CHECK ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()) AND (SELECT tenant_can_write()));
+
+CREATE POLICY admin_delete ON public.repair_ticket_media FOR DELETE TO authenticated
+  USING ((SELECT is_admin_or_owner()) AND tenant_id = (SELECT current_tenant_id()) AND (SELECT tenant_can_write()));
 
 CREATE TABLE public.customer_line_repair_sessions (
   tenant_id    uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
@@ -132,7 +150,7 @@ ON CONFLICT (id) DO NOTHING;
 
 CREATE POLICY repair_media_tenant_access ON storage.objects FOR ALL TO authenticated
   USING ((bucket_id = 'repair-media'::text) AND is_admin_or_owner() AND ((storage.foldername(name))[1] = (current_tenant_id())::text))
-  WITH CHECK ((bucket_id = 'repair-media'::text) AND is_admin_or_owner() AND ((storage.foldername(name))[1] = (current_tenant_id())::text));
+  WITH CHECK ((bucket_id = 'repair-media'::text) AND is_admin_or_owner() AND tenant_can_write() AND ((storage.foldername(name))[1] = (current_tenant_id())::text));
 
 CREATE TABLE public.customer_push_log (
   tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
