@@ -13,7 +13,7 @@ export type NextAction = 'check_in' | 'check_out' | 'done'
 
 export type TodaysAssignment = { site_id: string | null; site_name: string | null; shift: string | null; type?: string | null }
 export type TodaysCheckin = { site_id: string | null; checkin_at: string | null; checkout_at: string | null }
-export type TodaysSite = { siteId: string; siteName: string; shifts: Shift[]; nextAction: NextAction }
+export type TodaysSite = { siteId: string; siteName: string; shifts: Shift[]; nextAction: NextAction; atFactory: boolean }
 
 const SHIFT_RANK: Record<Shift, number> = { morning: 0, evening: 1 }
 const isShift = (s: unknown): s is Shift => s === 'morning' || s === 'evening'
@@ -24,16 +24,18 @@ const earliestRank = (shifts: Shift[]) => (shifts.length ? Math.min(...shifts.ma
 // DISTINCT sites, ordered by earliest shift (morning before evening), then by name.
 // nextAction comes from that site's own worker_checkins row.
 export function todaysSites(assignments: TodaysAssignment[], checkins: TodaysCheckin[]): TodaysSite[] {
-  const bySite = new Map<string, { siteName: string; shifts: Set<Shift> }>()
+  const bySite = new Map<string, { siteName: string; shifts: Set<Shift>; rows: number; factoryRows: number }>()
   for (const a of assignments ?? []) {
     if (!a?.site_id) continue
     let entry = bySite.get(a.site_id)
     if (!entry) {
-      entry = { siteName: a.site_name ?? '', shifts: new Set() }
+      entry = { siteName: a.site_name ?? '', shifts: new Set(), rows: 0, factoryRows: 0 }
       bySite.set(a.site_id, entry)
     }
     if (!entry.siteName && a.site_name) entry.siteName = a.site_name
     if (isShift(a.shift)) entry.shifts.add(a.shift)
+    entry.rows++
+    if (a.type === 'factory') entry.factoryRows++
   }
   const checkinBySite = new Map<string, TodaysCheckin>()
   for (const c of checkins ?? []) if (c?.site_id) checkinBySite.set(c.site_id, c)
@@ -42,7 +44,9 @@ export function todaysSites(assignments: TodaysAssignment[], checkins: TodaysChe
     const shifts = [...e.shifts].sort((x, y) => SHIFT_RANK[x] - SHIFT_RANK[y])
     const row = checkinBySite.get(siteId)
     const nextAction: NextAction = !row?.checkin_at ? 'check_in' : !row.checkout_at ? 'check_out' : 'done'
-    return { siteId, siteName: e.siteName, shifts, nextAction }
+    // Factory work: every assignment row for the site today is type 'factory'. The worker
+    // checks in at the FACTORY, not at the customer's site named on the job.
+    return { siteId, siteName: e.siteName, shifts, nextAction, atFactory: e.rows > 0 && e.factoryRows === e.rows }
   })
   return sites.sort((a, b) => earliestRank(a.shifts) - earliestRank(b.shifts) || a.siteName.localeCompare(b.siteName, 'th'))
 }
@@ -105,12 +109,19 @@ export function multiSiteReplyText(sites: TodaysSite[], links: Record<string, st
     const label = shiftLabel(s.shifts)
     const link = links[s.siteId]
     if (link && s.nextAction !== 'done') {
-      lines.push(`${shiftEmoji(s.shifts)} ${label} · ${s.siteName} → ${s.nextAction === 'check_in' ? 'เช็คอิน' : 'เช็คเอาท์'}`)
+      const verb = s.nextAction === 'check_in' ? 'เช็คอิน' : 'เช็คเอาท์'
+      if (s.atFactory) {
+        lines.push(`🏭 ${label} · ${verb}ที่โรงงาน (งาน${s.siteName}) → ${verb}`)
+      } else {
+        lines.push(`${shiftEmoji(s.shifts)} ${label} · ${s.siteName} → ${verb}`)
+      }
       lines.push(link)
     } else if (s.nextAction === 'done') {
-      lines.push(`✅ ${label} · ${s.siteName} — ครบแล้ว`)
+      lines.push(s.atFactory ? `✅ ${label} · โรงงาน (งาน${s.siteName}) — ครบแล้ว` : `✅ ${label} · ${s.siteName} — ครบแล้ว`)
     } else if (s.nextAction === 'check_in' && sites.some((o) => o.nextAction === 'check_out')) {
-      lines.push(`⏳ ${label} · ${s.siteName} — เช็คเอาท์ไซท์ที่อยู่ก่อน แล้วจึงเช็คอินที่นี่`)
+      lines.push(s.atFactory
+        ? `⏳ ${label} · โรงงาน (งาน${s.siteName}) — เช็คเอาท์ไซท์ที่อยู่ก่อน แล้วจึงเช็คอินที่โรงงาน`
+        : `⏳ ${label} · ${s.siteName} — เช็คเอาท์ไซท์ที่อยู่ก่อน แล้วจึงเช็คอินที่นี่`)
     }
   }
   return lines.join('\n')

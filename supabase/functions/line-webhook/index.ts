@@ -109,6 +109,7 @@ import { todayMenuOptions } from '../_shared/today-menu.ts'
 import { CANCEL_PHRASE, CANCEL_CHIP, CANCEL_REPLY, isCancel } from '../_shared/cancel.ts'
 import { isMenuButtonText, pendingWaitMinutes } from '../_shared/pending-flow.ts'
 import { siteMapLink } from '../_shared/site-map-link.ts'
+import { resolveFactoryLocation } from '../_shared/factory-location.ts'
 import { linkRequestsThrottled, THROTTLED_LINK_MESSAGE } from '../_shared/form-throttle.ts'
 import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-message.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
@@ -331,6 +332,15 @@ async function resolveTodaysSite(workerId: string, tenantId: string): Promise<Si
   if (site) return site
   const { data } = await admin.from('sites').select('id, name, map_url, lat, lng').eq('id', pick.siteId).maybeSingle()
   return data ?? null
+}
+
+// งานวันนี้ for a factory-only site: the worker goes to the FACTORY, so show the factory
+// location (name + map) instead of the customer's site. null = no factory location found,
+// the caller keeps the normal site display.
+async function factoryDisplayFor(tenantId: string, workerId: string, siteId: string, siteName: string): Promise<{ line: string; map: string | null } | null> {
+  const loc = await resolveFactoryLocation(admin, tenantId, workerId, siteId, bangkokToday())
+  if (!loc) return null
+  return { line: `🏭 ที่โรงงาน: ${loc.name} (งาน${siteName})`, map: siteMapLink(loc) }
 }
 
 // Today's DISTINCT sites with this worker's own check-in state at each (Bangkok date,
@@ -610,7 +620,9 @@ async function sendSingleSiteLink(
     await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
   } else {
     const verb = actionType === 'check_in' ? 'เช็คอิน' : 'เช็คเอาท์'
-    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อ${verb}ที่ ${site.siteName} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
+    // Factory work: the worker checks in at the factory, not at the customer's site.
+    const where = site.atFactory ? `โรงงาน (งาน${site.siteName})` : site.siteName
+    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อ${verb}ที่${site.atFactory ? '' : ' '}${where} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
   }
 }
 
@@ -845,8 +857,9 @@ async function handleTodaysJobMenu(
           resolveOpenTasksForSite(s.siteId, settings.tenant_id),
           resolveTeamLeadersForSite(s.siteId, settings.tenant_id, bangkokToday()),
         ])
-        const out = ['', `${shiftEmoji(s.shifts)} ${shiftLabel(s.shifts)}: ${s.siteName}${s.nextAction === 'done' ? ' ✅' : ''}`]
-        const map = siteMapLink(rows.find((r) => r.site_id === s.siteId)?.sites)
+        const fac = s.atFactory ? await factoryDisplayFor(settings.tenant_id, worker.id, s.siteId, s.siteName) : null
+        const out = ['', `${shiftEmoji(s.shifts)} ${shiftLabel(s.shifts)}: ${fac ? fac.line : s.siteName}${s.nextAction === 'done' ? ' ✅' : ''}`]
+        const map = fac ? fac.map : siteMapLink(rows.find((r) => r.site_id === s.siteId)?.sites)
         if (map) out.push(`🗺️ ${map}`)
         if (leaders.morning || leaders.evening) {
           const parts: string[] = []
@@ -884,8 +897,9 @@ async function handleTodaysJobMenu(
   ])
   const checkin = checkinResult.data
 
-  const lines = [`📍 วันนี้: ${site.name}`]
-  const todayMap = siteMapLink(site)
+  const fac = todays.length === 1 && todays[0].atFactory ? await factoryDisplayFor(settings.tenant_id, worker.id, site.id, site.name) : null
+  const lines = [fac ? `📍 วันนี้: ${fac.line}` : `📍 วันนี้: ${site.name}`]
+  const todayMap = fac ? fac.map : siteMapLink(site)
   if (todayMap) lines.push(`🗺️ ${todayMap}`)
   if (leaders.morning || leaders.evening) {
     const parts: string[] = []

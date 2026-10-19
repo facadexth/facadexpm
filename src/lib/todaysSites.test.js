@@ -9,8 +9,8 @@ describe('todaysSites', () => {
     // evening row first, as an unordered query could return it
     const sites = todaysSites([BIG, AVAIN], [])
     expect(sites).toEqual([
-      { siteId: 's-avain', siteName: 'The nest - AVAIN บางนา กม.5', shifts: ['morning'], nextAction: 'check_in' },
-      { siteId: 's-big', siteName: 'บ้านคุณบิ๊ก', shifts: ['evening'], nextAction: 'check_in' },
+      { siteId: 's-avain', siteName: 'The nest - AVAIN บางนา กม.5', shifts: ['morning'], nextAction: 'check_in', atFactory: false },
+      { siteId: 's-big', siteName: 'บ้านคุณบิ๊ก', shifts: ['evening'], nextAction: 'check_in', atFactory: true },
     ])
   })
 
@@ -109,7 +109,7 @@ describe('sitesNeedingLinks', () => {
   it('reply shows the waiting site while another is open', () => {
     const text = multiSiteReplyText(open, { 's-avain': 'L1' })
     expect(text).toContain('🌅 เช้า · The nest - AVAIN บางนา กม.5 → เช็คเอาท์')
-    expect(text).toContain('⏳ บ่าย · บ้านคุณบิ๊ก — เช็คเอาท์ไซท์ที่อยู่ก่อน แล้วจึงเช็คอินที่นี่')
+    expect(text).toContain('⏳ บ่าย · โรงงาน (งานบ้านคุณบิ๊ก) — เช็คเอาท์ไซท์ที่อยู่ก่อน แล้วจึงเช็คอินที่โรงงาน')
   })
 })
 
@@ -120,7 +120,7 @@ describe('multiSiteReplyText', () => {
       '📍 วันนี้คุณมี 2 ไซท์ — กดลิงก์ของไซท์ที่คุณอยู่ตอนนี้',
       '',
       '✅ เช้า · The nest - AVAIN บางนา กม.5 — ครบแล้ว',
-      '🌇 บ่าย · บ้านคุณบิ๊ก → เช็คอิน',
+      '🏭 บ่าย · เช็คอินที่โรงงาน (งานบ้านคุณบิ๊ก) → เช็คอิน',
       'https://changpm.app/f/t2',
     ].join('\n'))
   })

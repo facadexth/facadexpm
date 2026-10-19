@@ -44,6 +44,7 @@ import { parseAdvanceAmount, defaultStartMonth } from '../_shared/advance-logic.
 import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
 import { payslipWindow, inPayslipWindow, pickYtd } from '../_shared/payslip-data.ts'
 import { todaysSites, pickSiteForNow } from '../_shared/todays-sites.ts'
+import { resolveFactoryLocation } from '../_shared/factory-location.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -166,6 +167,19 @@ async function resolveTokenSite(tok: { site_id?: string | null }, worker: { id: 
   return site ?? null
 }
 
+// What the check-in/out page shows as the place. Factory work (the worker's assignment at
+// this site today is type 'factory') says the FACTORY, and the job:
+// 'โรงงาน (ส่วนกลาง) — งานบ้านคุณบิ๊ก'. Otherwise the plain site name. The RPC still gets site_id.
+async function checkinPlaceName(site: { id: string; name: string }, worker: { id: string; tenant_id: string }): Promise<string> {
+  const { data: rows } = await admin.from('worker_assignments').select('type')
+    .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('site_id', site.id)
+    .eq('date', bangkokToday()).in('type', TODAY_SITE_TYPES)
+  const types = (rows ?? []) as Array<{ type: string | null }>
+  if (!types.length || !types.every((r) => r.type === 'factory')) return site.name
+  const loc = await resolveFactoryLocation(admin, worker.tenant_id, worker.id, site.id, bangkokToday())
+  return loc ? `${loc.name} — งาน${site.name}` : site.name
+}
+
 async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ name: string }>> {
   const { data } = await admin
     .from('phase_task_workers')
@@ -250,7 +264,7 @@ Deno.serve(async (req) => {
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
         const site = await resolveTokenSite(tok, worker)
         if (!site) return json({ actionType: tok.action_type, workerName, reason: 'no_site' })
-        return json({ actionType: tok.action_type, workerName, siteName: site.name })
+        return json({ actionType: tok.action_type, workerName, siteName: await checkinPlaceName(site, worker) })
       }
       if (tok.action_type === 'leave') {
         const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(admin, worker.id, worker.annual_leave_days ?? 0, worker.annual_sick_leave_days ?? 0, worker.tenant_id)
@@ -519,7 +533,7 @@ Deno.serve(async (req) => {
         await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
 
         const openTasks = tok.action_type === 'check_in' ? await resolveOpenTasksForWorker(worker.id, worker.tenant_id) : []
-        return json({ ok: true, message: result.message, siteName: site.name, openTasks: openTasks.map(t => t.name) })
+        return json({ ok: true, message: result.message, siteName: await checkinPlaceName(site, worker), openTasks: openTasks.map(t => t.name) })
       }
 
       return json({ error: 'unknown_action_type' }, 400)
