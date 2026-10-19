@@ -3,8 +3,7 @@
 -- Everything is rolled back. Expect PASS notices for a, b, c, grants, e1, d/e2, f, g and no exception.
 BEGIN;
 
--- clean slate for this tenant inside the transaction (rolled back)
-DELETE FROM public.customer_line_channels WHERE tenant_id = '__TENANT_ID__';
+-- clean slate for this tenant's vault secrets inside the transaction (rolled back)
 DELETE FROM vault.secrets WHERE name IN ('customer_line_secret___TENANT_ID__', 'customer_line_token___TENANT_ID__');
 
 -- ===== inlined migration body =====
@@ -103,6 +102,25 @@ $$;
 
 REVOKE ALL ON FUNCTION public.save_customer_line_credentials(text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.save_customer_line_credentials(text, text, text) TO authenticated;
+
+-- Deleting a channel row (directly or via tenant cascade) also deletes its two Vault secrets,
+-- so a later first save can re-create them (vault.secrets.name is unique).
+CREATE OR REPLACE FUNCTION public.customer_line_channels_delete_vault()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, vault
+AS $$
+BEGIN
+  DELETE FROM vault.secrets WHERE id IN (OLD.secret_vault_id, OLD.token_vault_id);
+  RETURN OLD;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.customer_line_channels_delete_vault() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER customer_line_channels_delete_vault
+  BEFORE DELETE ON public.customer_line_channels
+  FOR EACH ROW EXECUTE FUNCTION public.customer_line_channels_delete_vault();
 
 -- Readers for the webhook / push edge functions (service role only).
 CREATE OR REPLACE FUNCTION public.customer_line_creds_by_key(p_key text)
@@ -287,6 +305,29 @@ BEGIN
     IF SQLERRM <> 'not_owner' THEN RAISE EXCEPTION 'FAIL (g): stranger got %', SQLERRM; END IF;
   END;
   RAISE NOTICE 'PASS (g)';
+END $$;
+
+-- (h) deleting the channel row removes both Vault secrets; a fresh first save then succeeds
+SELECT set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-0000-0000-000000000001', 'role', 'authenticated',
+                    'email', '__OWNER_EMAIL__')::text, true);
+SELECT public.save_customer_line_credentials('1234567890', 'SECRET-CCC', 'TOKEN-CCC');
+RESET ROLE;
+DELETE FROM public.customer_line_channels WHERE tenant_id = '__TENANT_ID__';
+DO $$
+DECLARE n int;
+BEGIN
+  SELECT count(*) INTO n FROM vault.secrets
+   WHERE name IN ('customer_line_secret___TENANT_ID__', 'customer_line_token___TENANT_ID__');
+  IF n <> 0 THEN RAISE EXCEPTION 'FAIL (h): % vault secrets orphaned after delete', n; END IF;
+END $$;
+SET LOCAL role authenticated;
+DO $$
+DECLARE k text;
+BEGIN
+  k := public.save_customer_line_credentials('1234567890', 'SECRET-DDD', 'TOKEN-DDD');
+  IF length(k) <> 24 THEN RAISE EXCEPTION 'FAIL (h): re-save after delete failed'; END IF;
+  RAISE NOTICE 'PASS (h)';
 END $$;
 
 ROLLBACK;

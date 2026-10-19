@@ -94,6 +94,25 @@ $$;
 REVOKE ALL ON FUNCTION public.save_customer_line_credentials(text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.save_customer_line_credentials(text, text, text) TO authenticated;
 
+-- Deleting a channel row (directly or via tenant cascade) also deletes its two Vault secrets,
+-- so a later first save can re-create them (vault.secrets.name is unique).
+CREATE OR REPLACE FUNCTION public.customer_line_channels_delete_vault()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, vault
+AS $$
+BEGIN
+  DELETE FROM vault.secrets WHERE id IN (OLD.secret_vault_id, OLD.token_vault_id);
+  RETURN OLD;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.customer_line_channels_delete_vault() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER customer_line_channels_delete_vault
+  BEFORE DELETE ON public.customer_line_channels
+  FOR EACH ROW EXECUTE FUNCTION public.customer_line_channels_delete_vault();
+
 -- Readers for the webhook / push edge functions (service role only).
 CREATE OR REPLACE FUNCTION public.customer_line_creds_by_key(p_key text)
 RETURNS TABLE(tenant_id uuid, channel_secret text, access_token text)
