@@ -1,4 +1,6 @@
 // Pure helpers for the customer LINE OA connection (Settings card + invite links).
+import { formatThaiDate } from './thaiDate.js'
+
 export function buildWebhookUrl(supabaseUrl, key) {
   return `${String(supabaseUrl || '').replace(/\/+$/, '')}/functions/v1/customer-line-webhook?t=${key}`
 }
@@ -16,10 +18,10 @@ export function inviteErrorText(message) {
   return 'สร้างรหัสเชิญไม่สำเร็จ: ' + m
 }
 
-// dd/mm/yyyy in Bangkok time (en-GB gives dd/mm/yyyy).
+// A timestamp -> its Bangkok calendar date as dd/mm/พ.ศ. (shared formatter).
 export function formatBkkDate(value) {
   if (!value) return '—'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '—'
-  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d)
+  return formatThaiDate(d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))
 }

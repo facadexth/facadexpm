@@ -1,17 +1,12 @@
 // Pure helpers for the warranty follow-up card on the Sites page.
 import { warrantyEnd, warrantyStatus, followupDue } from './warranty.js'
+import { formatThaiDate } from './thaiDate.js'
 
 export const bangkokToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 
-// 'YYYY-MM-DD' -> 'dd/mm/yyyy' (Gregorian year, string math so no timezone shift).
-export function ddmmyyyy(d) {
-  if (!d) return '—'
-  const [y, m, day] = String(d).slice(0, 10).split('-')
-  return `${day}/${m}/${y}`
-}
 
 export function followupMessage(siteName, endDate) {
-  return `สวัสดีครับ ประกันงานของ ${siteName} จะหมดวันที่ ${ddmmyyyy(endDate)} มีจุดไหนต้องการให้เข้าไปตรวจหรือแก้ไขไหมครับ`
+  return `สวัสดีครับ ประกันงานของ ${siteName} จะหมดวันที่ ${formatThaiDate(endDate)} มีจุดไหนต้องการให้เข้าไปตรวจหรือแก้ไขไหมครับ`
 }
 
 // sites: Completed rows with handover data; clientsById / linkedClientIds / retentionBySite are lookups.

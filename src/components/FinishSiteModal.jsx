@@ -7,10 +7,10 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import { fetchAllRows } from '../lib/fetchAllRows.js'
 import { warrantyEnd } from '../lib/warranty.js'
+import { formatThaiDate } from '../lib/thaiDate.js'
 import { Modal } from './Modal.jsx'
 
 const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-const dmy = iso => (iso ? iso.split('-').reverse().join('/') : '—')
 
 export default function FinishSiteModal({ site, onClose, onDone }) {
   const [loading, setLoading] = useState(true)
@@ -148,7 +148,7 @@ export default function FinishSiteModal({ site, onClose, onDone }) {
             <div style={{ fontSize: 13, color: 'var(--text2)' }}>
               {!monthsOk ? 'ระยะประกันต้องอยู่ระหว่าง 0–120 เดือน'
                 : m === 0 ? 'ไม่มีประกัน'
-                : <>ประกันถึง <b>{dmy(endDate)}</b></>}
+                : <>ประกันถึง <b>{formatThaiDate(endDate)}</b></>}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text3)' }}>แก้วันส่งมอบหรือระยะประกันทีหลังได้ในหน้าแก้ไขไซท์</div>
             {error && <div className="alert alert-error">{error}</div>}

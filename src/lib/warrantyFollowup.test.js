@@ -1,13 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { buildFollowupRows, followupMessage, ddmmyyyy } from './warrantyFollowup.js'
+import { buildFollowupRows, followupMessage } from './warrantyFollowup.js'
 
 const today = '2026-10-19'
 const site = (o) => ({ id: 's', name: 'บ้านA', status: 'Completed', handover_date: '2025-11-10', warranty_months: '12', warranty_followup_at: null, client_id: 'c1', ...o })
 
 describe('warrantyFollowup', () => {
   it('formats dates and message', () => {
-    expect(ddmmyyyy('2026-11-10')).toBe('10/11/2026')
-    expect(followupMessage('บ้านA', '2026-11-10')).toBe('สวัสดีครับ ประกันงานของ บ้านA จะหมดวันที่ 10/11/2026 มีจุดไหนต้องการให้เข้าไปตรวจหรือแก้ไขไหมครับ')
+    expect(followupMessage('บ้านA', '2026-11-10')).toBe('สวัสดีครับ ประกันงานของ บ้านA จะหมดวันที่ 10/11/2569 มีจุดไหนต้องการให้เข้าไปตรวจหรือแก้ไขไหมครับ')
   })
   it('keeps only due sites, with days left, retention and LINE flag', () => {
     const rows = buildFollowupRows(

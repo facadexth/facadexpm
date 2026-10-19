@@ -39,6 +39,7 @@ import { useIsPhone } from '../hooks/useIsPhone.js'
 const SITES_CARD_MAP = { title: 'ชื่อไซท์งาน', sub: ['รหัส'], amount: 'มูลค่าสัญญา', status: 'สถานะ', actions: 'last' }
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { loadOrigin, fetchRoute, routeErrorMessage } from '../lib/siteRoute.js'
+import { formatThaiDate } from '../lib/thaiDate.js'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -68,7 +69,6 @@ const EMPTY_FORM = {
 const VAT_RATE = 0.07
 
 const WARRANTY_CHIPS = [6, 12, 24, 60]
-const fmtDmy = iso => (iso ? iso.split('-').reverse().join('/') : '')
 
 /**
  * Build the `sites` insert/update payload from a SiteForm form object.
@@ -339,7 +339,7 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
                 <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>
                   {Number(form.warranty_months) === 0 ? 'ไม่มีประกัน' : (() => {
                     const end = warrantyEnd(form.handover_date || null, Number(form.warranty_months))
-                    return end ? `ประกันถึง ${fmtDmy(end)}` : 'ประกันถึง —'
+                    return end ? `ประกันถึง ${formatThaiDate(end)}` : 'ประกันถึง —'
                   })()}
                 </div>
               </>

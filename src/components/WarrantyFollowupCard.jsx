@@ -1,7 +1,8 @@
 // Reminder card on the Sites page: warranty ends within 30 days -> contact the customer.
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { bangkokToday, buildFollowupRows, followupMessage, ddmmyyyy } from '../lib/warrantyFollowup.js'
+import { bangkokToday, buildFollowupRows, followupMessage } from '../lib/warrantyFollowup.js'
+import { formatThaiDate } from '../lib/thaiDate.js'
 
 const baht = n => '฿' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
 
@@ -67,7 +68,7 @@ export default function WarrantyFollowupCard() {
             <div style={{ minWidth: 0, flex: '1 1 240px' }}>
               <div style={{ fontWeight: 600 }}>{r.siteName} <span style={{ fontWeight: 400, fontSize: 12 }}>{r.siteNumber}</span></div>
               <div style={{ fontSize: 13 }}>{r.clientName} · {r.lineLinked ? 'เชื่อม LINE แล้ว' : (r.phone || 'ไม่มีเบอร์')}</div>
-              <div style={{ fontSize: 13 }}>ส่งมอบ {ddmmyyyy(r.handover)} · ประกันถึง {ddmmyyyy(r.end)} <b>(เหลือ {r.daysLeft} วัน)</b></div>
+              <div style={{ fontSize: 13 }}>ส่งมอบ {formatThaiDate(r.handover)} · ประกันถึง {formatThaiDate(r.end)} <b>(เหลือ {r.daysLeft} วัน)</b></div>
               {r.retentionDue > 0 && <div style={{ fontSize: 13 }}>เรียกคืนเงินประกันผลงาน {baht(r.retentionDue)}</div>}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

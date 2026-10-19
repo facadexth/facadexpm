@@ -32,7 +32,8 @@ describe('inviteErrorText', () => {
 
 describe('formatBkkDate', () => {
   it('uses the Bangkok day', () => {
-    expect(formatBkkDate('2026-10-25T18:00:00Z')).toBe('26/10/2026')
+    expect(formatBkkDate('2026-10-25T18:00:00Z')).toBe('26/10/2569')
+    expect(formatBkkDate('2026-10-25T16:59:59Z')).toBe('25/10/2569')
   })
   it('handles empty', () => {
     expect(formatBkkDate(null)).toBe('—')
