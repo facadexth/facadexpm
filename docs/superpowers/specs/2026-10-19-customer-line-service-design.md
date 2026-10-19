@@ -6,7 +6,7 @@
 - The flow today: "line มาแจ้ง → เช็คประกันผลงาน → เรา plan คนเข้าเก็บ → ปิดงาน"
 - Warranty means a **period after handover** (answer ก). It is **set per site**.
 - **Use the tenant's own LINE OA.** Test it now with FacadeX's OA.
-- **One customer contact per site.**
+- ~~One customer contact per site.~~ Superseded 2026-10-19: **one account per client** (bound to an email), seeing all of that client's sites. See "Changed after the mockup review".
 - The customer can follow progress during construction ("ระหว่างก่อสร้าง ลูกค้าเช็ค status ได้ไหม" → yes).
 - Warranty starts on the **handover date that the tenant confirms in the app** (answer ข), not when the customer adds the OA.
 - Messages the bot sends to the customer by itself (push) use the tenant's LINE quota. They sit behind a **per-tenant on/off switch**; the owner said "ok". With the switch off, the bot only replies when the customer writes first.
@@ -39,7 +39,7 @@
 
 ## Who and what
 - **Tenant:** a CHANG company, e.g. FacadeX. It connects its own LINE Official Account.
-- **Customer contact:** one LINE user per site. This is the client's person who follows the job and reports problems. They see only their own site(s).
+- **Customer account:** one LINE user per client, bound to the client's email. For a company it is usually the estimating unit that sends the drawings. It sees every site of that client (1 client → many sites), and nothing of any other client.
 - **Service ticket (ใบงานซ่อม / เก็บงาน):** one reported problem, or one planned touch-up visit, on a site. It works whether the site is Ongoing or Completed. **A ticket never changes the site status.**
 
 ## Goals
@@ -52,7 +52,7 @@
 2. **Link the customer to a site.**
    - Each site has a "เชิญลูกค้า" action that gives a QR code and a link. It carries a one-time code the customer sends to the tenant OA (the same mechanism as worker link codes today).
    - Linking binds that LINE user to the site and its client. It can happen at any time, during construction or after.
-   - One contact per site. Re-inviting replaces the old contact, after the owner confirms.
+   - The invitation binds the LINE user to the site's CLIENT (one account per client). Re-inviting replaces the old account, after the owner confirms.
 3. **Progress during construction.** The customer types `สถานะงาน`. The bot replies with:
    - the site name;
    - overall % (the Gantt weighted progress the app already computes);
@@ -90,7 +90,7 @@
 - Billing for repairs outside the warranty. The ticket only shows "หมดประกัน"; any quotation is made the normal way.
 - Customer ratings or signatures.
 - Moving the crew bot onto tenant OAs.
-- More than one contact per site.
+- More than one account per client (later, if the owner asks).
 
 ## Anti-goals (a failure even if it "works")
 - The customer sees money, costs, another customer's site, worker data or internal notes.
@@ -137,3 +137,27 @@
 - The customer OA's rich-menu layout. Mockup first.
 - How "assign crew to a ticket" fits the existing worker_assignments (e.g. a nullable `ticket_id`) so check-in and payroll keep working.
 - How the progress % is fetched (reuse the Gantt weighted progress).
+
+## Changed after the mockup review (owner, 2026-10-19)
+Mockup: https://claude.ai/artifact/KUmuM4Env22zgk7ypm6c5u (boards 1-7).
+
+- **Rich menu:** ONE menu for everyone, 6 buttons in a 3×2 grid: ขอใบเสนอราคา · สถานะงาน · แจ้งซ่อม / สถานะแจ้งซ่อม · ประกันของฉัน · ติดต่อเรา.
+  - All 6 buttons ship in Phase 1. A button whose feature comes in a later phase gives a stand-in reply that points to chatting with staff.
+  - An unlinked user who taps a customer-only button is told to send the invitation code, or to tap ขอใบเสนอราคา.
+- **Invitation code:** one-time use, expires after 7 days.
+- **Account model:** one account per client, bound to an email. It sees all of the client's sites. For a company this is usually its estimating unit.
+- **New customer, OA first:** ขอใบเสนอราคา replies with a form link minted for that LINE user. The form:
+  - asks "คุณคือ": เจ้าของบ้าน (B2C), or ผู้รับเหมา / สถาปนิก·ผู้ออกแบบ / Developer / บริษัทอื่นๆ (B2B);
+  - always asks for name and phone;
+  - asks for billing details: for B2C a tax ID and address only if they want a full tax invoice; for B2B the company name, tax ID, HQ/branch, billing address, contact name and position;
+  - asks for email, the site address with a map pin, the work type, details and attachments.
+
+  Submitting it needs NO invitation code. The LINE user is paired by the form token.
+- **Matching an existing client on submit** (by phone or tax ID):
+  - **No match:** create a client automatically, tagged as coming from LINE, with `client_type` taken from the role. The existing values are DEVELOPER / ENDUSER / ผู้รับเหมา, so สถาปนิก and อื่นๆ must be added. Link the LINE user to it and ring the in-app bell.
+  - **Match, and the typed email equals the client's email ON FILE:** send a verify link by email (Resend, `_shared/email-sender.ts`) to the email on file. Clicking it links the account automatically.
+  - **Match otherwise:** an admin confirms in the app: "ลูกค้าเดิม?" with the choices yes / no-create-new / pick another client.
+  - Until the match is confirmed, the customer sees ONLY a generic thank-you: no name and no old jobs.
+- **After the account is linked,** ขอใบเสนอราคา greets the customer with "welcome back" plus their past jobs and warranty, then opens a short form for the new work only.
+- **The thank-you shows on the form page only.** Nothing is pushed into the chat, because a push costs quota.
+- **Each submission creates a quote-request record** (e.g. RQ2610-001), which Phase 2 turns into an estimation draft.
