@@ -146,6 +146,29 @@ ALTER TABLE public.worker_assignments
 CREATE INDEX worker_assignments_repair_ticket ON public.worker_assignments (repair_ticket_id)
   WHERE repair_ticket_id IS NOT NULL;
 
+-- Assign.jsx and HR.jsx upsert worker_assignments ON CONFLICT (worker_id, date, shift) without sending
+-- repair_ticket_id, so a repair crew row they turn into leave or another site would keep its repair link,
+-- and a later reschedule/decline of the repair would then delete that leave/other-site row. Clear the link
+-- whenever the row's site or type changes, unless the same UPDATE set repair_ticket_id itself.
+CREATE OR REPLACE FUNCTION public.worker_assignments_clear_stale_repair_link()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.repair_ticket_id IS NOT NULL
+     AND (NEW.site_id IS DISTINCT FROM OLD.site_id OR NEW.type IS DISTINCT FROM OLD.type)
+     AND NEW.repair_ticket_id IS NOT DISTINCT FROM OLD.repair_ticket_id THEN
+    NEW.repair_ticket_id := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER worker_assignments_clear_stale_repair_link
+  BEFORE UPDATE ON public.worker_assignments
+  FOR EACH ROW EXECUTE FUNCTION public.worker_assignments_clear_stale_repair_link();
+
 INSERT INTO storage.buckets (id, name, public) VALUES ('repair-media', 'repair-media', false)
 ON CONFLICT (id) DO NOTHING;
 
@@ -296,15 +319,17 @@ BEGIN
      AND wa.worker_id = ANY(v_workers)
      AND wa.date = p_date
      AND wa.shift = ANY(p_shifts)
-     AND wa.repair_ticket_id IS DISTINCT FROM p_ticket;
+     AND NOT COALESCE(wa.repair_ticket_id = p_ticket AND wa.type = 'site' AND wa.site_id = t.site_id, false);
   IF jsonb_array_length(v_conflict) > 0 THEN
     RETURN jsonb_build_object('ok', false, 'conflicts', v_conflict);
   END IF;
 
   -- Own future rows outside the wanted set are dropped; a checked-in one blocks the whole save.
+  -- "Own" = linked to this ticket AND still a site row at the ticket's site (never a leave/other-site row).
   IF EXISTS (
     SELECT 1 FROM public.worker_assignments wa
      WHERE wa.tenant_id = t.tenant_id AND wa.repair_ticket_id = p_ticket AND wa.date >= v_today
+       AND wa.type = 'site' AND wa.site_id = t.site_id
        AND wa.confirmed_at IS NOT NULL
        AND NOT (wa.date = p_date AND wa.worker_id = ANY(v_workers) AND wa.shift = ANY(p_shifts))
   ) THEN
@@ -313,6 +338,7 @@ BEGIN
 
   DELETE FROM public.worker_assignments wa
    WHERE wa.tenant_id = t.tenant_id AND wa.repair_ticket_id = p_ticket AND wa.date >= v_today
+     AND wa.type = 'site' AND wa.site_id = t.site_id
      AND NOT (wa.date = p_date AND wa.worker_id = ANY(v_workers) AND wa.shift = ANY(p_shifts));
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
 

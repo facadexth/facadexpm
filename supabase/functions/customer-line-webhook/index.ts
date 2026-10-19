@@ -10,7 +10,7 @@ import { sendLineReplyMessages } from '../_shared/line-reply.ts'
 import { replyWithFallback } from '../_shared/reply-fallback.ts'
 import { handleCustomerEvent, type CustomerDeps } from '../_shared/customer-line-handler.ts'
 import type { SiteStatus } from '../_shared/customer-line-replies.ts'
-import { mediaTooBig, repairMediaExt, repairMediaPath, repairUploadMime, type RepairTicket, type MediaCounts } from '../_shared/repair.ts'
+import { contentRetryDelay, mediaTooBig, repairMediaExt, repairMediaPath, repairUploadMime, type RepairTicket, type MediaCounts } from '../_shared/repair.ts'
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -50,6 +50,15 @@ async function readCapped(res: Response): Promise<Uint8Array | null> {
   return out
 }
 const text = (body: string, status: number) => new Response(body, { status })
+
+// 42P01 = undefined_table: the repair tables are not there yet (webhook deployed before migration -11).
+// Logged once per instance so existing commands keep working without flooding the logs.
+let missingTableLogged = false
+function missingTable(error: { code?: string } | null): boolean {
+  if (error?.code !== '42P01') return false
+  if (!missingTableLogged) { console.error('customer-line repair tables missing (42P01): apply migration -11'); missingTableLogged = true }
+  return true
+}
 
 function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
   return {
@@ -157,7 +166,11 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
     async getRepairSession(lineUserId) {
       const { data, error } = await admin.from('customer_line_repair_sessions').select('ticket_id, expires_at')
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
-      if (error) throw error
+      if (error) {
+        // 42P01 = table missing (webhook deployed before -11): behave as "no repair session".
+        if (missingTable(error)) return null
+        throw error
+      }
       if (!data) return null
       const { data: t, error: tErr } = await admin.from('repair_tickets').select('site_id')
         .eq('tenant_id', tenantId).eq('id', data.ticket_id).maybeSingle()
@@ -240,13 +253,22 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       }
       if (await hasRow()) return 'ok'
       let res: Response
-      try {
-        res = await fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`, {
-          headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
-        })
-      } catch { return 'error' }
-      // 202 = video still being prepared; anything but 200 is a failure.
-      if (res.status !== 200) { await res.body?.cancel().catch(() => {}); return 'error' }
+      // 202 = video still being prepared: wait and retry (contentRetryDelay); anything else but 200 fails.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          res = await fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`, {
+            headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
+          })
+        } catch { return 'error' }
+        if (res.status === 200) break
+        await res.body?.cancel().catch(() => {})
+        const wait = contentRetryDelay(attempt, res.status)
+        if (wait === null) {
+          if (res.status === 202) console.error('customer-line repair video still preparing, gave up', safeId)
+          return 'error'
+        }
+        await new Promise((r) => setTimeout(r, wait))
+      }
       const len = Number(res.headers.get('content-length'))
       if (Number.isFinite(len) && len > 0 && mediaTooBig(len)) { await res.body?.cancel().catch(() => {}); return 'too_big' }
       let bytes: Uint8Array | null
@@ -340,7 +362,10 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       const { data: open, error } = await admin.from('repair_tickets').select(cols)
         .eq('tenant_id', tenantId).eq('client_id', clientId).not('status', 'in', '(declined,done)')
         .order('created_at', { ascending: false })
-      if (error) throw error
+      if (error) {
+        if (missingTable(error)) return []
+        throw error
+      }
       const { data: done, error: dErr } = await admin.from('repair_tickets').select(cols)
         .eq('tenant_id', tenantId).eq('client_id', clientId).eq('status', 'done')
         .gte('done_at', new Date(Date.now() - DONE_WINDOW_MS).toISOString())

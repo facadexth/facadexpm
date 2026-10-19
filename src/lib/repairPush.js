@@ -14,6 +14,12 @@ const REFUSED = {
 }
 const FAILED = { kind: 'error', text: 'ส่งไลน์ไม่สำเร็จ' }
 
+// Ruling R32: should the schedule notice / close report go to the customer by default? Only for tickets the
+// customer sent through LINE; staff-created tickets are internal touch-ups, so staff tick the box to notify.
+export function customerPushDefault(ticket) {
+  return ticket?.source === 'line'
+}
+
 // { data } = a 200 body; { errorBody } = the JSON body of a non-2xx answer (or null).
 export function pushResultNotice({ data, errorBody } = {}) {
   if (data && data.sent === true) return { kind: 'success', text: 'ส่งไลน์ให้ลูกค้าแล้ว' }

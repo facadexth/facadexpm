@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('./supabase.js', () => ({ supabase: {} }))
-const { pushResultNotice } = await import('./repairPush.js')
+const { pushResultNotice, customerPushDefault } = await import('./repairPush.js')
 
 describe('pushResultNotice', () => {
   it('sent', () => expect(pushResultNotice({ data: { sent: true } })).toEqual({ kind: 'success', text: 'ส่งไลน์ให้ลูกค้าแล้ว' }))
@@ -19,5 +19,18 @@ describe('pushResultNotice', () => {
   it('anything else is a failure', () => {
     expect(pushResultNotice({ errorBody: null })).toEqual({ kind: 'error', text: 'ส่งไลน์ไม่สำเร็จ' })
     expect(pushResultNotice({ data: null })).toEqual({ kind: 'error', text: 'ส่งไลน์ไม่สำเร็จ' })
+  })
+})
+
+describe('customerPushDefault (R32)', () => {
+  it('LINE tickets default to notifying the customer', () => {
+    expect(customerPushDefault({ source: 'line' })).toBe(true)
+  })
+  it('staff tickets (internal touch-ups) default to not notifying', () => {
+    expect(customerPushDefault({ source: 'staff' })).toBe(false)
+  })
+  it('unknown source or no ticket stays off (opt-in)', () => {
+    expect(customerPushDefault({})).toBe(false)
+    expect(customerPushDefault(null)).toBe(false)
   })
 })

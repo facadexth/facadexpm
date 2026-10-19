@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeSiteLists, repairSiteOptions } from '../../supabase/functions/_shared/material-sites.ts'
+import { mergeSiteLists, repairSiteOptions, repairTicketOnSiteToday } from '../../supabase/functions/_shared/material-sites.ts'
 
 describe('mergeSiteLists', () => {
   it('merges, dedupes by id and sorts by name', () => {
@@ -27,5 +27,26 @@ describe('repairSiteOptions', () => {
       { sites: { id: 'a', name: 'A' } }, { sites: [{ id: 'b', name: 'B' }] }, { sites: null }, {},
     ])).toEqual([{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }])
     expect(repairSiteOptions(null)).toEqual([])
+  })
+})
+
+describe('repairTicketOnSiteToday (multi-day jobs)', () => {
+  const today = '2026-10-20'
+  it('scheduled tickets count only on their date', () => {
+    expect(repairTicketOnSiteToday({ status: 'scheduled', scheduled_date: '2026-10-20' }, today)).toBe(true)
+    expect(repairTicketOnSiteToday({ status: 'scheduled', scheduled_date: '2026-10-19' }, today)).toBe(false)
+    expect(repairTicketOnSiteToday({ status: 'scheduled', scheduled_date: '2026-10-21' }, today)).toBe(false)
+  })
+  it('in-progress tickets count from their date on', () => {
+    expect(repairTicketOnSiteToday({ status: 'in_progress', scheduled_date: '2026-10-20' }, today)).toBe(true)
+    expect(repairTicketOnSiteToday({ status: 'in_progress', scheduled_date: '2026-10-15' }, today)).toBe(true)
+    expect(repairTicketOnSiteToday({ status: 'in_progress', scheduled_date: '2026-10-21' }, today)).toBe(false)
+    expect(repairTicketOnSiteToday({ status: 'in_progress', scheduled_date: null }, today)).toBe(false)
+  })
+  it('other statuses never count', () => {
+    for (const status of ['pending_review', 'received', 'done', 'declined']) {
+      expect(repairTicketOnSiteToday({ status, scheduled_date: today }, today)).toBe(false)
+    }
+    expect(repairTicketOnSiteToday(null, today)).toBe(false)
   })
 })

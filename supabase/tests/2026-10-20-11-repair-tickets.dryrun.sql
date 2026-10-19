@@ -150,6 +150,29 @@ ALTER TABLE public.worker_assignments
 CREATE INDEX worker_assignments_repair_ticket ON public.worker_assignments (repair_ticket_id)
   WHERE repair_ticket_id IS NOT NULL;
 
+-- Assign.jsx and HR.jsx upsert worker_assignments ON CONFLICT (worker_id, date, shift) without sending
+-- repair_ticket_id, so a repair crew row they turn into leave or another site would keep its repair link,
+-- and a later reschedule/decline of the repair would then delete that leave/other-site row. Clear the link
+-- whenever the row's site or type changes, unless the same UPDATE set repair_ticket_id itself.
+CREATE OR REPLACE FUNCTION public.worker_assignments_clear_stale_repair_link()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.repair_ticket_id IS NOT NULL
+     AND (NEW.site_id IS DISTINCT FROM OLD.site_id OR NEW.type IS DISTINCT FROM OLD.type)
+     AND NEW.repair_ticket_id IS NOT DISTINCT FROM OLD.repair_ticket_id THEN
+    NEW.repair_ticket_id := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER worker_assignments_clear_stale_repair_link
+  BEFORE UPDATE ON public.worker_assignments
+  FOR EACH ROW EXECUTE FUNCTION public.worker_assignments_clear_stale_repair_link();
+
 INSERT INTO storage.buckets (id, name, public) VALUES ('repair-media', 'repair-media', false)
 ON CONFLICT (id) DO NOTHING;
 
@@ -300,15 +323,17 @@ BEGIN
      AND wa.worker_id = ANY(v_workers)
      AND wa.date = p_date
      AND wa.shift = ANY(p_shifts)
-     AND wa.repair_ticket_id IS DISTINCT FROM p_ticket;
+     AND NOT COALESCE(wa.repair_ticket_id = p_ticket AND wa.type = 'site' AND wa.site_id = t.site_id, false);
   IF jsonb_array_length(v_conflict) > 0 THEN
     RETURN jsonb_build_object('ok', false, 'conflicts', v_conflict);
   END IF;
 
   -- Own future rows outside the wanted set are dropped; a checked-in one blocks the whole save.
+  -- "Own" = linked to this ticket AND still a site row at the ticket's site (never a leave/other-site row).
   IF EXISTS (
     SELECT 1 FROM public.worker_assignments wa
      WHERE wa.tenant_id = t.tenant_id AND wa.repair_ticket_id = p_ticket AND wa.date >= v_today
+       AND wa.type = 'site' AND wa.site_id = t.site_id
        AND wa.confirmed_at IS NOT NULL
        AND NOT (wa.date = p_date AND wa.worker_id = ANY(v_workers) AND wa.shift = ANY(p_shifts))
   ) THEN
@@ -317,6 +342,7 @@ BEGIN
 
   DELETE FROM public.worker_assignments wa
    WHERE wa.tenant_id = t.tenant_id AND wa.repair_ticket_id = p_ticket AND wa.date >= v_today
+     AND wa.type = 'site' AND wa.site_id = t.site_id
      AND NOT (wa.date = p_date AND wa.worker_id = ANY(v_workers) AND wa.shift = ANY(p_shifts));
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
 
@@ -444,6 +470,27 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM worker_assignments WHERE id = v_wa) THEN RAISE EXCEPTION 'FAIL (f): assignment deleted'; END IF;
   RAISE NOTICE 'PASS (f)';
 
+  -- (i1) stale-link trigger: an Assign/HR-style upsert that turns a repair crew row into leave
+  -- (site/type changed, repair_ticket_id not in the SET list) clears the repair link.
+  INSERT INTO worker_assignments (tenant_id, worker_id, site_id, date, shift, type, repair_ticket_id)
+    VALUES (v_tenant, v_worker, v_site, DATE '2099-11-10', 'morning', 'site', v_t2) RETURNING id INTO v_wa;
+  UPDATE worker_assignments SET notes = 'touched' WHERE id = v_wa;
+  IF (SELECT repair_ticket_id FROM worker_assignments WHERE id = v_wa) IS DISTINCT FROM v_t2 THEN
+    RAISE EXCEPTION 'FAIL (i1): link cleared on an update that kept site and type';
+  END IF;
+  INSERT INTO worker_assignments (tenant_id, worker_id, site_id, date, shift, type)
+    VALUES (v_tenant, v_worker, NULL, DATE '2099-11-10', 'morning', 'leave_sick')
+    ON CONFLICT (worker_id, date, shift) DO UPDATE SET site_id = EXCLUDED.site_id, type = EXCLUDED.type;
+  SELECT repair_ticket_id INTO ra FROM worker_assignments WHERE id = v_wa;
+  IF ra IS NOT NULL THEN RAISE EXCEPTION 'FAIL (i1): leave row kept repair link %', ra; END IF;
+  RAISE NOTICE 'PASS (i1)';
+
+  -- (i2) an UPDATE that sets repair_ticket_id itself keeps it, even while changing site/type.
+  UPDATE worker_assignments SET site_id = v_site, type = 'site', repair_ticket_id = v_t2 WHERE id = v_wa;
+  SELECT repair_ticket_id INTO ra FROM worker_assignments WHERE id = v_wa;
+  IF ra IS DISTINCT FROM v_t2 THEN RAISE EXCEPTION 'FAIL (i2): explicit link dropped (%)', ra; END IF;
+  RAISE NOTICE 'PASS (i2)';
+
   -- (h) schedule_repair_ticket (R28), as the demo owner (claims from (c)). v_worker has a free
   -- morning row on 2099-12-01 from (f); v_t3 is 'received'.
   INSERT INTO workers (tenant_id, name, monthly_salary) VALUES (v_tenant, 'ZZ Repair Worker 2', 0) RETURNING id INTO v_w2;
@@ -545,6 +592,23 @@ BEGIN
   IF tk.reminded_at IS NOT NULL OR tk.scheduled_date <> DATE '2099-12-04' THEN RAISE EXCEPTION 'FAIL (h7): ticket %', row_to_json(tk); END IF;
   IF EXISTS (SELECT 1 FROM worker_assignments WHERE repair_ticket_id = v_t3) THEN RAISE EXCEPTION 'FAIL (h7): rows left'; END IF;
   RAISE NOTICE 'PASS (h7)';
+
+  -- (i3) RPC belt and braces: a leave row still carrying this ticket's link (INSERT skips the update
+  -- trigger) is not "own": it counts as a conflict and is never deleted.
+  INSERT INTO worker_assignments (tenant_id, worker_id, site_id, date, shift, type, repair_ticket_id)
+    VALUES (v_tenant, v_w2, NULL, DATE '2099-12-04', 'morning', 'leave_sick', v_t3) RETURNING id INTO v_wa;
+  EXECUTE 'SET LOCAL role authenticated';
+  res := schedule_repair_ticket(v_t3, 'scheduled', DATE '2099-12-04', TIME '13:00', 1, ARRAY[v_w2], ARRAY['morning'], true);
+  EXECUTE 'RESET ROLE';
+  IF (res->>'ok')::boolean OR jsonb_array_length(res->'conflicts') <> 1 THEN RAISE EXCEPTION 'FAIL (i3): stale leave row not a conflict: %', res; END IF;
+  EXECUTE 'SET LOCAL role authenticated';
+  res := schedule_repair_ticket(v_t3, 'scheduled', DATE '2099-12-05', TIME '13:00', 1, '{}'::uuid[], ARRAY['evening'], true);
+  EXECUTE 'RESET ROLE';
+  IF NOT (res->>'ok')::boolean OR (res->>'deleted')::int <> 0 THEN RAISE EXCEPTION 'FAIL (i3): %', res; END IF;
+  IF NOT EXISTS (SELECT 1 FROM worker_assignments WHERE id = v_wa AND type = 'leave_sick') THEN
+    RAISE EXCEPTION 'FAIL (i3): leave row deleted by reschedule';
+  END IF;
+  RAISE NOTICE 'PASS (i3)';
 
   -- (h8) anon may not execute it.
   EXECUTE 'SET LOCAL role anon';

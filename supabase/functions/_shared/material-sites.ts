@@ -1,11 +1,22 @@
 // _shared/material-sites.ts -- which sites a worker may pick on the material-request form.
 //
-// Ongoing sites, plus Completed sites where a repair ticket (scheduled / in_progress)
-// is booked for today (Bangkok), so the repair crew can request materials too.
+// Ongoing sites, plus Completed sites with a repair job on today (Bangkok): a scheduled ticket
+// booked for today, or an in_progress ticket that started on or before today (multi-day jobs),
+// so the repair crew can request materials too.
 
 export type SiteOption = { id: string; name: string }
 
 export const REPAIR_ACTIVE_STATUSES = ['scheduled', 'in_progress']
+
+// Is the crew on this repair site today? scheduled -> only on its date; in_progress -> from its date on.
+// Dates are ISO 'YYYY-MM-DD' strings, so string comparison is date order.
+export function repairTicketOnSiteToday(row: { status?: string | null; scheduled_date?: string | null } | null | undefined, today: string): boolean {
+  const d = row?.scheduled_date
+  if (!d) return false
+  if (row?.status === 'scheduled') return d === today
+  if (row?.status === 'in_progress') return d <= today
+  return false
+}
 
 // Merge, drop duplicates by id (first one wins) and sort by name.
 export function mergeSiteLists(ongoing: SiteOption[] | null | undefined, repairSites: SiteOption[] | null | undefined): SiteOption[] {

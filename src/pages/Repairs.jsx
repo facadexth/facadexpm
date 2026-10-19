@@ -210,7 +210,7 @@ export default function Repairs() {
         : `บันทึกไม่ได้ (สิทธิ์หรือแพ็กเกจหมดอายุ)`)
     } else if (releasesCrew(ticket.status, to)) {
       // R30: release the booked crew (from today on, not yet checked in).
-      const { error: e2 } = await removeFutureUnconfirmedCrew(ticket.id)
+      const { error: e2 } = await removeFutureUnconfirmedCrew(ticket.id, ticket.site_id)
       if (e2) setError(`ย้ายงานซ่อม ${ticket.ticket_number} แล้ว แต่ถอนช่างที่จองไว้ไม่สำเร็จ: ${e2.message} (ลบเองได้ในหน้าจ่ายงาน)`)
     }
     setBusyId(null)

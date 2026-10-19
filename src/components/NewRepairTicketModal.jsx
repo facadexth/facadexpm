@@ -96,6 +96,7 @@ export default function NewRepairTicketModal({ onClose, onCreated }) {
             <label className="label">รายละเอียดงานซ่อม</label>
             <textarea className="textarea" rows={4} value={description} onChange={(e) => setDescription(e.target.value)}
               placeholder="เช่น ประตูบานเลื่อนชั้น 2 ฝืด ล็อกไม่ลง" />
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>ลูกค้าจะเห็นข้อความนี้ในรายงานซ่อมทางไลน์</div>
           </div>
           <div className="form-group">
             <label className="label">รูปก่อนซ่อม (ไม่บังคับ)</label>

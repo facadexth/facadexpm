@@ -43,6 +43,17 @@ export function mediaTooBig(bytes: number): boolean {
   return bytes > 50 * 1024 * 1024
 }
 
+// LINE answers 202 on GET .../content while a video is still being prepared. The webhook runs inside
+// EdgeRuntime.waitUntil (R13), so it can wait: retry a 202 up to CONTENT_RETRY_MAX times, 5 s apart (~30 s).
+export const CONTENT_RETRY_MAX = 6
+export const CONTENT_RETRY_DELAY_MS = 5000
+
+// attempt = how many fetches were made so far (1 after the first). Returns ms to wait, or null = stop.
+export function contentRetryDelay(attempt: number, status: number): number | null {
+  if (status !== 202) return null
+  return attempt <= CONTENT_RETRY_MAX ? CONTENT_RETRY_DELAY_MS : null
+}
+
 export type RepairTicket = {
   ticket_number: string
   site_name: string

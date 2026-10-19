@@ -45,7 +45,7 @@ import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
 import { payslipWindow, inPayslipWindow, pickYtd } from '../_shared/payslip-data.ts'
 import { todaysSites, pickSiteForNow } from '../_shared/todays-sites.ts'
 import { resolveFactoryLocation } from '../_shared/factory-location.ts'
-import { mergeSiteLists, repairSiteOptions, REPAIR_ACTIVE_STATUSES } from '../_shared/material-sites.ts'
+import { mergeSiteLists, repairSiteOptions, repairTicketOnSiteToday, REPAIR_ACTIVE_STATUSES } from '../_shared/material-sites.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -63,11 +63,13 @@ function json(body: unknown, status = 200) {
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
-// Completed sites with a repair ticket booked for today (service-role client, so tenant is explicit).
+// Completed sites with a repair job on today: scheduled for today, or in_progress since today or earlier
+// (multi-day jobs). Service-role client, so the tenant filter is explicit.
 async function repairSitesToday(admin: any, tenantId: string): Promise<{ id: string; name: string }[]> {
-  const { data } = await admin.from('repair_tickets').select('sites(id, name)')
-    .eq('tenant_id', tenantId).in('status', REPAIR_ACTIVE_STATUSES).eq('scheduled_date', bangkokToday())
-  return repairSiteOptions(data)
+  const today = bangkokToday()
+  const { data } = await admin.from('repair_tickets').select('status, scheduled_date, sites(id, name)')
+    .eq('tenant_id', tenantId).in('status', REPAIR_ACTIVE_STATUSES).lte('scheduled_date', today)
+  return repairSiteOptions((data ?? []).filter((r: any) => repairTicketOnSiteToday(r, today)))
 }
 function bangkokHour(): number {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).getUTCHours()

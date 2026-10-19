@@ -20,7 +20,7 @@ import { REPAIR_STATUS, canMove, startTime } from '../lib/repairStatus.js'
 import { movePatch, warrantyOf, bangkokDateOf } from '../lib/repairBoard.js'
 import { planRepairAssignments, repairShifts } from '../lib/repairAssign.js'
 import { uploadRepairPhotos, REPAIR_BUCKET } from '../lib/repairUpload.js'
-import { invokeRepairPush } from '../lib/repairPush.js'
+import { invokeRepairPush, customerPushDefault } from '../lib/repairPush.js'
 import { releasesCrew, removeFutureUnconfirmedCrew } from '../lib/repairCrew.js'
 
 const SIGNED_URL_SECONDS = 3600
@@ -131,6 +131,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const [workerQuery, setWorkerQuery] = useState('')
   const [crewNames, setCrewNames] = useState({}) // worker id -> label, for crew not in useWorkers()
   const [notify, setNotify] = useState(true)
+  const [sendReport, setSendReport] = useState(true) // R32: close also pushes the report to the customer
   const [fixNote, setFixNote] = useState('')
 
   const loadMedia = useCallback(async () => {
@@ -177,7 +178,9 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       }
       if (!alive) return
       setCrewNames(names)
-      if (t.status === 'in_progress') setNotify(false)
+      // R32: LINE tickets notify by default, staff tickets do not (first open only). R29: never in_progress.
+      setNotify(t.status !== 'in_progress' && customerPushDefault(t))
+      setSendReport(customerPushDefault(t))
       setDate(t.scheduled_date || '')
       setStart(startTime(t.scheduled_start) || '09:00')
       setHours(Number(t.duration_hours) > 0 ? String(Number(t.duration_hours)) : '2')
@@ -256,7 +259,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       setNotice({ kind: 'success', text: `ย้ายเป็น "${REPAIR_STATUS[to]}" แล้ว` })
       if (releasesCrew(t.status, to)) {
         // R30: release the booked crew (from today on, not yet checked in).
-        const { error: e2 } = await removeFutureUnconfirmedCrew(t.id)
+        const { error: e2 } = await removeFutureUnconfirmedCrew(t.id, t.site_id)
         if (e2) setError(`ย้ายสถานะแล้ว แต่ถอนช่างที่จองไว้ไม่สำเร็จ: ${e2.message} (ลบเองได้ในหน้าจ่ายงาน)`)
         else if (to === 'received') setWorkerIds([])
       }
@@ -329,8 +332,12 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     try {
       await guardedUpdate({ fix_note: fixNote.trim(), ...movePatch(t.status, 'done', new Date().toISOString()) })
       setChanged(true)
-      const push = await invokeRepairPush('report', t.id, !!t.reported_at)
-      setNotice({ kind: push.kind, text: `ปิดงานแล้ว · ${push.text}` })
+      if (sendReport) {
+        const push = await invokeRepairPush('report', t.id, !!t.reported_at)
+        setNotice({ kind: push.kind, text: `ปิดงานแล้ว · ${push.text}` })
+      } else {
+        setNotice({ kind: 'success', text: 'ปิดงานแล้ว · ไม่ได้ส่งรายงานให้ลูกค้า (ส่งภายหลังได้)' })
+      }
       await loadTicket()
     } catch (e) {
       setError(`ปิดงานไม่สำเร็จ: ${e.message}`)
@@ -506,6 +513,13 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                     {t.reported_at ? `✓ ส่งรายงานแล้ว ${formatThaiDate(bangkokDateOf(t.reported_at))} ${bkkTime(t.reported_at)}` : 'ยังไม่ได้ส่งรายงานให้ลูกค้า'}
                   </div>
                 )}
+                {showClose && (
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                    <input type="checkbox" checked={sendReport} disabled={busy} onChange={(e) => setSendReport(e.target.checked)} />
+                    ส่งรายงานให้ลูกค้าทางไลน์
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>(ลูกค้าเห็นรายละเอียด สิ่งที่แก้ไข และรูปก่อน/หลังซ่อม)</span>
+                  </label>
+                )}
                 {showClose && !closeAllowed && (
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>
                     ปิดงานได้เมื่อสถานะเป็น "{REPAIR_STATUS.in_progress}" — {status === 'received' ? 'นัดวันก่อน แล้วกด "เริ่มซ่อม"' : 'กด "เริ่มซ่อม" ด้านบนก่อน'}
@@ -529,7 +543,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
         {t && showClose && (
           <button type="button" className="btn btn-success" disabled={busy || !!uploading || !closeAllowed} onClick={closeTicket}
             title={closeAllowed ? '' : `ต้องเป็นสถานะ "${REPAIR_STATUS.in_progress}" ก่อน`}>
-            ปิดงาน (เสร็จ) + ส่งรายงาน
+            {sendReport ? 'ปิดงาน (เสร็จ) + ส่งรายงาน' : 'ปิดงาน (เสร็จ)'}
           </button>
         )}
         {t && canEdit && status === 'done' && (

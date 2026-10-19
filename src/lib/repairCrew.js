@@ -9,8 +9,12 @@ export function releasesCrew(from, to) {
 }
 
 // Deletes the ticket's unconfirmed worker_assignments dated today (Bangkok) or later. Returns { error }.
-export async function removeFutureUnconfirmedCrew(ticketId) {
+// Only the ticket's own crew rows: type 'site' at the ticket's site. A row Assign/HR turned into leave or
+// another site is never touched, even if a stale repair link survived (the -11 trigger also clears those).
+export async function removeFutureUnconfirmedCrew(ticketId, siteId) {
+  if (!ticketId || !siteId) return { error: new Error('ไม่พบงานซ่อมหรือไซต์ของงานซ่อม') }
   const { error } = await supabase.from('worker_assignments').delete()
-    .eq('repair_ticket_id', ticketId).gte('date', bangkokTodayIso()).is('confirmed_at', null)
+    .eq('repair_ticket_id', ticketId).eq('type', 'site').eq('site_id', siteId)
+    .gte('date', bangkokTodayIso()).is('confirmed_at', null)
   return { error }
 }
