@@ -19,6 +19,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
+import SearchableSelect from '../../components/SearchableSelect.jsx'
 import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, useBoqItems, useSiteHasPlan, attachPmWorkerNames } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
@@ -42,6 +43,78 @@ const COLUMNS = [
 ]
 
 const PHOTO_DRAG_MIME = 'application/x-line-site-photo-id'
+
+const TRAY_COLLAPSED_KEY = 'kanbanPhotoTrayCollapsed'
+const readTrayCollapsed = () => {
+  try { return localStorage.getItem(TRAY_COLLAPSED_KEY) === '1' } catch { return false }
+}
+
+/** Sites a photo can be moved to: Ongoing only, never the current site.
+ *  label = "<code> · <name> · Ongoing"; keywords carry name, code and client so
+ *  SearchableSelect's case-insensitive match covers all three. */
+export function ongoingSiteOptions(sites, currentSiteId) {
+  return (sites || [])
+    .filter((s) => s.status === 'Ongoing' && s.id !== currentSiteId)
+    .map((s) => ({
+      value: s.id,
+      label: `${s.site_number || '-'} · ${s.name} · Ongoing`,
+      keywords: [s.site_number, s.name, s.client_display_name, s.client_name].filter(Boolean).join(' '),
+      name: s.name,
+    }))
+}
+
+/** Search box + result list (SearchableSelect) for the destination site, then a
+ *  confirm button "ย้ายไป <site name>". onConfirm(siteId) runs the caller's move handler. */
+function SiteMovePicker({ sites, currentSiteId, busy, onConfirm, onCancel }) {
+  const [picked, setPicked] = useState('')
+  const options = useMemo(() => ongoingSiteOptions(sites, currentSiteId), [sites, currentSiteId])
+  const chosen = options.find((o) => o.value === picked)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: '1 1 260px', minWidth: 0 }}>
+      <div style={{ flex: '1 1 220px', minWidth: 0, fontSize: 13 }}>
+        <SearchableSelect value={picked} onChange={setPicked} options={options}
+          placeholder="ค้นหาไซต์ปลายทาง (รหัส / ชื่อ / ลูกค้า)" emptyLabel="ไม่พบไซต์ที่กำลังดำเนินการ" disabled={busy} />
+      </div>
+      <button type="button" className="btn-secondary" disabled={busy || !chosen} onClick={() => chosen && onConfirm(chosen.value)} style={{ fontSize: 13 }}>
+        {chosen ? `ย้ายไป ${chosen.name}` : 'ย้ายไป...'}
+      </button>
+      <button type="button" className="btn-secondary" disabled={busy} onClick={onCancel} style={{ fontSize: 13 }}>ยกเลิก</button>
+    </div>
+  )
+}
+
+/** Large view of a tray photo with ← / → through the tray's photos and "เลือกรูปนี้"
+ *  (selects it for tap-to-assign). Built on the app's Modal (no other lightbox exists). */
+function PhotoPreview({ photos, photoId, canSelect, onNavigate, onClose, onSelect }) {
+  const idx = photos.findIndex((p) => p.id === photoId)
+  const photo = photos[idx]
+  const go = (d) => { const n = photos[idx + d]; if (n) onNavigate(n.id) }
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  })
+  if (!photo) return null
+  return (
+    <Modal title={`📷 รูป ${idx + 1} / ${photos.length}`} onClose={onClose} maxWidth={760}>
+      <div className="modal-body" style={{ textAlign: 'center' }}>
+        {photo.url ? (
+          <img src={photo.url} alt="" style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: 8 }} />
+        ) : (
+          <div style={{ padding: 40, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
+        )}
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
+          {photo.workers?.nickname || photo.workers?.name || '-'}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 12 }}>
+          <button type="button" className="btn btn-ghost" aria-label="รูปก่อนหน้า" disabled={idx <= 0} onClick={() => go(-1)}>←</button>
+          {canSelect && <button type="button" className="btn btn-primary" onClick={() => onSelect(photo.id)}>เลือกรูปนี้</button>}
+          <button type="button" className="btn btn-ghost" aria-label="รูปถัดไป" disabled={idx >= photos.length - 1} onClick={() => go(1)}>→</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
 // A new card starts as a BOQ card when the site has a BOQ line to pick
 // (defaultBoq), else as a general card. Issue phases never count, so the caller
@@ -154,6 +227,24 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const [uploadingBulk, setUploadingBulk] = useState(false)
   const [assigningPhotoId, setAssigningPhotoId] = useState(null)
   const [myWorkerId, setMyWorkerId] = useState(null)
+  // Tap-to-assign (separate from the multi-select checkboxes above): the one photo
+  // picked by tapping its thumbnail; tapping a card then assigns it.
+  const [tapPhotoId, setTapPhotoId] = useState(null)
+  const [previewPhotoId, setPreviewPhotoId] = useState(null)
+  const [trayCollapsed, setTrayCollapsed] = useState(readTrayCollapsed)
+  const toggleTrayCollapsed = () => {
+    setTrayCollapsed((cur) => {
+      const next = !cur
+      try { localStorage.setItem(TRAY_COLLAPSED_KEY, next ? '1' : '0') } catch { /* private mode: not remembered */ }
+      return next
+    })
+  }
+  const handleTapAssign = (taskId) => {
+    const photoId = tapPhotoId
+    if (!photoId) return
+    setTapPhotoId(null)
+    handleAssignPhoto(photoId, taskId)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -676,6 +767,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     onCancelEdit: cancelEdit, onSaveDraft: saveDraft, onDeleteRequest: setConfirmDeleteId,
     onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
     taskPhotoCounts, onViewPhotos: handleViewPhotos, onAssignPhoto: handleAssignPhoto,
+    tapAssignActive: canEdit && !!tapPhotoId, onTapAssign: handleTapAssign,
   }
 
   return (
@@ -690,35 +782,49 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
           {todayLeaders.evening && <span style={{ fontSize: 12.5 }}>🌆 บ่าย: <b>{todayLeaders.evening}</b></span>}
         </div>
       )}
-      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: unassignedPhotos.length ? 10 : 0, flexWrap: 'wrap', gap: 8 }}>
+      {/* Sticky tray: the WINDOW scrolls in this app (App.jsx StickyChrome pins header + tab bar
+          and publishes its height as --chrome-h), so the tray sticks just under that chrome. No
+          ancestor between here and the page has overflow other than visible/clip, so sticky
+          resolves against the window. */}
+      <div data-testid="photo-tray-sticky" style={{ position: 'sticky', top: 'var(--chrome-h, 110px)', zIndex: 20, background: 'var(--bg)', paddingBottom: 10, marginBottom: 4 }}>
+      <div className="card" style={{ padding: 12, marginBottom: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div className="card-title">📷 รูปที่รอมอบหมาย{unassignedPhotos.length > 0 ? ` (${unassignedPhotos.length})` : ''}</div>
-          {canEdit && (
-            <label className="btn btn-ghost btn-sm" style={{ cursor: uploadingBulk ? 'default' : 'pointer' }}>
-              {uploadingBulk ? '⏳ กำลังอัปโหลด...' : '+ อัปโหลดรูป'}
-              <input type="file" accept="image/*" multiple hidden disabled={uploadingBulk || !tenant?.id} onChange={handleBulkUpload} />
-            </label>
+          {unassignedPhotos.length > 0 && canEdit && (
+            <span style={{ fontSize: 11.5, color: 'var(--text3)' }}>ลากรูปไปวางบนการ์ด หรือ แตะรูป → แตะการ์ด</span>
           )}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {canEdit && (
+              <label className="btn btn-ghost btn-sm" style={{ cursor: uploadingBulk ? 'default' : 'pointer' }}>
+                {uploadingBulk ? '⏳ กำลังอัปโหลด...' : '+ อัปโหลดรูป'}
+                <input type="file" accept="image/*" multiple hidden disabled={uploadingBulk || !tenant?.id} onChange={handleBulkUpload} />
+              </label>
+            )}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={toggleTrayCollapsed}>
+              {trayCollapsed ? 'แสดงแถบ ▼' : 'ซ่อนแถบ ▲'}
+            </button>
+          </div>
         </div>
-        {canEdit && selectedUnassignedIds.size > 0 && (
+        {canEdit && tapPhotoId && (
+          <div role="status" style={{
+            marginTop: 8, padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+            background: 'rgba(255,140,0,.12)', border: '1px solid var(--accent, #ff8c00)', color: 'var(--text)',
+          }}>
+            เลือกรูปแล้ว 1 รูป — แตะการ์ดที่จะใส่รูป (หรือ แตะรูปอีกครั้งเพื่อยกเลิก)
+          </div>
+        )}
+        {!trayCollapsed && canEdit && selectedUnassignedIds.size > 0 && (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px',
+            display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '8px 10px',
             background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)', flexWrap: 'wrap',
           }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>เลือกไว้ {selectedUnassignedIds.size} รูป</span>
             {showUnassignedSwitchSitePicker ? (
-              <select
-                autoFocus
-                disabled={unassignedBulkActing}
-                defaultValue=""
-                onChange={(e) => { if (e.target.value) handleUnassignedBulkSwitchSite(e.target.value) }}
-                style={{ fontSize: 13, padding: '4px 6px' }}
-              >
-                <option value="" disabled>เลือกไซต์ปลายทาง...</option>
-                {(allSites || []).filter((s) => s.id !== site.id).map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+              <SiteMovePicker
+                sites={allSites} currentSiteId={site.id} busy={unassignedBulkActing}
+                onConfirm={handleUnassignedBulkSwitchSite}
+                onCancel={() => setShowUnassignedSwitchSitePicker(false)}
+              />
             ) : (
               <button type="button" className="btn-secondary" disabled={unassignedBulkActing} onClick={() => setShowUnassignedSwitchSitePicker(true)} style={{ fontSize: 13 }}>
                 📍 ย้ายไซต์
@@ -732,36 +838,52 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
             </button>
           </div>
         )}
-        {loadingPhotos ? (
-          <div style={{ color: 'var(--text3)', fontSize: 12 }}>กำลังโหลด...</div>
+        {!trayCollapsed && (loadingPhotos ? (
+          <div style={{ color: 'var(--text3)', fontSize: 12, marginTop: 8 }}>กำลังโหลด...</div>
         ) : unassignedPhotos.length > 0 ? (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {unassignedPhotos.map((p) => (
-              <div key={p.id} style={{ position: 'relative', width: 90 }}>
-                {canEdit && (
-                  <input
-                    type="checkbox"
-                    checked={selectedUnassignedIds.has(p.id)}
-                    onChange={() => handleToggleUnassignedSelected(p.id)}
-                    style={{ position: 'absolute', top: 4, left: 4, width: 16, height: 16, zIndex: 1, cursor: 'pointer' }}
-                  />
-                )}
-                <div
-                  draggable={canEdit}
-                  onDragStart={canEdit ? (e) => e.dataTransfer.setData(PHOTO_DRAG_MIME, p.id) : undefined}
-                  title={`${p.workers?.nickname || p.workers?.name || ''} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
-                  style={{ opacity: assigningPhotoId === p.id ? 0.5 : 1, cursor: canEdit ? 'grab' : 'default' }}>
-                  {p.url ? (
-                    <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
-                  ) : (
-                    <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
+          <div data-testid="photo-tray-row" style={{ display: 'flex', flexWrap: 'nowrap', gap: 10, overflowX: 'auto', marginTop: 10, paddingBottom: 4 }}>
+            {unassignedPhotos.map((p) => {
+              const tapSelected = tapPhotoId === p.id
+              const ring = tapSelected ? '3px solid var(--accent, #ff8c00)' : '1px solid var(--border)'
+              return (
+                <div key={p.id} style={{ position: 'relative', width: 72, flex: 'none' }}>
+                  {canEdit && (
+                    <input
+                      type="checkbox"
+                      aria-label="เลือกหลายรูป"
+                      checked={selectedUnassignedIds.has(p.id)}
+                      onChange={() => handleToggleUnassignedSelected(p.id)}
+                      style={{ position: 'absolute', top: 4, left: 4, width: 16, height: 16, zIndex: 1, cursor: 'pointer' }}
+                    />
                   )}
-                  <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+                  <button
+                    type="button"
+                    aria-label="ดูรูปขนาดใหญ่"
+                    onClick={(e) => { e.stopPropagation(); setPreviewPhotoId(p.id) }}
+                    style={{
+                      position: 'absolute', top: 2, right: 2, zIndex: 1, minWidth: 26, minHeight: 26, padding: 0,
+                      border: 'none', borderRadius: 6, background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 14, lineHeight: 1, cursor: 'pointer',
+                    }}>⤢</button>
+                  <div
+                    data-testid="photo-thumb"
+                    draggable={canEdit}
+                    onDragStart={canEdit ? (e) => e.dataTransfer.setData(PHOTO_DRAG_MIME, p.id) : undefined}
+                    onClick={canEdit ? () => setTapPhotoId((cur) => (cur === p.id ? null : p.id)) : undefined}
+                    title={`${p.workers?.nickname || p.workers?.name || ''} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
+                    style={{ opacity: assigningPhotoId === p.id ? 0.5 : 1, cursor: canEdit ? 'grab' : 'default' }}>
+                    {p.url ? (
+                      <img src={p.url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, display: 'block', border: ring, boxSizing: 'border-box' }} />
+                    ) : (
+                      <div style={{ width: 72, height: 72, borderRadius: 8, border: ring, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
+                    )}
+                    <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
-        ) : null}
+        ) : null)}
+      </div>
       </div>
       {/* ยาว selectedChain.length + 1 เสมอ -- ชั้นสุดท้าย "พิเศษ" (ยังไม่มี
           ใน selectedChain) คือชั้นที่ให้เลือกลูกของโหนดที่เพิ่งเลือกไปหมาดๆ
@@ -887,6 +1009,14 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
         />
       )}
 
+      {previewPhotoId && (
+        <PhotoPreview
+          photos={unassignedPhotos} photoId={previewPhotoId} canSelect={canEdit}
+          onNavigate={setPreviewPhotoId} onClose={() => setPreviewPhotoId(null)}
+          onSelect={(id) => { setTapPhotoId(id); setPreviewPhotoId(null) }}
+        />
+      )}
+
       {viewingPhotosTaskId && (
         <Modal title={`📷 รูปหลักฐานงานเสร็จ — ${viewingPhotosTaskName}`} onClose={() => setViewingPhotosTaskId(null)} maxWidth={520}>
           <div className="modal-body">
@@ -897,18 +1027,11 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
               }}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>เลือกไว้ {selectedPhotoIds.size} รูป</span>
                 {showSwitchSitePicker ? (
-                  <select
-                    autoFocus
-                    disabled={bulkActing}
-                    defaultValue=""
-                    onChange={(e) => { if (e.target.value) handleBulkSwitchSite(e.target.value) }}
-                    style={{ fontSize: 13, padding: '4px 6px' }}
-                  >
-                    <option value="" disabled>เลือกไซต์ปลายทาง...</option>
-                    {(allSites || []).filter((s) => s.id !== site.id).map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                  <SiteMovePicker
+                    sites={allSites} currentSiteId={site.id} busy={bulkActing}
+                    onConfirm={handleBulkSwitchSite}
+                    onCancel={() => setShowSwitchSitePicker(false)}
+                  />
                 ) : (
                   <button type="button" className="btn-secondary" disabled={bulkActing} onClick={() => setShowSwitchSitePicker(true)} style={{ fontSize: 13 }}>
                     📍 ย้ายไซต์
@@ -981,6 +1104,7 @@ export function isStatusLeafTask(task, childrenByParent) {
 export function TaskCard({
   task, canEdit, role, childTasks = [], parentName, unit, photoCount = 0,
   leadWorker = null, otherAssignees = [], onEdit, onViewPhotos, onAssignPhoto, onRecord,
+  tapAssignActive = false, onTapAssign,
 }) {
   const isQuantity = task.progress_mode === 'quantity'
   const isStatusLeaf = isStatusLeafTask(task, { [task.id]: childTasks })
@@ -1000,15 +1124,17 @@ export function TaskCard({
         e.stopPropagation()
         onAssignPhoto?.(photoId, task.id)
       } : undefined}
-      onClick={canEdit ? () => onEdit?.(task) : undefined}
+      onClick={canEdit ? () => (tapAssignActive ? onTapAssign?.(task.id) : onEdit?.(task)) : undefined}
       style={{
         // longhands only (a border shorthand mixed with borderStyle makes React warn on rerender);
-        // the left edge is the solid 3px status stripe, general cards are dashed elsewhere
+        // the left edge is the solid 3px status stripe, general cards are dashed elsewhere.
+        // While a tray photo is picked (tap-to-assign) every card gets a dashed orange border.
         background: 'var(--bg2)', borderWidth: '1px 1px 1px 3px',
-        borderStyle: kind === 'general' ? 'dashed dashed dashed solid' : 'solid',
-        borderColor: `var(--border) var(--border) var(--border) ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
+        borderStyle: kind === 'general' || tapAssignActive ? 'dashed dashed dashed solid' : 'solid',
+        borderColor: `${tapAssignActive ? 'var(--accent, #ff8c00)' : 'var(--border)'} ${tapAssignActive ? 'var(--accent, #ff8c00)' : 'var(--border)'} ${tapAssignActive ? 'var(--accent, #ff8c00)' : 'var(--border)'} ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
         borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
       }}>
+      {tapAssignActive && <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent, #ff8c00)', marginBottom: 4 }}>แตะเพื่อใส่รูปที่เลือก</div>}
       {parentName && <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 3 }}>↳ งานย่อยของ {parentName}</div>}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>{task.name}</div>
@@ -1083,7 +1209,7 @@ function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
   dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto, progress,
-  role, childrenByParent, taskById, boqById, onRecord, formProps, isIssueNode,
+  role, childrenByParent, taskById, boqById, onRecord, formProps, isIssueNode, tapAssignActive, onTapAssign,
 }) {
   const issueNode = !!isIssueNode?.(phaseId)
   return (
@@ -1145,7 +1271,8 @@ function PhaseBoard({
                   photoCount={taskPhotoCounts[task.id] || 0}
                   leadWorker={leadRow ? workerById[leadRow.worker_id] : null}
                   otherAssignees={workerRows.filter((r) => !r.is_lead).map((r) => workerById[r.worker_id]).filter(Boolean)}
-                  onEdit={onStartEdit} onViewPhotos={onViewPhotos} onAssignPhoto={onAssignPhoto} onRecord={onRecord} />
+                  onEdit={onStartEdit} onViewPhotos={onViewPhotos} onAssignPhoto={onAssignPhoto} onRecord={onRecord}
+                  tapAssignActive={tapAssignActive} onTapAssign={onTapAssign} />
               )
             })}
 
