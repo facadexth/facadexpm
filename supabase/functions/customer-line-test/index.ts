@@ -1,0 +1,71 @@
+// customer-line-test: owner-only check of the tenant's own customer LINE OA (token valid + LINE can reach our webhook).
+// Deploys WITH JWT verification on (the default): the Settings page calls it with the owner's JWT.
+// Never log or return the channel secret or access token.
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+
+const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
+  if (req.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405)
+
+  const jwt = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+  if (!jwt) return json({ ok: false, error: 'Unauthorized' }, 401)
+  const { data: { user }, error: userError } = await admin.auth.getUser(jwt)
+  if (userError || !user?.email) return json({ ok: false, error: 'Unauthorized' }, 401)
+  const { data: role } = await admin.from('user_roles').select('tenant_id, role').eq('user_email', user.email).maybeSingle()
+  if (!role || role.role !== 'OWNER') return json({ ok: false, error: 'forbidden' }, 403)
+  const tenantId = role.tenant_id as string
+
+  const { data: channel } = await admin.from('customer_line_channels')
+    .select('webhook_key').eq('tenant_id', tenantId).maybeSingle()
+  if (!channel?.webhook_key) return json({ ok: false, error: 'not_configured' })
+  const { data: credsData, error: credsError } = await admin.rpc('customer_line_creds_by_tenant', { p_tenant: tenantId })
+  const creds = Array.isArray(credsData) ? credsData[0] : credsData
+  if (credsError || !creds?.access_token) return json({ ok: false, error: 'not_configured' })
+  const accessToken = creds.access_token as string
+
+  try {
+    const infoRes = await fetch('https://api.line.me/v2/bot/info', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!infoRes.ok) return json({ ok: false, error: 'bad_token' })
+    const info = await infoRes.json().catch(() => ({}))
+    const basicId = typeof info?.basicId === 'string' ? info.basicId.replace(/^@/, '') : null
+    const displayName = typeof info?.displayName === 'string' ? info.displayName : null
+
+    const endpoint = `${Deno.env.get('SUPABASE_URL')}/functions/v1/customer-line-webhook?t=${channel.webhook_key}`
+    let webhook: { success: boolean; statusCode?: number; reason?: string } = { success: false, reason: 'webhook_test_failed' }
+    const testRes = await fetch('https://api.line.me/v2/bot/channel/webhook/test', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+      signal: AbortSignal.timeout(15000),
+    })
+    if (testRes.ok) {
+      const t = await testRes.json().catch(() => ({}))
+      webhook = { success: t?.success === true, statusCode: typeof t?.statusCode === 'number' ? t.statusCode : undefined, reason: typeof t?.reason === 'string' ? t.reason : undefined }
+    } else {
+      webhook = { success: false, statusCode: testRes.status, reason: 'line_test_request_failed' }
+    }
+
+    const update: Record<string, unknown> = { basic_id: basicId, display_name: displayName }
+    if (webhook.success) update.verified_at = new Date().toISOString()
+    const { error: saveError } = await admin.from('customer_line_channels').update(update).eq('tenant_id', tenantId)
+    if (saveError) console.error('customer-line-test save failed', saveError.code)
+
+    return json({ ok: webhook.success, basicId, displayName, webhook })
+  } catch (e) {
+    console.error('customer-line-test failed', (e as Error).name)
+    return json({ ok: false, error: 'bad_token' })
+  }
+})

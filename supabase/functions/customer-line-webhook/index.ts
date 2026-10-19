@@ -2,6 +2,7 @@
 // Each tenant points its OA at ...?t=<webhook_key>. The crew bot lives in line-webhook.
 // Logic is in _shared/customer-line-handler.ts (unit tested); this file is the HTTP shell.
 // Never log tokens, secrets, request bodies or LINE user ids.
+// Deploys with --no-verify-jwt: LINE calls it without a Supabase JWT; auth is the webhook_key plus the LINE signature.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import { timingSafeEqual } from '../_shared/timing-safe.ts'
