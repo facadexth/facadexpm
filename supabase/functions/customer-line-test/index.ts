@@ -50,13 +50,15 @@ Deno.serve(async (req) => {
   const displayName = typeof info?.displayName === 'string' ? info.displayName : null
 
   // The token is proven good above; a failure from here on is about the webhook, not the token.
-  const endpoint = `${Deno.env.get('SUPABASE_URL')}/functions/v1/customer-line-webhook?t=${channel.webhook_key}`
+  // No `endpoint` in the body: LINE then tests the URL actually saved in LINE Developers, which is
+  // what customers' messages will hit. (Building the URL from SUPABASE_URL gave LINE an address it
+  // could not reach: statusCode 0.)
   let webhook: { success: boolean; statusCode?: number; reason?: string }
   try {
     const testRes = await fetch('https://api.line.me/v2/bot/channel/webhook/test', {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endpoint }),
+      body: JSON.stringify({}),
       signal: AbortSignal.timeout(15000),
     })
     if (testRes.ok) {
