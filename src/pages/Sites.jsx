@@ -24,6 +24,7 @@ import { canManageSites, canSeeMoney, isPm } from '../lib/roles.js'
 import { useTenant } from '../hooks/useTenant.js'
 import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
+import { warrantyEnd } from '../lib/warranty.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -59,11 +60,14 @@ const EMPTY_FORM = {
   status: 'Ongoing', start_date: '', end_date: '',
   has_vat: true, contract_value_no_vat: '', notes: '',
   default_vat_pct: 7, default_tax_withheld_pct: 3, default_retention_pct: 0,
-  default_retention_period_days: '', default_deposit_pct: 0,
+  default_deposit_pct: 0, warranty_months: 12, handover_date: '',
   ...Object.fromEntries(COST_TYPES.map(t => [t.key, '']))
 }
 
 const VAT_RATE = 0.07
+
+const WARRANTY_CHIPS = [6, 12, 24, 60]
+const fmtDmy = iso => (iso ? iso.split('-').reverse().join('/') : '')
 
 /**
  * Build the `sites` insert/update payload from a SiteForm form object.
@@ -94,9 +98,10 @@ export function siteFormToPayload(form) {
     default_vat_pct:           form.default_vat_pct === '' ? null : parseFloat(form.default_vat_pct),
     default_tax_withheld_pct:  form.default_tax_withheld_pct === '' ? null : parseFloat(form.default_tax_withheld_pct),
     default_retention_pct:     form.default_retention_pct === '' ? null : parseFloat(form.default_retention_pct),
-    default_retention_period_days: form.default_retention_period_days === '' ? null : parseInt(form.default_retention_period_days, 10),
     default_deposit_pct:       form.default_deposit_pct === '' ? null : parseFloat(form.default_deposit_pct),
     notes:          form.notes || null,
+    warranty_months: (() => { const n = parseInt(form.warranty_months, 10); return Number.isNaN(n) ? 12 : n })(),
+    handover_date:  form.handover_date || null,
     ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
   }
 }
@@ -190,7 +195,12 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
   const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
 
   return (
-    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave({ ...form, cost_estimates: costEstimates }) }}>
+    <form onSubmit={e => {
+      e.preventDefault()
+      const wm = form.warranty_months === '' ? 12 : Number(form.warranty_months)
+      if (!Number.isInteger(wm) || wm < 0 || wm > 120) { alert('ระยะประกันต้องอยู่ระหว่าง 0 ถึง 120 เดือน'); return }
+      clearDraft(); onSave({ ...form, cost_estimates: costEstimates })
+    }}>
       <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
         <div className="form-grid-2">
           <div>
@@ -297,6 +307,42 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             <input type="date" className="input" value={form.end_date} onChange={e => set('end_date', e.target.value)} />
           </div>
         </div>
+        {!pmMode && (
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <label className="label">การรับประกันผลงาน</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <span style={{ fontSize: 13 }}>ระยะประกัน</span>
+              <input type="number" className="input input-sm" style={{ width: 80 }} min="0" max="120" step="1"
+                value={form.warranty_months}
+                onChange={e => {
+                  const v = e.target.value
+                  set('warranty_months', v === '' ? '' : String(Math.min(120, Math.max(0, parseInt(v, 10) || 0))))
+                }} />
+              <span style={{ fontSize: 13 }}>เดือน</span>
+              {WARRANTY_CHIPS.map(m => (
+                <button type="button" key={m}
+                  className={`btn btn-sm ${Number(form.warranty_months) === m ? 'btn-primary' : ''}`}
+                  onClick={() => set('warranty_months', String(m))}>{m}</button>
+              ))}
+            </div>
+            {form.status === 'Completed' ? (
+              <>
+                <div style={{ maxWidth: 220, marginBottom: 6 }}>
+                  <label className="label">วันส่งมอบ</label>
+                  <input type="date" className="input" value={form.handover_date || ''} onChange={e => set('handover_date', e.target.value)} />
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>
+                  {Number(form.warranty_months) === 0 ? 'ไม่มีประกัน' : (() => {
+                    const end = warrantyEnd(form.handover_date || null, Number(form.warranty_months))
+                    return end ? `ประกันถึง ${fmtDmy(end)}` : 'ประกันถึง —'
+                  })()}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>ประกันเริ่มนับเมื่อกด จบไซท์งาน</div>
+            )}
+          </div>
+        )}
         {/* PM (pmMode) never sees money: contract value, cost estimates and income defaults are left out */}
         {!pmMode && <>
         <div>
@@ -384,11 +430,6 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
               <label className="label">Retention (%)</label>
               <input type="number" className="input input-sm" min="0" step="0.01"
                 value={form.default_retention_pct} onChange={e => set('default_retention_pct', e.target.value)} placeholder="0" />
-            </div>
-            <div>
-              <label className="label">ระยะเวลา retention (วัน)</label>
-              <input type="number" className="input input-sm" min="0" step="1"
-                value={form.default_retention_period_days} onChange={e => set('default_retention_period_days', e.target.value)} placeholder="เช่น 90" />
             </div>
             {hasModuleAccess('client_deposits') && (
               <div>
@@ -551,6 +592,16 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
 
   const [showForm,    setShowForm]    = useState(false)
   const [editSite,    setEditSite]    = useState(null)     // site object to edit
+  // The list rows come from the site_financial_summary view, which does not carry the warranty
+  // columns, so fetch them from `sites` itself when opening the editor (not for PM: no RPC column).
+  const openEdit = async st => {
+    let extra = {}
+    if (!pm) {
+      const { data } = await supabase.from('sites').select('warranty_months, handover_date').eq('id', st.id).single()
+      if (data) extra = data
+    }
+    setEditSite({ ...st, ...extra }); setShowForm(true)
+  }
   const [completeId,  setCompleteId]  = useState(null)     // id to mark completed
   const [completeSite, setCompleteSite] = useState(null)
   const [deleteId,    setDeleteId]    = useState(null)
@@ -707,7 +758,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
         <SitePhoneCards
           sites={filtered} toggleSort={toggleSort} sortIcon={si} canEdit={canEdit} showMoney={showMoney}
           onOpen={st => navigateTo('site_detail', { siteId: st.id, siteName: st.name })}
-          onEdit={st => { setEditSite(st); setShowForm(true) }}
+          onEdit={openEdit}
           menuItems={siteMenuItems} countdown={countdown} fmtDate={fmtDate} PencilIcon={PencilIcon}
         />
       )}
@@ -833,7 +884,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {canEdit && (
                         <div className="actions-cell">
-                          <button className="btn btn-sm btn-edit" onClick={() => { setEditSite(s); setShowForm(true) }}><PencilIcon /></button>
+                          <button className="btn btn-sm btn-edit" onClick={() => openEdit(s)}><PencilIcon /></button>
                           <RowActionsMenu items={siteMenuItems(s)} />
                         </div>
                       )}
