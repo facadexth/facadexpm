@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   inviteOkText, inviteInvalidText, notLinkedText, quoteText, repairTempText,
-  repairStatusTempText, warrantyTempText, contactText, statusText,
+  repairStatusTempText, warrantyText, contactText, statusText,
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
 
-const big = { name: 'บ้านคุณบิ๊ก', status: 'Ongoing', pct: 62, phases: ['ติดตั้งกระจก ชั้น 2'], endDate: '2026-11-15' }
+const big = { name: 'บ้านคุณบิ๊ก', status: 'Ongoing', pct: 62, phases: ['ติดตั้งกระจก ชั้น 2'], endDate: '2026-11-15', handoverDate: null, warrantyMonths: 12 }
 
 describe('static reply texts', () => {
   it('invite replies', () => {
@@ -25,14 +25,32 @@ describe('static reply texts', () => {
   })
 })
 
-describe('warrantyTempText', () => {
-  it('skips Cancelled sites and words Ongoing and Completed differently', () => {
-    expect(warrantyTempText([big, { ...big, name: 'คอนโด A', status: 'Completed' }]))
-      .toBe('บ้านคุณบิ๊ก: ยังไม่ส่งมอบงาน ประกันเริ่มนับจากวันส่งมอบ\nคอนโด A: ข้อมูลประกันกำลังจัดทำ สอบถามได้ที่แชทนี้')
-    expect(warrantyTempText([{ ...big, status: 'Cancelled' }])).toBe('ยังไม่มีงานในระบบ')
+describe('warrantyText', () => {
+  const today = '2026-10-19'
+  const mk = (over) => ({ ...big, status: 'Completed', ...over })
+  it('active, expired, not handed over and no-warranty lines', () => {
+    const sites = [
+      mk({ name: 'บ้านคุณบิ๊ก', handoverDate: '2026-10-19', warrantyMonths: 12 }),
+      mk({ name: 'คอนโด A', handoverDate: '2025-10-14', warrantyMonths: 12 }),
+      mk({ name: 'บ้าน B', status: 'Ongoing', handoverDate: null, warrantyMonths: 12 }),
+      mk({ name: 'บ้าน C', handoverDate: '2026-01-01', warrantyMonths: 0 }),
+    ]
+    expect(warrantyText(sites, today)).toBe([
+      'บ้านคุณบิ๊ก: ในประกัน ถึง 19/10/2027',
+      'คอนโด A: หมดประกันแล้ว (14/10/2026)',
+      'บ้าน B: ยังไม่ส่งมอบงาน ประกันเริ่มนับจากวันส่งมอบ',
+      'บ้าน C: ไม่มีระยะประกัน',
+    ].join('\n'))
+  })
+  it('months 0 says no warranty even when not handed over', () => {
+    expect(warrantyText([mk({ name: 'บ้าน D', handoverDate: null, warrantyMonths: 0 })], today))
+      .toBe('บ้าน D: ไม่มีระยะประกัน')
+  })
+  it('skips Cancelled sites', () => {
+    expect(warrantyText([{ ...big, status: 'Cancelled' }], today)).toBe('ยังไม่มีงานในระบบ')
   })
   it('returns the empty text for no sites', () => {
-    expect(warrantyTempText([])).toBe('ยังไม่มีงานในระบบ')
+    expect(warrantyText([], today)).toBe('ยังไม่มีงานในระบบ')
   })
 })
 

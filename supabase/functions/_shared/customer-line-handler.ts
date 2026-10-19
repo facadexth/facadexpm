@@ -4,7 +4,7 @@
 import { matchCustomerCommand, looksLikeInviteCode } from './customer-line-commands.ts'
 import {
   inviteOkText, inviteInvalidText, notLinkedText, quoteText, repairTempText,
-  repairStatusTempText, warrantyTempText, contactText, statusText, type SiteStatus,
+  repairStatusTempText, warrantyText, contactText, statusText, type SiteStatus,
 } from './customer-line-replies.ts'
 import type { LineMessage } from './line-reply.ts'
 
@@ -60,7 +60,7 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
   if (cmd === 'repair_status') return txt(repairStatusTempText())
 
   const sites = await deps.loadSites(account.clientId)
-  if (cmd === 'warranty') return txt(warrantyTempText(sites))
+  if (cmd === 'warranty') return txt(warrantyText(sites, ctx.today))
 
   // status
   const photos = await deps.loadPhotos(account.clientId)

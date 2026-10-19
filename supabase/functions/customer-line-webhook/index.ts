@@ -57,7 +57,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       } catch { return null }
     },
     async loadSites(clientId) {
-      const { data: sites, error } = await admin.from('sites').select('id, name, status, end_date')
+      const { data: sites, error } = await admin.from('sites').select('id, name, status, end_date, handover_date, warranty_months')
         .eq('tenant_id', tenantId).eq('client_id', clientId).neq('status', 'Cancelled')
       if (error) throw error
       const out: SiteStatus[] = []
@@ -73,6 +73,8 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
           pct: cp === null || cp === undefined ? null : Number(cp),
           phases: (phases ?? []).map((p) => p.name as string),
           endDate: (s.end_date as string | null) ?? null,
+          handoverDate: (s.handover_date as string | null) ?? null,
+          warrantyMonths: Number(s.warranty_months ?? 0),
         })
       }
       return out

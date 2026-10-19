@@ -2,13 +2,13 @@ import { describe, it, expect, vi } from 'vitest'
 import { handleCustomerEvent } from '../../supabase/functions/_shared/customer-line-handler.ts'
 import {
   inviteOkText, inviteInvalidText, notLinkedText, quoteText, repairTempText,
-  repairStatusTempText, warrantyTempText, contactText, statusText,
+  repairStatusTempText, warrantyText, contactText, statusText,
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
 
 const ctx = { tenantId: 't1', today: '2026-10-19' }
 const txt = (text) => ({ type: 'message', replyToken: 'rt', source: { type: 'user', userId: 'U1' }, message: { type: 'text', text } })
 const T = (text) => ({ type: 'text', text })
-const site = { name: 'งาน A', status: 'Ongoing', pct: 40, phases: ['ติดตั้ง'], endDate: '2026-12-01' }
+const site = { name: 'งาน A', status: 'Ongoing', pct: 40, phases: ['ติดตั้ง'], endDate: '2026-12-01', handoverDate: null, warrantyMonths: 12 }
 const contact = { companyName: 'บจก.', phone: '02', hours: '8-17' }
 
 function deps(over = {}) {
@@ -72,7 +72,7 @@ describe('handleCustomerEvent', () => {
   it('linked repair_status and warranty', async () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
     expect(await handleCustomerEvent(txt('สถานะแจ้งซ่อม'), ctx, d)).toEqual([T(repairStatusTempText())])
-    expect(await handleCustomerEvent(txt('ประกันของฉัน'), ctx, d)).toEqual([T(warrantyTempText([site]))])
+    expect(await handleCustomerEvent(txt('ประกันของฉัน'), ctx, d)).toEqual([T(warrantyText([site], ctx.today))])
   })
   it('linked status with photos', async () => {
     const d = deps({

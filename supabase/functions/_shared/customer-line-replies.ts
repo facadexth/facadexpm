@@ -1,12 +1,16 @@
 // Pure reply texts for the customer LINE bot. No Deno or supabase imports:
 // this file is also imported by vitest from src/lib.
 
+import { warrantyStatus } from './warranty.ts'
+
 export type SiteStatus = {
   name: string
   status: 'Ongoing' | 'On Hold' | 'Completed' | 'Cancelled'
   pct: number | null
   phases: string[]
   endDate: string | null // YYYY-MM-DD
+  handoverDate: string | null // YYYY-MM-DD
+  warrantyMonths: number
 }
 
 const STATUS_MAX_SITES = 10
@@ -43,14 +47,19 @@ export function repairStatusTempText(): string {
   return 'ยังไม่มีรายการแจ้งซ่อมในระบบ\nถ้าแจ้งไว้ทางแชท เจ้าหน้าที่จะตอบในแชทนี้'
 }
 
-export function warrantyTempText(sites: SiteStatus[]): string {
+export function warrantyText(sites: SiteStatus[], today: string): string {
   const lines = sites
     .filter((s) => s.status !== 'Cancelled')
-    .map((s) =>
-      s.status === 'Completed'
-        ? `${s.name}: ข้อมูลประกันกำลังจัดทำ สอบถามได้ที่แชทนี้`
-        : `${s.name}: ยังไม่ส่งมอบงาน ประกันเริ่มนับจากวันส่งมอบ`,
-    )
+    .map((s) => {
+      const months = Number(s.warrantyMonths)
+      // 0 months wins over a missing handover date.
+      if (!(months > 0)) return `${s.name}: ไม่มีระยะประกัน`
+      const w = warrantyStatus(s.handoverDate, months, today)
+      if (w.kind === 'none') return `${s.name}: ไม่มีระยะประกัน`
+      if (w.kind === 'not_handed_over') return `${s.name}: ยังไม่ส่งมอบงาน ประกันเริ่มนับจากวันส่งมอบ`
+      if (w.kind === 'active') return `${s.name}: ในประกัน ถึง ${formatDate(w.end as string)}`
+      return `${s.name}: หมดประกันแล้ว (${formatDate(w.end as string)})`
+    })
   return lines.length === 0 ? 'ยังไม่มีงานในระบบ' : lines.join('\n')
 }
 
