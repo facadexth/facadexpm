@@ -185,4 +185,11 @@
   [data-phone="assign-grid"] th[data-phone="assign-worker"], [data-phone="assign-grid"] td[data-phone="assign-worker"] { width: 96px !important; min-width: 96px; max-width: 96px; }
   [data-phone="assign-grid"][data-variant="week"] td:not([data-phone="assign-worker"]) { min-width: 64px; }
   [data-phone="assign-grid"][data-variant="month"] td:not([data-phone="assign-worker"]) { min-width: 34px; }
+
+  /* ---- kanban photo tray (PhaseKanbanBoard.jsx): one header line, smaller thumbs, no hint ---- */
+  .kb-tray-head { flex-wrap: nowrap !important; }
+  .kb-tray-head .card-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kb-tray-hint { display: none !important; }
+  .kb-tray-item { width: 64px !important; }
+  .kb-tray-item img, .kb-tray-item .kb-tray-ph { width: 64px !important; height: 64px !important; }
 }

@@ -94,6 +94,7 @@ function PhotoPreview({ photos, photoId, canSelect, onNavigate, onClose, onSelec
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   })
+  useEffect(() => { if (!photo) onClose() })
   if (!photo) return null
   return (
     <Modal title={`📷 รูป ${idx + 1} / ${photos.length}`} onClose={onClose} maxWidth={760}>
@@ -239,8 +240,15 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       return next
     })
   }
+  // Only a photo that is still in the tray counts as selected (it may have been
+  // assigned by drag, moved or deleted since it was tapped).
+  const tapPhoto = tapPhotoId ? unassignedPhotos.find((p) => p.id === tapPhotoId) : null
+  useEffect(() => {
+    if (tapPhotoId && !loadingPhotos && !tapPhoto) setTapPhotoId(null)
+  }, [tapPhotoId, tapPhoto, loadingPhotos])
+  useEffect(() => { setTapPhotoId(null); setPreviewPhotoId(null) }, [site.id])
   const handleTapAssign = (taskId) => {
-    const photoId = tapPhotoId
+    const photoId = tapPhoto?.id
     if (!photoId) return
     setTapPhotoId(null)
     handleAssignPhoto(photoId, taskId)
@@ -767,7 +775,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     onCancelEdit: cancelEdit, onSaveDraft: saveDraft, onDeleteRequest: setConfirmDeleteId,
     onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
     taskPhotoCounts, onViewPhotos: handleViewPhotos, onAssignPhoto: handleAssignPhoto,
-    tapAssignActive: canEdit && !!tapPhotoId, onTapAssign: handleTapAssign,
+    tapAssignActive: canEdit && !!tapPhoto, onTapAssign: handleTapAssign,
   }
 
   return (
@@ -788,10 +796,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
           resolves against the window. */}
       <div data-testid="photo-tray-sticky" style={{ position: 'sticky', top: 'var(--chrome-h, 110px)', zIndex: 20, background: 'var(--bg)', paddingBottom: 10, marginBottom: 4 }}>
       <div className="card" style={{ padding: 12, marginBottom: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="kb-tray-head" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div className="card-title">📷 รูปที่รอมอบหมาย{unassignedPhotos.length > 0 ? ` (${unassignedPhotos.length})` : ''}</div>
           {unassignedPhotos.length > 0 && canEdit && (
-            <span style={{ fontSize: 11.5, color: 'var(--text3)' }}>ลากรูปไปวางบนการ์ด หรือ แตะรูป → แตะการ์ด</span>
+            <span className="kb-tray-hint" style={{ fontSize: 11.5, color: 'var(--text3)' }}>ลากรูปไปวางบนการ์ด หรือ แตะรูป → แตะการ์ด</span>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {canEdit && (
@@ -805,12 +813,13 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
             </button>
           </div>
         </div>
-        {canEdit && tapPhotoId && (
+        {canEdit && tapPhoto && (
           <div role="status" style={{
-            marginTop: 8, padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+            marginTop: 8, padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
             background: 'rgba(255,140,0,.12)', border: '1px solid var(--accent, #ff8c00)', color: 'var(--text)',
           }}>
-            เลือกรูปแล้ว 1 รูป — แตะการ์ดที่จะใส่รูป (หรือ แตะรูปอีกครั้งเพื่อยกเลิก)
+            <span style={{ flex: '1 1 200px' }}>เลือกรูปแล้ว 1 รูป — แตะการ์ดที่จะใส่รูป (หรือ แตะรูปอีกครั้งเพื่อยกเลิก)</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTapPhotoId(null)}>✕ ยกเลิก</button>
           </div>
         )}
         {!trayCollapsed && canEdit && selectedUnassignedIds.size > 0 && (
@@ -843,10 +852,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
         ) : unassignedPhotos.length > 0 ? (
           <div data-testid="photo-tray-row" style={{ display: 'flex', flexWrap: 'nowrap', gap: 10, overflowX: 'auto', marginTop: 10, paddingBottom: 4 }}>
             {unassignedPhotos.map((p) => {
-              const tapSelected = tapPhotoId === p.id
+              const tapSelected = tapPhoto?.id === p.id
               const ring = tapSelected ? '3px solid var(--accent, #ff8c00)' : '1px solid var(--border)'
               return (
-                <div key={p.id} style={{ position: 'relative', width: 72, flex: 'none' }}>
+                <div key={p.id} className="kb-tray-item" style={{ position: 'relative', width: 72, flex: 'none' }}>
                   {canEdit && (
                     <input
                       type="checkbox"
@@ -874,7 +883,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                     {p.url ? (
                       <img src={p.url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, display: 'block', border: ring, boxSizing: 'border-box' }} />
                     ) : (
-                      <div style={{ width: 72, height: 72, borderRadius: 8, border: ring, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
+                      <div className="kb-tray-ph" style={{ width: 72, height: 72, borderRadius: 8, border: ring, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
                     )}
                     <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
                   </div>

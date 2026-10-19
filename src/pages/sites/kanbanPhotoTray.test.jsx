@@ -5,15 +5,25 @@ import { render, cleanup, fireEvent, screen, waitFor, within } from '@testing-li
 // supabase: line_site_photos with .is('task_id', null) is the unassigned tray query;
 // every other query resolves to the assigned-count rows. Calls are recorded.
 const calls = []
-const unassigned = [
+const seed = [
   { id: 'ph1', photo_path: 'a.jpg', worker_id: 'w1', workers: { name: 'สมชาย', nickname: 'ชาย' }, created_at: '2026-10-19T01:00:00Z' },
   { id: 'ph2', photo_path: 'b.jpg', worker_id: 'w1', workers: { name: 'สมหญิง', nickname: null }, created_at: '2026-10-19T02:00:00Z' },
   { id: 'ph3', photo_path: 'c.jpg', worker_id: 'w1', workers: { name: 'สมศักดิ์', nickname: null }, created_at: '2026-10-19T03:00:00Z' },
 ]
+let unassigned = seed
 const chain = (table) => {
-  const q = { _unassigned: false }
+  const q = { _unassigned: false, _upd: false }
   ;['select', 'eq', 'order', 'in', 'not', 'limit', 'insert', 'upsert', 'update', 'delete'].forEach((m) => {
-    q[m] = (...a) => { calls.push([table, m, ...a]); return q }
+    q[m] = (...a) => {
+      calls.push([table, m, ...a])
+      if (m === 'update') q._upd = true
+      // an update by id takes the photo out of the (mock) unassigned tray, like the real DB would
+      if (q._upd && (m === 'eq' || m === 'in') && a[0] === 'id') {
+        const ids = [].concat(a[1])
+        unassigned = unassigned.filter((p) => !ids.includes(p.id))
+      }
+      return q
+    }
   })
   q.is = (...a) => { calls.push([table, 'is', ...a]); q._unassigned = true; return q }
   q.then = (resolve, reject) => Promise.resolve({ data: table === 'line_site_photos' && q._unassigned ? unassigned : [], error: null }).then(resolve, reject)
@@ -54,7 +64,7 @@ import PhaseKanbanBoard, { ongoingSiteOptions } from './PhaseKanbanBoard.jsx'
 const site = { id: 's1', name: 'ไซต์ปัจจุบัน' }
 const BANNER = 'เลือกรูปแล้ว 1 รูป — แตะการ์ดที่จะใส่รูป (หรือ แตะรูปอีกครั้งเพื่อยกเลิก)'
 
-beforeEach(() => { try { localStorage.clear() } catch { /* ignore */ } })
+beforeEach(() => { unassigned = seed; try { localStorage.clear() } catch { /* ignore */ } })
 afterEach(() => { cleanup(); calls.length = 0 })
 
 const board = async (props = {}) => {
@@ -96,7 +106,7 @@ describe('photo tray', () => {
     fireEvent.click(screen.getAllByTestId('photo-thumb')[0])
     fireEvent.click(screen.getByText('ติดตั้งกระจก'))
     await waitFor(() => expect(screen.queryByText(BANNER)).toBeNull())
-    expect(screen.queryByText('บันทึก')).toBeNull() // TaskEditPanel not opened
+    expect(screen.queryByText('✅ บันทึก')).toBeNull() // TaskEditPanel not opened
   })
 
   it('without a selected photo a card tap still opens the normal edit panel', async () => {
@@ -104,7 +114,7 @@ describe('photo tray', () => {
     fireEvent.click(screen.getByText('ติดตั้งกระจก'))
     expect(screen.queryByText('แตะเพื่อใส่รูปที่เลือก')).toBeNull()
     expect(calls.some((c) => c[1] === 'update')).toBe(false)
-    expect(screen.queryByText('ติดตั้งกระจก')).toBeNull() // card replaced by its edit form (name is now an input value)
+    expect(screen.getByText('✅ บันทึก')).toBeTruthy() // the edit panel is open
   })
 
   it('tapping the same photo again deselects it', async () => {
@@ -115,6 +125,46 @@ describe('photo tray', () => {
     fireEvent.click(thumb)
     expect(screen.queryByText(BANNER)).toBeNull()
     expect(screen.queryByText('แตะเพื่อใส่รูปที่เลือก')).toBeNull()
+  })
+
+  it('the banner has ✕ ยกเลิก that clears the selection, also when the tray is collapsed', async () => {
+    await board()
+    fireEvent.click(screen.getAllByTestId('photo-thumb')[0])
+    fireEvent.click(screen.getByText('ซ่อนแถบ ▲'))
+    expect(screen.getByText(BANNER)).toBeTruthy()
+    fireEvent.click(screen.getByText('✕ ยกเลิก'))
+    expect(screen.queryByText(BANNER)).toBeNull()
+    expect(screen.queryByText('แตะเพื่อใส่รูปที่เลือก')).toBeNull()
+  })
+
+  it('stale selection: tap A, drag-assign A, then tap the card -> no second update', async () => {
+    await board()
+    fireEvent.click(screen.getAllByTestId('photo-thumb')[0]) // ph1 tapped
+    const card = screen.getByText('ติดตั้งกระจก')
+    const dt = { types: ['application/x-line-site-photo-id'], getData: () => 'ph1' }
+    fireEvent.drop(card, { dataTransfer: dt })
+    await waitFor(() => expect(screen.getAllByTestId('photo-thumb')).toHaveLength(2))
+    await waitFor(() => expect(screen.queryByText(BANNER)).toBeNull())
+    const updates = () => calls.filter((c) => c[0] === 'line_site_photos' && c[1] === 'update').length
+    expect(updates()).toBe(1)
+    fireEvent.click(screen.getByText('ติดตั้งกระจก'))
+    expect(updates()).toBe(1)
+  })
+
+  it('stale selection: tap A, move A to another site via the picker -> no task update afterwards', async () => {
+    await board()
+    fireEvent.click(screen.getAllByTestId('photo-thumb')[0]) // ph1 tapped AND ticked
+    fireEvent.click(screen.getAllByLabelText('เลือกหลายรูป')[0])
+    fireEvent.click(screen.getByText('📍 ย้ายไซต์'))
+    fireEvent.click(screen.getByText('ค้นหาไซต์ปลายทาง (รหัส / ชื่อ / ลูกค้า)'))
+    fireEvent.click(screen.getByText('S-002 · โครงการ บางนา · Ongoing'))
+    fireEvent.click(screen.getByText('ย้ายไป โครงการ บางนา'))
+    await waitFor(() => expect(screen.getAllByTestId('photo-thumb')).toHaveLength(2))
+    await waitFor(() => expect(screen.queryByText(BANNER)).toBeNull())
+    const before = calls.filter((c) => c[1] === 'update').length
+    fireEvent.click(screen.getByText('ติดตั้งกระจก'))
+    expect(calls.filter((c) => c[1] === 'update').length).toBe(before)
+    expect(calls.some((c) => c[1] === 'update' && c[2].task_id === 't1')).toBe(false)
   })
 
   it('the multi-select checkbox is independent of tap-to-assign', async () => {
