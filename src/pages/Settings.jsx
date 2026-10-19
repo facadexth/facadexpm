@@ -11,6 +11,7 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 import PackageComparison from '../components/PackageComparison.jsx'
 import ChangelogModal from '../components/ChangelogModal.jsx'
 import LinePushSettings from '../components/LinePushSettings.jsx'
+import CustomerLineSettings from '../components/CustomerLineSettings.jsx'
 import WebPushSettings from '../components/WebPushSettings.jsx'
 import TravelOriginSettings from '../components/TravelOriginSettings.jsx'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -629,7 +630,10 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan, navSt
 
       {/* ── การแจ้งเตือนทาง LINE (push) ── */}
       {activeSection === 'communication' && showLinePush && (
-        <LinePushSettings hasModuleAccess={hasModuleAccess} />
+        <>
+          <LinePushSettings hasModuleAccess={hasModuleAccess} />
+          <CustomerLineSettings />
+        </>
       )}
 
       {/* ── แจ้งเตือนเช็คใกล้ครบกำหนด ── */}
