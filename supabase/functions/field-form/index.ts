@@ -490,6 +490,20 @@ Deno.serve(async (req) => {
         const site = await resolveTokenSite(tok, worker)
         if (!site) return json({ error: 'no_site' }, 400)
 
+        // One open check-in at a time: check out of the current site before checking in at another.
+        if (tok.action_type === 'check_in') {
+          const { data: open, error: openErr } = await admin.from('worker_checkins')
+            .select('site_id, sites(name)')
+            .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('date', bangkokToday())
+            .not('checkin_at', 'is', null).is('checkout_at', null).neq('site_id', site.id)
+            .limit(1)
+          if (openErr) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+          if (open && open.length) {
+            const openName = (open[0] as any).sites?.name ?? 'ไซท์ก่อนหน้า'
+            return json({ ok: false, message: `ยังไม่ได้เช็คเอาท์ที่ ${openName} — เช็คเอาท์ก่อนจึงจะเช็คอินไซท์ใหม่ได้` })
+          }
+        }
+
         const rpcName = tok.action_type === 'check_in' ? 'perform_worker_checkin_by_id' : 'perform_worker_checkout_by_id'
         const { data, error } = await admin.rpc(rpcName, { p_worker_id: worker.id, p_site_id: site.id, p_lat: lat, p_lng: lng })
         const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined

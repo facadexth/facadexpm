@@ -77,16 +77,28 @@ describe('pickSiteForNow', () => {
 })
 
 describe('sitesNeedingLinks', () => {
-  const sites = todaysSites([AVAIN, BIG], [{ site_id: 's-avain', checkin_at: 'a', checkout_at: null }])
-  it('auto gives every site that is not done', () => {
-    expect(sitesNeedingLinks(sites, 'auto').map((s) => s.siteId)).toEqual(['s-avain', 's-big'])
+  const open = todaysSites([AVAIN, BIG], [{ site_id: 's-avain', checkin_at: 'a', checkout_at: null }])
+  const fresh = todaysSites([AVAIN, BIG], [])
+  it('nothing open: auto gives every site that is not done', () => {
+    expect(sitesNeedingLinks(fresh, 'auto').map((s) => s.siteId)).toEqual(['s-avain', 's-big'])
   })
-  it('typed commands filter by action', () => {
-    expect(sitesNeedingLinks(sites, 'check_in').map((s) => s.siteId)).toEqual(['s-big'])
-    expect(sitesNeedingLinks(sites, 'check_out').map((s) => s.siteId)).toEqual(['s-avain'])
+  it('one open check-in at a time: only its check-out, whatever was typed', () => {
+    expect(sitesNeedingLinks(open, 'auto').map((s) => s.siteId)).toEqual(['s-avain'])
+    expect(sitesNeedingLinks(open, 'check_in').map((s) => s.siteId)).toEqual(['s-avain'])
+    expect(sitesNeedingLinks(open, 'check_out').map((s) => s.siteId)).toEqual(['s-avain'])
+  })
+  it('typed commands filter by action when nothing is open', () => {
+    expect(sitesNeedingLinks(fresh, 'check_out')).toEqual([])
+    expect(sitesNeedingLinks(fresh, 'check_in').map((s) => s.siteId)).toEqual(['s-avain', 's-big'])
   })
   it('a disabled action is dropped', () => {
-    expect(sitesNeedingLinks(sites, 'auto', { check_in: true, check_out: false }).map((s) => s.siteId)).toEqual(['s-big'])
+    expect(sitesNeedingLinks(open, 'auto', { check_in: true, check_out: false })).toEqual([])
+    expect(sitesNeedingLinks(fresh, 'auto', { check_in: false, check_out: true })).toEqual([])
+  })
+  it('reply shows the waiting site while another is open', () => {
+    const text = multiSiteReplyText(open, { 's-avain': 'L1' })
+    expect(text).toContain('🌅 เช้า · The nest - AVAIN บางนา กม.5 → เช็คเอาท์')
+    expect(text).toContain('⏳ บ่าย · บ้านคุณบิ๊ก — เช็คเอาท์ไซท์ที่อยู่ก่อน แล้วจึงเช็คอินที่นี่')
   })
 })
 

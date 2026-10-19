@@ -79,6 +79,10 @@ export function sitesNeedingLinks(
   mode: 'auto' | 'check_in' | 'check_out',
   enabled: { check_in: boolean; check_out: boolean } = { check_in: true, check_out: true },
 ): TodaysSite[] {
+  // One open check-in at a time (owner, 2026-10-19): while a site is checked in but not
+  // out, its check-out is the only link offered, whatever was typed.
+  const open = sites.filter((s) => s.nextAction === 'check_out')
+  if (open.length) return enabled.check_out ? open.slice(0, 1) : []
   return sites.filter((s) => s.nextAction !== 'done'
     && (mode === 'auto' || s.nextAction === mode)
     && enabled[s.nextAction as 'check_in' | 'check_out'])
@@ -96,6 +100,8 @@ export function multiSiteReplyText(sites: TodaysSite[], links: Record<string, st
       lines.push(link)
     } else if (s.nextAction === 'done') {
       lines.push(`✅ ${label} · ${s.siteName} — ครบแล้ว`)
+    } else if (s.nextAction === 'check_in' && sites.some((o) => o.nextAction === 'check_out')) {
+      lines.push(`⏳ ${label} · ${s.siteName} — เช็คเอาท์ไซท์ที่อยู่ก่อน แล้วจึงเช็คอินที่นี่`)
     }
   }
   return lines.join('\n')

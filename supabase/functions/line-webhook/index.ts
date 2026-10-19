@@ -668,6 +668,7 @@ async function sendTimeClockLinks(
   // A typed เช็คอิน with nothing left to check in (or เช็คเอาท์ with nothing left to check
   // out): answer like the Rich Menu button would, so the worker still gets the link they need.
   if (toLink.length === 0 && mode !== 'auto') toLink = sitesNeedingLinks(sites, 'auto', enabled)
+  // sitesNeedingLinks already narrows to the one open check-out when a site is checked in.
   if (toLink.length === 0) {
     await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
     return
