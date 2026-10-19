@@ -386,7 +386,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setBulkActing(true)
     try {
       const { error } = await supabase.from('line_site_photos')
-        .update({ site_id: newSiteId, task_id: null }).in('id', ids)
+        .update({ site_id: newSiteId, task_id: null, customer_visible: false }).in('id', ids)
       if (error) throw error
       setShowSwitchSitePicker(false)
       setSelectedPhotoIds(new Set())
@@ -446,7 +446,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setUnassignedBulkActing(true)
     try {
       const { error } = await supabase.from('line_site_photos')
-        .update({ site_id: newSiteId, task_id: null }).in('id', ids)
+        .update({ site_id: newSiteId, task_id: null, customer_visible: false }).in('id', ids)
       if (error) throw error
       setShowUnassignedSwitchSitePicker(false)
       setSelectedUnassignedIds(new Set())
