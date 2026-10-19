@@ -44,6 +44,48 @@ CREATE POLICY admin_update ON public.customer_line_requests
 ALTER TABLE public.line_site_photos ADD COLUMN customer_visible boolean NOT NULL DEFAULT false;
 ALTER TABLE public.site_attachments ADD COLUMN customer_visible boolean NOT NULL DEFAULT false;
 
+-- Only PM/admin/owner may change the flag. Workers can insert/update their own line_site_photos
+-- through RLS, so without this they could set customer_visible directly via PostgREST.
+-- Same convention as scn_block_edit_when_posted: the rule binds direct client access only
+-- (current_user authenticated/anon). SECURITY DEFINER RPCs (set_customer_visible, which checks
+-- the role itself) run as the function owner, and the service role is not restricted.
+-- Moving a row to another site always clears the flag, for every caller.
+CREATE OR REPLACE FUNCTION public.guard_customer_visible()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.site_id IS DISTINCT FROM OLD.site_id THEN
+    NEW.customer_visible := false;
+  END IF;
+
+  IF (TG_OP = 'INSERT' AND NEW.customer_visible)
+     OR (TG_OP = 'UPDATE' AND NEW.customer_visible IS DISTINCT FROM OLD.customer_visible
+         AND NOT (NEW.site_id IS DISTINCT FROM OLD.site_id)) THEN
+    IF current_user = 'anon' THEN
+      RAISE EXCEPTION 'not_allowed' USING ERRCODE = '42501';
+    ELSIF current_user = 'authenticated' THEN
+      IF NOT ((SELECT is_admin_or_owner()) OR (SELECT is_pm())) THEN
+        RAISE EXCEPTION 'not_allowed' USING ERRCODE = '42501';
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.guard_customer_visible() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER line_site_photos_guard_customer_visible
+  BEFORE INSERT OR UPDATE ON public.line_site_photos
+  FOR EACH ROW EXECUTE FUNCTION public.guard_customer_visible();
+
+CREATE TRIGGER site_attachments_guard_customer_visible
+  BEFORE INSERT OR UPDATE ON public.site_attachments
+  FOR EACH ROW EXECUTE FUNCTION public.guard_customer_visible();
+
 CREATE OR REPLACE FUNCTION public.set_customer_visible(p_kind text, p_id uuid, p_visible boolean)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER

@@ -1,5 +1,5 @@
 -- Self-contained dry run for Task 3 (no placeholders). Paste into the Supabase SQL Editor; everything rolls back.
--- Inlines migrations -06, -07, -08 byte-identical, then re-runs Task 2's DO block (a)-(i), then Task 3's (a)-(e).
+-- Inlines migrations -06, -07, -08 byte-identical, then re-runs Task 2's DO block (a)-(j), then Task 3's (a)-(h).
 BEGIN;
 
 -- ===== inlined migration 2026-10-20-06 =====
@@ -301,6 +301,13 @@ BEGIN
     RETURN;
   END IF;
 
+  -- One claim per client: any other open code for the same client (e.g. from two staff
+  -- creating invites at once) dies now, so a second person cannot take the link over later.
+  UPDATE public.customer_line_invites i
+     SET revoked_at = now()
+   WHERE i.tenant_id = p_tenant AND i.client_id = v_client
+     AND i.used_at IS NULL AND i.revoked_at IS NULL;
+
   DELETE FROM public.customer_line_accounts a
    WHERE a.tenant_id = p_tenant
      AND (a.client_id = v_client OR a.line_user_id = p_line_user_id);
@@ -362,6 +369,48 @@ CREATE POLICY admin_update ON public.customer_line_requests
 -- Photos the customer may see in their LINE (Phase 1b reads this flag).
 ALTER TABLE public.line_site_photos ADD COLUMN customer_visible boolean NOT NULL DEFAULT false;
 ALTER TABLE public.site_attachments ADD COLUMN customer_visible boolean NOT NULL DEFAULT false;
+
+-- Only PM/admin/owner may change the flag. Workers can insert/update their own line_site_photos
+-- through RLS, so without this they could set customer_visible directly via PostgREST.
+-- Same convention as scn_block_edit_when_posted: the rule binds direct client access only
+-- (current_user authenticated/anon). SECURITY DEFINER RPCs (set_customer_visible, which checks
+-- the role itself) run as the function owner, and the service role is not restricted.
+-- Moving a row to another site always clears the flag, for every caller.
+CREATE OR REPLACE FUNCTION public.guard_customer_visible()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.site_id IS DISTINCT FROM OLD.site_id THEN
+    NEW.customer_visible := false;
+  END IF;
+
+  IF (TG_OP = 'INSERT' AND NEW.customer_visible)
+     OR (TG_OP = 'UPDATE' AND NEW.customer_visible IS DISTINCT FROM OLD.customer_visible
+         AND NOT (NEW.site_id IS DISTINCT FROM OLD.site_id)) THEN
+    IF current_user = 'anon' THEN
+      RAISE EXCEPTION 'not_allowed' USING ERRCODE = '42501';
+    ELSIF current_user = 'authenticated' THEN
+      IF NOT ((SELECT is_admin_or_owner()) OR (SELECT is_pm())) THEN
+        RAISE EXCEPTION 'not_allowed' USING ERRCODE = '42501';
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.guard_customer_visible() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER line_site_photos_guard_customer_visible
+  BEFORE INSERT OR UPDATE ON public.line_site_photos
+  FOR EACH ROW EXECUTE FUNCTION public.guard_customer_visible();
+
+CREATE TRIGGER site_attachments_guard_customer_visible
+  BEFORE INSERT OR UPDATE ON public.site_attachments
+  FOR EACH ROW EXECUTE FUNCTION public.guard_customer_visible();
 
 CREATE OR REPLACE FUNCTION public.set_customer_visible(p_kind text, p_id uuid, p_visible boolean)
 RETURNS void
@@ -448,7 +497,7 @@ DO $t$
 DECLARE
   v_tenant uuid := '8b61c890-0a90-4223-91d3-b5f8f4e89908';
   v_other uuid := (SELECT id FROM tenants WHERE id <> '8b61c890-0a90-4223-91d3-b5f8f4e89908' LIMIT 1);
-  v_client uuid; v_site uuid; v_site_nc uuid; r record; c1 text; c2 text; c3 text; n int; v_client_y uuid; v_site_c uuid; v_site_d uuid;
+  v_client uuid; v_site uuid; v_site_nc uuid; r record; c1 text; c2 text; c3 text; n int; v_client_y uuid; v_site_c uuid; v_site_d uuid; v_client_j uuid; v_site_j uuid;
 BEGIN
   INSERT INTO clients (tenant_id, client_number, name) VALUES (v_tenant, 'ZZT2-' || substr(md5(random()::text),1,8), 'ZZ Dry Run Client') RETURNING id INTO v_client;
   INSERT INTO sites (tenant_id, site_number, name, client_id) VALUES (v_tenant, 'ZZT2-A', 'ZZ site with client', v_client) RETURNING id INTO v_site;
@@ -539,6 +588,23 @@ BEGIN
   SELECT * INTO r FROM claim_customer_invite(v_tenant, c2, 'U_zz_i', 'Name I');
   IF r.status <> 'invalid' THEN RAISE EXCEPTION 'FAIL (i): deleted site claimed %', r.status; END IF;
   RAISE NOTICE 'PASS (i)';
+
+  -- (j) claiming one code revokes every other open code of the same client (two staff invited at once).
+  -- Reuses client Y / site C from (h) (no open codes, no account) so no extra site counts toward the package limit.
+  v_client_j := v_client_y; v_site_j := v_site_c;
+  INSERT INTO customer_line_invites (tenant_id, client_id, site_id, code, expires_at, created_by)
+  VALUES (v_tenant, v_client_j, v_site_j, 'ZZJAA2', now() + interval '7 days', 'dryrun'),
+         (v_tenant, v_client_j, v_site_j, 'ZZJAA3', now() + interval '7 days', 'dryrun');
+  SELECT * INTO r FROM claim_customer_invite(v_tenant, 'ZZJAA2', 'U_zz_j1', 'Name J1');
+  IF r.status <> 'ok' THEN RAISE EXCEPTION 'FAIL (j): first claim %', r.status; END IF;
+  SELECT count(*) INTO n FROM customer_line_invites
+   WHERE client_id = v_client_j AND code = 'ZZJAA3' AND used_at IS NULL AND revoked_at IS NOT NULL;
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL (j): other open code not revoked'; END IF;
+  SELECT * INTO r FROM claim_customer_invite(v_tenant, 'ZZJAA3', 'U_zz_j2', 'Name J2');
+  IF r.status <> 'invalid' THEN RAISE EXCEPTION 'FAIL (j): second code claimed %', r.status; END IF;
+  SELECT count(*) INTO n FROM customer_line_accounts WHERE client_id = v_client_j AND line_user_id = 'U_zz_j1';
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL (j): first link lost'; END IF;
+  RAISE NOTICE 'PASS (j)';
 END
 $t$;
 
@@ -548,7 +614,7 @@ DECLARE
   v_tenant uuid := '8b61c890-0a90-4223-91d3-b5f8f4e89908';
   v_other uuid := (SELECT id FROM tenants WHERE id <> '8b61c890-0a90-4223-91d3-b5f8f4e89908' LIMIT 1);
   v_client uuid; v_site uuid; v_worker uuid; v_worker_o uuid; v_site_o uuid;
-  v_photo uuid; v_photo_o uuid; v_att uuid; v_att_o uuid; n int; v_flag boolean; v_cnt text;
+  v_photo uuid; v_photo_o uuid; v_att uuid; v_att_o uuid; n int; v_flag boolean; v_cnt text; v_site2 uuid;
 BEGIN
   IF v_other IS NULL THEN RAISE EXCEPTION 'FAIL (setup): needs a second tenant'; END IF;
   INSERT INTO clients (tenant_id, client_number, name) VALUES (v_tenant, 'ZZT3-' || substr(md5(random()::text),1,8), 'ZZ T3 Client') RETURNING id INTO v_client;
@@ -646,6 +712,80 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN RAISE NOTICE 'PASS (grants anon)';
   END;
   EXECUTE 'RESET ROLE';
+
+  -- (f) a worker (WORKER role, not admin/owner/PM) cannot set customer_visible directly
+  INSERT INTO user_roles (user_email, role, tenant_id) VALUES ('zz-dryrun-worker@facadex.invalid', 'WORKER', v_tenant);
+  UPDATE workers SET email = 'zz-dryrun-worker@facadex.invalid' WHERE id = v_worker;
+  -- an existing demo site as the move target (no new site counts toward the package limit)
+  SELECT id INTO v_site2 FROM sites WHERE tenant_id = v_tenant AND id <> v_site ORDER BY created_at LIMIT 1;
+  IF v_site2 IS NULL THEN RAISE EXCEPTION 'FAIL (f setup): needs a second demo site'; END IF;
+  PERFORM set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-000000000002','role','authenticated','email','zz-dryrun-worker@facadex.invalid')::text, true);
+  EXECUTE 'SET LOCAL role authenticated';
+  IF (SELECT is_admin_or_owner()) OR (SELECT is_pm()) THEN RAISE EXCEPTION 'FAIL (f setup): worker resolved as privileged'; END IF;
+  IF my_worker_id() IS DISTINCT FROM v_worker THEN RAISE EXCEPTION 'FAIL (f setup): my_worker_id did not resolve'; END IF;
+  BEGIN
+    INSERT INTO line_site_photos (tenant_id, worker_id, site_id, date, photo_path, customer_visible)
+    VALUES (v_tenant, v_worker, v_site, current_date, 'zz/w1.jpg', true);
+    RAISE EXCEPTION 'FAIL (f): worker inserted a customer-visible photo';
+  EXCEPTION WHEN insufficient_privilege THEN
+    IF SQLERRM <> 'not_allowed' THEN RAISE EXCEPTION 'FAIL (f): insert got %', SQLERRM; END IF;
+  END;
+  -- the normal worker upload (flag left at its default) still works
+  INSERT INTO line_site_photos (tenant_id, worker_id, site_id, date, photo_path)
+  VALUES (v_tenant, v_worker, v_site, current_date, 'zz/w2.jpg');
+  -- WHERE true reads no column, so only the worker_updates_own USING applies (own rows)
+  BEGIN
+    UPDATE line_site_photos SET customer_visible = true WHERE true;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    RAISE EXCEPTION 'FAIL (f): worker update not blocked (% rows)', n;
+  EXCEPTION WHEN insufficient_privilege THEN
+    IF SQLERRM <> 'not_allowed' THEN RAISE EXCEPTION 'FAIL (f): update got %', SQLERRM; END IF;
+  END;
+  EXECUTE 'RESET ROLE';
+  SELECT count(*) INTO n FROM line_site_photos WHERE worker_id = v_worker AND customer_visible;
+  IF n <> 0 THEN RAISE EXCEPTION 'FAIL (f): % worker photos flagged', n; END IF;
+  SELECT count(*) INTO n FROM line_site_photos WHERE worker_id = v_worker;
+  IF n <> 2 THEN RAISE EXCEPTION 'FAIL (f): expected 2 worker photos, got %', n; END IF;
+  RAISE NOTICE 'PASS (f)';
+
+  -- (g) moving a row to another site clears the flag, for any caller
+  UPDATE line_site_photos SET customer_visible = true WHERE id = v_photo;
+  UPDATE site_attachments SET customer_visible = true WHERE id = v_att;
+  UPDATE line_site_photos SET site_id = v_site2 WHERE id = v_photo;
+  UPDATE site_attachments SET site_id = v_site2 WHERE id = v_att;
+  SELECT customer_visible INTO v_flag FROM line_site_photos WHERE id = v_photo;
+  IF v_flag IS NOT FALSE THEN RAISE EXCEPTION 'FAIL (g): moved photo kept its flag'; END IF;
+  SELECT customer_visible INTO v_flag FROM site_attachments WHERE id = v_att;
+  IF v_flag IS NOT FALSE THEN RAISE EXCEPTION 'FAIL (g): moved attachment kept its flag'; END IF;
+  UPDATE line_site_photos SET site_id = v_site, customer_visible = true WHERE id = v_photo;
+  SELECT customer_visible INTO v_flag FROM line_site_photos WHERE id = v_photo;
+  IF v_flag IS NOT FALSE THEN RAISE EXCEPTION 'FAIL (g): move + flag in one update kept the flag'; END IF;
+  -- a worker moving their own flagged photo is allowed and clears it (no not_allowed)
+  UPDATE line_site_photos SET customer_visible = true WHERE id = v_photo;
+  PERFORM set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-000000000002','role','authenticated','email','zz-dryrun-worker@facadex.invalid')::text, true);
+  EXECUTE 'SET LOCAL role authenticated';
+  UPDATE line_site_photos SET site_id = v_site2 WHERE true;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  EXECUTE 'RESET ROLE';
+  IF n <> 2 THEN RAISE EXCEPTION 'FAIL (g): worker move touched % rows', n; END IF;
+  SELECT customer_visible INTO v_flag FROM line_site_photos WHERE id = v_photo;
+  IF v_flag IS NOT FALSE THEN RAISE EXCEPTION 'FAIL (g): worker-moved photo kept its flag'; END IF;
+  RAISE NOTICE 'PASS (g)';
+
+  -- (h) the owner still sets the flag, directly and via the RPC, with the guard in place
+  PERFORM set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-000000000001','role','authenticated','email','demo-owner@facadex.co.th')::text, true);
+  EXECUTE 'SET LOCAL role authenticated';
+  UPDATE line_site_photos SET customer_visible = true WHERE id = v_photo;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL (h): owner direct update touched % rows', n; END IF;
+  PERFORM set_customer_visible('line_site_photo', v_photo, false);
+  PERFORM set_customer_visible('site_attachment', v_att, true);
+  EXECUTE 'RESET ROLE';
+  SELECT customer_visible INTO v_flag FROM line_site_photos WHERE id = v_photo;
+  IF v_flag IS NOT FALSE THEN RAISE EXCEPTION 'FAIL (h): RPC did not clear the photo flag'; END IF;
+  SELECT customer_visible INTO v_flag FROM site_attachments WHERE id = v_att;
+  IF v_flag IS NOT TRUE THEN RAISE EXCEPTION 'FAIL (h): RPC did not set the attachment flag'; END IF;
+  RAISE NOTICE 'PASS (h)';
 END
 $t$;
 
