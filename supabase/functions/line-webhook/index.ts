@@ -113,6 +113,7 @@ import { linkRequestsThrottled, THROTTLED_LINK_MESSAGE } from '../_shared/form-t
 import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-message.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { isWorkerDoneable, doneErrorReply } from '../_shared/lineTaskRules.ts'
+import { todaysSites, pickSiteForNow, sitesNeedingLinks, multiSiteReplyText, type TodaysSite } from '../_shared/todays-sites.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
@@ -148,11 +149,14 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 // before sending, confirmed exploitable live). 30 minutes is enough to
 // switch from LINE to the browser and back without leaving a stale
 // link usable for days.
-async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out' | 'advance' | 'payslip'): Promise<string | null> {
+// siteId (check-in/out only): the site this link is for -- field-form uses it instead of
+// guessing, so a worker with 2+ sites today checks in where they actually are.
+async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out' | 'advance' | 'payslip', siteId?: string): Promise<string | null> {
   const token = crypto.randomUUID().replace(/-/g, '')
   const { error } = await admin.from('line_deep_link_tokens').insert({
     tenant_id: tenantId, worker_id: workerId, action_type: actionType, token,
     expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    ...(siteId ? { site_id: siteId } : {}),
   })
   if (error) { logSafeError('issueFieldFormLink insert failed', error); return null }
   return `${APP_URL}/f/${token}`
@@ -169,6 +173,9 @@ function json(body: unknown, status = 200) {
 // Bangkok has no DST -- a fixed +7h offset from UTC is always correct.
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+function bangkokHour(): number {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).getUTCHours()
 }
 // LINE quick-reply labels cap at 20 chars -- the message `text` sent on
 // tap can stay full-length (used for the exact-match lookup below), so
@@ -291,27 +298,53 @@ const DISABLED_MESSAGE = '⚠️ ฟีเจอร์นี้ปิดอย�
 // (เบิกเงิน / ยอดเบิก / ยื่นคำขอ / สถานะคำขอ) BEFORE matchGroupAction, because the
 // material keyword "ขอเบิก" is a substring of "ขอเบิกเงิน".
 
-// Resolves "which site" for เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน from the
-// worker's own real site work assigned for today -- explicit user
-// choice over asking each time. Same "real site work" filter Task 4's
-// review already established (site/factory/subcontract, matching
-// SITE_TYPES + DayView.jsx's own grouping). If a worker has more than
-// one site assigned today, this just takes one -- a genuine edge case,
-// not worth a disambiguation prompt for how rarely it happens.
-async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ id: string; name: string; map_url?: string | null; lat?: number | null; lng?: number | null } | null> {
-  const { data: assignment } = await admin
+// Resolves "which site" for รูปภาพหน้างาน / แจ้งปัญหา / งานวันนี้ / งานเสร็จ from the
+// worker's own real site work assigned for today. Same "real site work" filter Task 4's
+// review already established (site/factory/subcontract, matching SITE_TYPES +
+// DayView.jsx's own grouping).
+// A worker can have 2+ sites on one day (bug found live 2026-10-19: this used to take an
+// arbitrary one via an unordered limit(1)). Callers here need ONE site, so it is picked by
+// Bangkok time: before 12:00 the first morning site, from 12:00 the first evening site,
+// otherwise the first (_shared/todays-sites.ts pickSiteForNow). เช็คอิน/เช็คเอาท์ do NOT
+// use this any more: with 2+ sites the worker picks the site (sendTimeClockLinks).
+type SiteWithMap = { id: string; name: string; map_url?: string | null; lat?: number | null; lng?: number | null }
+async function loadTodaysAssignmentRows(workerId: string, tenantId: string) {
+  const { data } = await admin
     .from('worker_assignments')
-    .select('site_id')
+    .select('site_id, shift, type, sites(id, name, map_url, lat, lng)')
     .eq('worker_id', workerId)
     .eq('tenant_id', tenantId)
     .eq('date', bangkokToday())
     .in('type', ['site', 'factory', 'subcontract'])
     .not('site_id', 'is', null)
-    .limit(1)
-    .maybeSingle()
-  if (!assignment?.site_id) return null
-  const { data: site } = await admin.from('sites').select('id, name, map_url, lat, lng').eq('id', assignment.site_id).maybeSingle()
-  return site ?? null
+    .order('shift') // stable read order only; the real order is set in code (todaysSites)
+  return (data ?? []) as Array<{ site_id: string; shift: string | null; type: string | null; sites: SiteWithMap | null }>
+}
+function toTodaysAssignments(rows: Array<{ site_id: string; shift: string | null; type: string | null; sites: SiteWithMap | null }>) {
+  return rows.map((r) => ({ site_id: r.site_id, site_name: r.sites?.name ?? null, shift: r.shift, type: r.type }))
+}
+async function resolveTodaysSite(workerId: string, tenantId: string): Promise<SiteWithMap | null> {
+  const rows = await loadTodaysAssignmentRows(workerId, tenantId)
+  const pick = pickSiteForNow(todaysSites(toTodaysAssignments(rows), []), bangkokHour())
+  if (!pick) return null
+  const site = rows.find((r) => r.site_id === pick.siteId)?.sites
+  if (site) return site
+  const { data } = await admin.from('sites').select('id, name, map_url, lat, lng').eq('id', pick.siteId).maybeSingle()
+  return data ?? null
+}
+
+// Today's DISTINCT sites with this worker's own check-in state at each (Bangkok date,
+// tenant-filtered), for เช็คอิน/เช็คเอาท์.
+async function loadTodaysSitesWithCheckins(workerId: string, tenantId: string): Promise<TodaysSite[]> {
+  const [rows, { data: checkins }] = await Promise.all([
+    loadTodaysAssignmentRows(workerId, tenantId),
+    admin.from('worker_checkins').select('site_id, checkin_at, checkout_at')
+      .eq('worker_id', workerId).eq('tenant_id', tenantId).eq('date', bangkokToday()),
+  ])
+  return todaysSites(
+    toTodaysAssignments(rows),
+    (checkins ?? []) as Array<{ site_id: string | null; checkin_at: string | null; checkout_at: string | null }>,
+  )
 }
 
 // A tenant's designated fallback site for group-photo auto-filing, when
@@ -440,9 +473,7 @@ function bangkokWeekDates(weekOffset: number): string[] {
 // dates in one query (งานวันพรุ่งนี้/งานอาทิตย์นี้/งานอาทิตย์หน้า) --
 // same "real site work" filter as resolveTodaysSite, just batched
 // across a date range instead of pinned to today. A date with more
-// than one site assignment just takes the first, same simplification
-// resolveTodaysSite already makes.
-type SiteWithMap = { id: string; name: string; map_url?: string | null; lat?: number | null; lng?: number | null }
+// than one site assignment just takes the first.
 async function resolveSitesForDates(workerId: string, tenantId: string, dates: string[]): Promise<Map<string, SiteWithMap>> {
   const { data } = await admin
     .from('worker_assignments')
@@ -553,32 +584,103 @@ async function fetchLineImageContent(accessToken: string, messageId: string): Pr
 // submit handler (same perform_worker_checkin_by_id/checkout RPCs,
 // unchanged) once the worker's browser reports its position -- this
 // function's only job is resolving today's site and sending the link.
-async function handleCheckInStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
-  const site = await resolveTodaysSite(worker.id, settings.tenant_id)
-  if (!site) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
-    return
-  }
-  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'check_in')
+//
+// Multi-site (owner decision 2026-10-19, "ช่างกดเลือกไซท์"): with 2+ DIFFERENT sites today
+// the worker gets ONE reply with one link per site that still needs an action, each link
+// carrying its own site_id. A single-site day replies exactly as before.
+const NO_SITE_TODAY_MESSAGE = '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน'
+const SYSTEM_ERROR_MESSAGE = '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง'
+
+async function sendSingleSiteLink(
+  worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string,
+  site: TodaysSite, actionType: 'check_in' | 'check_out',
+) {
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, actionType, site.siteId)
   if (!link) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
   } else {
-    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อเช็คอินที่ ${site.name} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
+    const verb = actionType === 'check_in' ? 'เช็คอิน' : 'เช็คเอาท์'
+    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อ${verb}ที่ ${site.siteName} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
   }
 }
 
-async function handleCheckOutStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
-  const site = await resolveTodaysSite(worker.id, settings.tenant_id)
-  if (!site) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
+// The 2+ site reply: one token per listed site, all issued for this one tap.
+async function sendMultiSiteLinks(
+  worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string,
+  sites: TodaysSite[], toLink: TodaysSite[],
+) {
+  const links: Record<string, string> = {}
+  for (const s of toLink) {
+    const link = await issueFieldFormLink(settings.tenant_id, worker.id, s.nextAction as 'check_in' | 'check_out', s.siteId)
+    if (!link) {
+      await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
+      return
+    }
+    links[s.siteId] = link
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, multiSiteReplyText(sites, links))
+}
+
+// mode 'auto' = the Rich Menu เช็คอิน/เช็คเอาท์ button; 'check_in' / 'check_out' = the typed
+// commands (the router has already checked that the typed command is enabled).
+// No link throttle here: check-in/out links never had one (only เบิกของ/ขอลา/เบิกเงิน/สลิป do).
+async function sendTimeClockLinks(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  mode: 'auto' | 'check_in' | 'check_out',
+  commandSettings: CommandSettingsByKey,
+) {
+  const sites = await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id)
+  if (sites.length === 0) {
+    await sendLineReply(settings.channel_access_token, replyToken, NO_SITE_TODAY_MESSAGE)
     return
   }
-  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'check_out')
-  if (!link) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-  } else {
-    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อเช็คเอาท์ที่ ${site.name} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
+
+  if (sites.length === 1) {
+    // Single site: unchanged behaviour. The typed commands always send their own link;
+    // the Rich Menu button follows the day's step.
+    const site = sites[0]
+    if (mode !== 'auto') {
+      await sendSingleSiteLink(worker, settings, replyToken, site, mode)
+      return
+    }
+    const step = timeClockStep({ hasSite: true, hasCheckedIn: site.nextAction !== 'check_in', hasCheckedOut: site.nextAction === 'done' })
+    if (step === 'done') {
+      await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+    } else if (step === 'no_site') {
+      await sendLineReply(settings.channel_access_token, replyToken, NO_SITE_TODAY_MESSAGE)
+    } else if (!resolveEnabled(step, commandSettings, 'dm')) {
+      await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    } else {
+      await sendSingleSiteLink(worker, settings, replyToken, site, step)
+    }
+    return
   }
+
+  // 2+ sites: the worker picks the site.
+  if (sites.every((s) => s.nextAction === 'done')) {
+    await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+    return
+  }
+  const enabled = { check_in: resolveEnabled('check_in', commandSettings, 'dm'), check_out: resolveEnabled('check_out', commandSettings, 'dm') }
+  let toLink = sitesNeedingLinks(sites, mode, mode === 'auto' ? enabled : { check_in: true, check_out: true })
+  // A typed เช็คอิน with nothing left to check in (or เช็คเอาท์ with nothing left to check
+  // out): answer like the Rich Menu button would, so the worker still gets the link they need.
+  if (toLink.length === 0 && mode !== 'auto') toLink = sitesNeedingLinks(sites, 'auto', enabled)
+  if (toLink.length === 0) {
+    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    return
+  }
+  await sendMultiSiteLinks(worker, settings, replyToken, sites, toLink)
+}
+
+async function handleCheckInStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string, commandSettings: CommandSettingsByKey) {
+  await sendTimeClockLinks(worker, settings, replyToken, 'check_in', commandSettings)
+}
+
+async function handleCheckOutStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string, commandSettings: CommandSettingsByKey) {
+  await sendTimeClockLinks(worker, settings, replyToken, 'check_out', commandSettings)
 }
 
 // The Rich Menu's single "เช็คอิน/เช็คเอาท์" button: look at the worker's day and send
@@ -591,26 +693,7 @@ async function handleTimeClock(
   replyToken: string,
   commandSettings: CommandSettingsByKey,
 ) {
-  const site = await resolveTodaysSite(worker.id, settings.tenant_id)
-  let hasCheckedIn = false
-  let hasCheckedOut = false
-  if (site) {
-    const { data: row } = await admin.from('worker_checkins').select('checkin_at, checkout_at').eq('worker_id', worker.id).eq('site_id', site.id).eq('date', bangkokToday()).maybeSingle()
-    hasCheckedIn = !!row?.checkin_at
-    hasCheckedOut = !!row?.checkout_at
-  }
-  const step = timeClockStep({ hasSite: !!site, hasCheckedIn, hasCheckedOut })
-  if (step === 'no_site') {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
-  } else if (step === 'done') {
-    await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
-  } else if (!resolveEnabled(step, commandSettings, 'dm')) {
-    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
-  } else if (step === 'check_in') {
-    await handleCheckInStart(worker, settings, replyToken)
-  } else {
-    await handleCheckOutStart(worker, settings, replyToken)
-  }
+  await sendTimeClockLinks(worker, settings, replyToken, 'auto', commandSettings)
 }
 
 // The Rich Menu's "ตารางงาน" button: offer the four schedule views as tappable chips
@@ -1606,9 +1689,9 @@ Deno.serve(async (req) => {
         } else if (action === 'schedule_menu') {
           await handleScheduleMenu(settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'check_in') {
-          await handleCheckInStart(worker, settings, event.replyToken)
+          await handleCheckInStart(worker, settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'check_out') {
-          await handleCheckOutStart(worker, settings, event.replyToken)
+          await handleCheckOutStart(worker, settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'job_done_start') {
           await handleJobDoneStart(worker, settings, event.replyToken)
         } else if (action === 'today_job') {

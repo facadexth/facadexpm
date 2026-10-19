@@ -43,6 +43,7 @@ import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
 import { parseAdvanceAmount, defaultStartMonth } from '../_shared/advance-logic.ts'
 import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
 import { payslipWindow, inPayslipWindow, pickYtd } from '../_shared/payslip-data.ts'
+import { todaysSites, pickSiteForNow } from '../_shared/todays-sites.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -59,6 +60,9 @@ function json(body: unknown, status = 200) {
 // Bangkok has no DST -- a fixed +7h offset from UTC is always correct.
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+function bangkokHour(): number {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).getUTCHours()
 }
 
 // Payslip link: this worker's closed-period salary records inside the 12-month window.
@@ -86,7 +90,7 @@ async function loadPayslipMonths(tenantId: string, workerId: string): Promise<{ 
 async function loadToken(token: string) {
   const { data: tok } = await admin
     .from('line_deep_link_tokens')
-    .select('id, tenant_id, worker_id, action_type, expires_at, used_at')
+    .select('id, tenant_id, worker_id, action_type, expires_at, used_at, site_id')
     .eq('token', token)
     .maybeSingle()
   if (!tok) return { reason: 'not_found' as const }
@@ -120,20 +124,45 @@ async function releaseToken(tokId: string) {
 // Same "which site is this worker actually on today" resolution
 // line-webhook's own resolveTodaysSite uses -- duplicated here (Deno
 // Edge Functions can't share code across function directories except
-// via ../_shared/) since this is the only other place that needs it.
+// via ../_shared/; the pick itself is shared, _shared/todays-sites.ts).
+// With 2+ sites today it picks by Bangkok time (before 12:00 the first
+// morning site, from 12:00 the first evening site). Only reached for an
+// OLD check-in/out token without site_id -- new ones name their site.
+const TODAY_SITE_TYPES = ['site', 'factory', 'subcontract']
 async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ id: string; name: string } | null> {
-  const { data: assignment } = await admin
+  const { data: rows } = await admin
     .from('worker_assignments')
-    .select('site_id')
+    .select('site_id, shift, type')
     .eq('worker_id', workerId)
     .eq('tenant_id', tenantId)
     .eq('date', bangkokToday())
-    .in('type', ['site', 'factory', 'subcontract'])
+    .in('type', TODAY_SITE_TYPES)
     .not('site_id', 'is', null)
+    .order('shift')
+  const pick = pickSiteForNow(todaysSites((rows ?? []).map((r: any) => ({ site_id: r.site_id, site_name: null, shift: r.shift, type: r.type })), []), bangkokHour())
+  if (!pick) return null
+  const { data: site } = await admin.from('sites').select('id, name').eq('id', pick.siteId).maybeSingle()
+  return site ?? null
+}
+
+// The site a check-in/out token is for. A token that names its site (line-webhook, since
+// 2026-10-20 multi-site check-in) is used as-is, but only if this worker really has work
+// there today (Bangkok date, tenant-filtered) -- otherwise null, which callers answer with
+// no_site. An old token without site_id falls back to resolveTodaysSite.
+async function resolveTokenSite(tok: { site_id?: string | null }, worker: { id: string; tenant_id: string }): Promise<{ id: string; name: string } | null> {
+  if (!tok.site_id) return await resolveTodaysSite(worker.id, worker.tenant_id)
+  const { data: assignment } = await admin
+    .from('worker_assignments')
+    .select('id')
+    .eq('worker_id', worker.id)
+    .eq('tenant_id', worker.tenant_id)
+    .eq('site_id', tok.site_id)
+    .eq('date', bangkokToday())
+    .in('type', TODAY_SITE_TYPES)
     .limit(1)
     .maybeSingle()
-  if (!assignment?.site_id) return null
-  const { data: site } = await admin.from('sites').select('id, name').eq('id', assignment.site_id).maybeSingle()
+  if (!assignment) return null
+  const { data: site } = await admin.from('sites').select('id, name').eq('id', tok.site_id).eq('tenant_id', worker.tenant_id).maybeSingle()
   return site ?? null
 }
 
@@ -219,7 +248,7 @@ Deno.serve(async (req) => {
       }
 
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
-        const site = await resolveTodaysSite(worker.id, worker.tenant_id)
+        const site = await resolveTokenSite(tok, worker)
         if (!site) return json({ actionType: tok.action_type, workerName, reason: 'no_site' })
         return json({ actionType: tok.action_type, workerName, siteName: site.name })
       }
@@ -458,7 +487,7 @@ Deno.serve(async (req) => {
         const lng = Number(body?.lng)
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: 'missing_location' }, 400)
 
-        const site = await resolveTodaysSite(worker.id, worker.tenant_id)
+        const site = await resolveTokenSite(tok, worker)
         if (!site) return json({ error: 'no_site' }, 400)
 
         const rpcName = tok.action_type === 'check_in' ? 'perform_worker_checkin_by_id' : 'perform_worker_checkout_by_id'
