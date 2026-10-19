@@ -161,3 +161,14 @@ Mockup: https://claude.ai/artifact/KUmuM4Env22zgk7ypm6c5u (boards 1-7).
 - **After the account is linked,** ขอใบเสนอราคา greets the customer with "welcome back" plus their past jobs and warranty, then opens a short form for the new work only.
 - **The thank-you shows on the form page only.** Nothing is pushed into the chat, because a push costs quota.
 - **Each submission creates a quote-request record** (e.g. RQ2610-001), which Phase 2 turns into an estimation draft.
+
+## Future: transfer a site to the homeowner (owner, 2026-10-19; build with Phase 4)
+- Use case: our client is a contractor (ผรม), but the job is someone's house. After the warranty (or at any time), the homeowner should become the site's contact for service.
+- **Rules from the owner:**
+  - The contractor must give permission before the transfer.
+  - After the transfer, the contractor's LINE account no longer sees that site.
+- **Sketch:**
+  - The site gets a service client: the homeowner, as a new B2C client, invited by QR or via the 1b form.
+  - Quotations, invoices, retention and warranty records stay with the contractor.
+  - Repairs after the transfer are billed to the homeowner.
+  - The warranty follow-up list shows whether a site has been transferred.
