@@ -7,6 +7,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import { timingSafeEqual } from '../_shared/timing-safe.ts'
 import { sendLineReplyMessages } from '../_shared/line-reply.ts'
+import { replyWithFallback } from '../_shared/reply-fallback.ts'
 import { handleCustomerEvent, type CustomerDeps } from '../_shared/customer-line-handler.ts'
 import type { SiteStatus } from '../_shared/customer-line-replies.ts'
 
@@ -105,8 +106,8 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
     async getContact() {
       const { data: ch } = await admin.from('customer_line_channels').select('contact_phone, contact_hours, display_name')
         .eq('tenant_id', tenantId).maybeSingle()
-      const { data: t, error: tError } = await admin.from('tenants').select('company_name, phone').eq('id', tenantId).maybeSingle()
-      if (tError) throw tError
+      // Soft: the brand name is cosmetic, so a tenants error falls back to '' instead of failing the reply.
+      const { data: t } = await admin.from('tenants').select('company_name, phone').eq('id', tenantId).maybeSingle()
       return {
         companyName: (t?.company_name as string) ?? '',
         phone: (ch?.contact_phone as string | null) || (t?.phone as string | null) || null,
@@ -153,7 +154,9 @@ Deno.serve(async (req) => {
   for (const event of events as { replyToken?: string }[]) {
     try {
       const msgs = await handleCustomerEvent(event, { tenantId, today }, deps)
-      if (msgs.length > 0 && event.replyToken) await sendLineReplyMessages(accessToken, event.replyToken, msgs)
+      if (msgs.length > 0 && event.replyToken) {
+        await replyWithFallback((rt, m) => sendLineReplyMessages(accessToken, rt, m), event.replyToken, msgs)
+      }
     } catch (e) {
       console.error('customer-line event failed', (e as Error).message)
     }

@@ -12,6 +12,11 @@ describe('static reply texts', () => {
     expect(inviteInvalidText()).toBe('รหัสนี้ใช้ไม่ได้หรือหมดอายุแล้ว กรุณาขอรหัสใหม่จากบริษัท')
     expect(notLinkedText('แชงค์')).toBe('สวัสดีครับ ขอบคุณที่เพิ่มเพื่อน แชงค์ 🙏\n• เป็นลูกค้าของเราอยู่แล้ว: ส่งรหัสเชิญ 6 ตัวที่ได้จากเจ้าหน้าที่ เพื่อติดตามงานและประกันได้ทุกเมื่อ\n• สนใจงานหน้าต่าง ประตู กระจก อลูมิเนียม: กด "ขอใบเสนอราคา" ได้เลยครับ')
   })
+  it('empty brand name leaves no double space', () => {
+    expect(notLinkedText('').split('\n')[0]).toBe('สวัสดีครับ ขอบคุณที่เพิ่มเพื่อน 🙏')
+    expect(statusText([], '2026-10-19', '').split('\n')[0]).toBe('ขอบคุณที่ไว้วางใจครับ 🙏')
+    expect(notLinkedText('')).not.toContain('  ')
+  })
   it('quote, repair and repair-status replies', () => {
     expect(quoteText()).toBe('ขอบคุณที่สนใจครับ\nส่งแบบหรือรูปหน้างาน ขนาดคร่าวๆ ที่ตั้งหน้างาน และเบอร์โทรมาในแชทนี้ได้เลย\nเจ้าหน้าที่จะติดต่อกลับโดยเร็ว')
     expect(repairTempText()).toBe('พิมพ์อาการและส่งรูปมาในแชทนี้ได้เลยครับ\nเจ้าหน้าที่จะรับเรื่องและติดต่อกลับ')
@@ -136,6 +141,7 @@ describe('warrantyFlex', () => {
     expect(JSON.stringify(b.body)).toContain('#EFEAE3')
     const [a, c] = b.footer.contents
     expect(a.action).toEqual({ type: 'message', label: 'แจ้งซ่อม', text: 'แจ้งซ่อม' })
+    expect(a.style).toBe('secondary')
     expect(a.color).toBe('#D4B596')
     expect(c.action).toEqual({ type: 'message', label: 'ติดต่อเรา', text: 'ติดต่อเรา' })
   })
@@ -181,7 +187,9 @@ describe('warrantyFlex', () => {
     const long = 'ก'.repeat(80)
     const sites = Array.from({ length: 10 }, () => mk({ name: long }))
     const m = warrantyFlex(sites, today, 'x')
-    expect(m.altText.length).toBeLessThanOrEqual(400)
+    expect(Array.from(m.altText).length).toBeLessThanOrEqual(400)
+    const emoji = warrantyFlex(Array.from({ length: 10 }, () => mk({ name: '😀'.repeat(60) })), today, 'x')
+    expect(emoji.altText).not.toMatch(/[\uD800-\uDBFF]$/)
     expect(warrantyFlex([mk()], today, 'x').altText).toBe(warrantyText([mk()], today))
   })
   it('no empty text, no undefined, valid sizes, small', () => {

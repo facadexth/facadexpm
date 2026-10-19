@@ -30,7 +30,8 @@ export function inviteInvalidText(): string {
 }
 
 export function notLinkedText(brandName: string): string {
-  return `สวัสดีครับ ขอบคุณที่เพิ่มเพื่อน ${brandName} 🙏\n• เป็นลูกค้าของเราอยู่แล้ว: ส่งรหัสเชิญ 6 ตัวที่ได้จากเจ้าหน้าที่ เพื่อติดตามงานและประกันได้ทุกเมื่อ\n• สนใจงานหน้าต่าง ประตู กระจก อลูมิเนียม: กด "ขอใบเสนอราคา" ได้เลยครับ`
+  const head = brandName ? `สวัสดีครับ ขอบคุณที่เพิ่มเพื่อน ${brandName} 🙏` : 'สวัสดีครับ ขอบคุณที่เพิ่มเพื่อน 🙏'
+  return `${head}\n• เป็นลูกค้าของเราอยู่แล้ว: ส่งรหัสเชิญ 6 ตัวที่ได้จากเจ้าหน้าที่ เพื่อติดตามงานและประกันได้ทุกเมื่อ\n• สนใจงานหน้าต่าง ประตู กระจก อลูมิเนียม: กด "ขอใบเสนอราคา" ได้เลยครับ`
 }
 
 export function quoteText(): string {
@@ -91,7 +92,8 @@ export function statusText(sites: SiteStatus[], today: string, brandName: string
     .filter((s) => s.status === 'Ongoing' || s.status === 'On Hold')
     .slice(0, STATUS_MAX_SITES)
   if (active.length === 0) {
-    return `ขอบคุณที่ไว้วางใจ ${brandName} ครับ 🙏\nตอนนี้ยังไม่มีงานที่อยู่ระหว่างดำเนินการ\n• งานที่ส่งมอบแล้ว กด "ประกันของฉัน" เพื่อดูระยะประกันได้เลย\n• มีโครงการใหม่ กด "ขอใบเสนอราคา" ยินดีดูแลให้ครับ`
+    const head = brandName ? `ขอบคุณที่ไว้วางใจ ${brandName} ครับ 🙏` : 'ขอบคุณที่ไว้วางใจครับ 🙏'
+    return `${head}\nตอนนี้ยังไม่มีงานที่อยู่ระหว่างดำเนินการ\n• งานที่ส่งมอบแล้ว กด "ประกันของฉัน" เพื่อดูระยะประกันได้เลย\n• มีโครงการใหม่ กด "ขอใบเสนอราคา" ยินดีดูแลให้ครับ`
   }
   const header = `สถานะงาน · อัปเดต ${formatThaiDate(today)}`
   const text = [header, ...active.map(siteBlock)].join('\n\n')
@@ -197,7 +199,7 @@ function warrantyBubble(s: SiteStatus, today: string): Flex {
     footer: {
       type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
       contents: [
-        { type: 'button', style: 'primary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'แจ้งซ่อม', text: 'แจ้งซ่อม' } },
+        { type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'แจ้งซ่อม', text: 'แจ้งซ่อม' } },
         { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: 'ติดต่อเรา', text: 'ติดต่อเรา' } },
       ],
     },
@@ -210,7 +212,7 @@ export function warrantyFlex(sites: SiteStatus[], today: string, _brandName: str
   if (shown.length === 0) return { type: 'text', text: 'ยังไม่มีงานในระบบ' }
   return {
     type: 'flex',
-    altText: warrantyText(sites, today).slice(0, ALT_TEXT_MAX),
+    altText: Array.from(warrantyText(sites, today)).slice(0, ALT_TEXT_MAX).join(''),
     contents: { type: 'carousel', contents: shown.map((s) => warrantyBubble(s, today)) },
   }
 }
