@@ -9,6 +9,11 @@ const COMMANDS: Record<string, CustomerCommand> = {
   'แจ้งซ่อม': 'repair',
   'สถานะแจ้งซ่อม': 'repair_status',
   'ประกันของฉัน': 'warranty',
+  'ประกัน': 'warranty',
+  'รับประกัน': 'warranty',
+  'ระยะเวลารับประกัน': 'warranty',
+  'เช็คประกัน': 'warranty',
+  'ตรวจสอบประกัน': 'warranty',
   'ติดต่อเรา': 'contact',
 }
 

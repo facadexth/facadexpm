@@ -10,6 +10,10 @@ describe('matchCustomerCommand', () => {
     expect(matchCustomerCommand('ประกันของฉัน')).toBe('warranty')
     expect(matchCustomerCommand('ติดต่อเรา')).toBe('contact')
   })
+  it.each(['ประกันของฉัน', 'ประกัน', 'รับประกัน', 'ระยะเวลารับประกัน', 'เช็คประกัน', 'ตรวจสอบประกัน'])('warranty synonym %s', (w) => {
+    expect(matchCustomerCommand(w)).toBe('warranty')
+    expect(matchCustomerCommand(` ${w.slice(0, 2)} ${w.slice(2)} `)).toBe('warranty')
+  })
   it('trims and removes inner spaces', () => {
     expect(matchCustomerCommand(' สถานะ งาน ')).toBe('status')
     expect(matchCustomerCommand('  ขอ ใบ เสนอราคา  ')).toBe('quote')
