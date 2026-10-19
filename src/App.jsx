@@ -54,6 +54,7 @@ const SalesReport  = lazy(() => import('./pages/SalesReport.jsx'))
 const Invoices     = lazy(() => import('./pages/Invoices.jsx'))
 const CatalogItems = lazy(() => import('./pages/CatalogItems.jsx'))
 const Cheques       = lazy(() => import('./pages/Cheques.jsx'))
+const Repairs       = lazy(() => import('./pages/Repairs.jsx'))
 const BomTemplates = lazy(() => import('./pages/BomTemplates.jsx'))
 const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
@@ -68,6 +69,8 @@ const TABS = [
     { id: 'assign',             label: '📋 จ่ายงานช่าง',    minRole: 'WORKER', module: 'payroll' },
     { id: 'labor_contractors',  label: '🔧 ผู้รับเหมาค่าแรง', minRole: 'ADMIN', module: 'labor_subcontractors' },
   ] },
+  // งานซ่อม: one board of every repair ticket across all sites; customers report through the tenant's LINE OA.
+  { id: 'repairs',         label: '🔧 งานซ่อม',       minRole: 'ADMIN', module: 'line_bot' },
   { label: '💰 รายรับ', children: [
     { id: 'income',        label: '📊 ภาพรวม',           minRole: 'ADMIN', module: null },
     { id: 'sales_report',  label: '📊 รายงานการขาย',    minRole: 'ADMIN', module: 'quotations' },
@@ -445,6 +448,7 @@ export default function App() {
         case 'hr':         return <HR        {...props} />
         case 'sites':      return <Sites      {...props} />
         case 'site_detail': return <SiteDetail {...props} />
+        case 'repairs':    return <Repairs    {...props} />
         case 'expenses':   return <Expenses   {...props} />
         case 'purchase_orders': return <PurchaseOrders {...props} />
         case 'supplier_credit_notes': return <SupplierCreditNotes {...props} />

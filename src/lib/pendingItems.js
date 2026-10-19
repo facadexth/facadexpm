@@ -16,6 +16,8 @@ export const PENDING_ITEMS = [
   // like offboarded_in_group: the Communication Center is owner-only).
   { key: 'customer_requests_open', icon: '💬', label: 'ลูกค้าทักทาง LINE', tab: 'communication_center' },
   { key: 'warranty_followup', icon: '🛡️', label: 'ประกันใกล้หมด — ทักลูกค้า', tab: 'sites' },
+  // Repair reports from customers (LINE) waiting for a yes/no on the งานซ่อม board (admin/owner, module line_bot).
+  { key: 'repair_pending', icon: '🔧', label: 'งานซ่อมรอพิจารณา', tab: 'repairs' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา',          tab: 'quotations' },
 ]
 

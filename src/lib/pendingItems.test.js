@@ -84,3 +84,13 @@ describe('warranty_followup bell item', () => {
     expect(shown.map(i => [i.key, i.count, i.tab])).toEqual([['warranty_followup', 3, 'sites']])
   })
 })
+
+describe('repair_pending bell item', () => {
+  it('is listed, lands on the งานซ่อม tab, and hides from anyone who cannot open it', () => {
+    const item = PENDING_ITEMS.find(i => i.key === 'repair_pending')
+    expect(item).toEqual({ key: 'repair_pending', icon: '🔧', label: 'งานซ่อมรอพิจารณา', tab: 'repairs' })
+    const shown = visiblePendingItems({ repair_pending: 2 }, all)
+    expect(shown.map(i => [i.key, i.count, i.tab])).toEqual([['repair_pending', 2, 'repairs']])
+    expect(visiblePendingItems({ repair_pending: 2 }, tab => tab !== 'repairs')).toEqual([])
+  })
+})
