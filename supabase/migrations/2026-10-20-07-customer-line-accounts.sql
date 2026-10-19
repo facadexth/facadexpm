@@ -150,6 +150,13 @@ BEGIN
     RETURN;
   END IF;
 
+  -- One claim per client: any other open code for the same client (e.g. from two staff
+  -- creating invites at once) dies now, so a second person cannot take the link over later.
+  UPDATE public.customer_line_invites i
+     SET revoked_at = now()
+   WHERE i.tenant_id = p_tenant AND i.client_id = v_client
+     AND i.used_at IS NULL AND i.revoked_at IS NULL;
+
   DELETE FROM public.customer_line_accounts a
    WHERE a.tenant_id = p_tenant
      AND (a.client_id = v_client OR a.line_user_id = p_line_user_id);
