@@ -271,6 +271,8 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         tenant_id: tenantId, ticket_id: ticketId, role: 'customer', media_type: mediaType, storage_path: path,
         file_name: fileName ?? null, mime, size_bytes: bytes.byteLength,
       })
+      // 23505 = a concurrent delivery of the same message already recorded this path: its row owns the file.
+      if (insErr?.code === '23505') return 'ok'
       if (insErr) {
         if (uploadedNow) await admin.storage.from(REPAIR_BUCKET).remove([path])
         console.error('customer-line repair media row failed', insErr.code)

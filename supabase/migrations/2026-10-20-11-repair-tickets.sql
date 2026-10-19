@@ -93,6 +93,7 @@ CREATE TABLE public.repair_ticket_media (
 );
 
 CREATE INDEX repair_ticket_media_ticket ON public.repair_ticket_media (tenant_id, ticket_id);
+CREATE UNIQUE INDEX repair_ticket_media_path ON public.repair_ticket_media (tenant_id, storage_path);
 
 ALTER TABLE public.repair_tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.repair_ticket_media ENABLE ROW LEVEL SECURITY;
