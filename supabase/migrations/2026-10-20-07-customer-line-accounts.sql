@@ -140,6 +140,9 @@ BEGIN
      AND i.code = upper(btrim(p_code))
      AND i.used_at IS NULL AND i.revoked_at IS NULL
      AND i.expires_at > now()
+     AND i.site_id IS NOT NULL
+     AND EXISTS (SELECT 1 FROM public.sites s
+                  WHERE s.id = i.site_id AND s.tenant_id = p_tenant AND s.client_id = i.client_id)
   RETURNING i.client_id INTO v_client;
 
   IF v_client IS NULL THEN
@@ -154,7 +157,7 @@ BEGIN
   INSERT INTO public.customer_line_accounts (tenant_id, client_id, line_user_id, line_display_name)
   VALUES (p_tenant, v_client, p_line_user_id, p_display_name);
 
-  SELECT c.name INTO v_name FROM public.clients c WHERE c.id = v_client;
+  SELECT c.name INTO v_name FROM public.clients c WHERE c.id = v_client AND c.tenant_id = p_tenant;
   RETURN QUERY SELECT 'ok'::text, v_client, v_name;
 END;
 $$;

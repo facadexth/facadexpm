@@ -144,6 +144,9 @@ BEGIN
      AND i.code = upper(btrim(p_code))
      AND i.used_at IS NULL AND i.revoked_at IS NULL
      AND i.expires_at > now()
+     AND i.site_id IS NOT NULL
+     AND EXISTS (SELECT 1 FROM public.sites s
+                  WHERE s.id = i.site_id AND s.tenant_id = p_tenant AND s.client_id = i.client_id)
   RETURNING i.client_id INTO v_client;
 
   IF v_client IS NULL THEN
@@ -158,7 +161,7 @@ BEGIN
   INSERT INTO public.customer_line_accounts (tenant_id, client_id, line_user_id, line_display_name)
   VALUES (p_tenant, v_client, p_line_user_id, p_display_name);
 
-  SELECT c.name INTO v_name FROM public.clients c WHERE c.id = v_client;
+  SELECT c.name INTO v_name FROM public.clients c WHERE c.id = v_client AND c.tenant_id = p_tenant;
   RETURN QUERY SELECT 'ok'::text, v_client, v_name;
 END;
 $$;
@@ -172,7 +175,7 @@ DO $t$
 DECLARE
   v_tenant uuid := '__TENANT_ID__';
   v_other uuid := (SELECT id FROM tenants WHERE id <> '__TENANT_ID__' LIMIT 1);
-  v_client uuid; v_site uuid; v_site_nc uuid; r record; c1 text; c2 text; c3 text; n int;
+  v_client uuid; v_site uuid; v_site_nc uuid; r record; c1 text; c2 text; c3 text; n int; v_client_y uuid; v_site_c uuid; v_site_d uuid;
 BEGIN
   INSERT INTO clients (tenant_id, client_number, name) VALUES (v_tenant, 'ZZT2-' || substr(md5(random()::text),1,8), 'ZZ Dry Run Client') RETURNING id INTO v_client;
   INSERT INTO sites (tenant_id, site_number, name, client_id) VALUES (v_tenant, 'ZZT2-A', 'ZZ site with client', v_client) RETURNING id INTO v_site;
@@ -240,6 +243,29 @@ BEGIN
   END;
   RAISE NOTICE 'PASS (g)';
   EXECUTE 'RESET ROLE';
+
+  INSERT INTO clients (tenant_id, client_number, name) VALUES (v_tenant, 'ZZT2Y-' || substr(md5(random()::text),1,8), 'ZZ Client Y') RETURNING id INTO v_client_y;
+  INSERT INTO sites (tenant_id, site_number, name, client_id) VALUES (v_tenant, 'ZZT2-C', 'ZZ site moved', v_client) RETURNING id INTO v_site_c;
+  INSERT INTO sites (tenant_id, site_number, name, client_id) VALUES (v_tenant, 'ZZT2-D', 'ZZ site deleted', v_client) RETURNING id INTO v_site_d;
+  PERFORM set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-000000000001','role','authenticated','email','__OWNER_EMAIL__')::text, true);
+  EXECUTE 'SET LOCAL role authenticated';
+  SELECT * INTO r FROM create_customer_invite(v_site_c);
+  c1 := r.code;
+  EXECUTE 'RESET ROLE';
+  UPDATE sites SET client_id = v_client_y WHERE id = v_site_c;
+  SELECT * INTO r FROM claim_customer_invite(v_tenant, c1, 'U_zz_h', 'Name H');
+  IF r.status <> 'invalid' THEN RAISE EXCEPTION 'FAIL (h): moved site claimed %', r.status; END IF;
+  SELECT count(*) INTO n FROM customer_line_accounts WHERE line_user_id = 'U_zz_h' OR client_id = v_client_y;
+  IF n <> 0 THEN RAISE EXCEPTION 'FAIL (h): account rows %', n; END IF;
+  RAISE NOTICE 'PASS (h)';
+  EXECUTE 'SET LOCAL role authenticated';
+  SELECT * INTO r FROM create_customer_invite(v_site_d);
+  c2 := r.code;
+  EXECUTE 'RESET ROLE';
+  DELETE FROM sites WHERE id = v_site_d;
+  SELECT * INTO r FROM claim_customer_invite(v_tenant, c2, 'U_zz_i', 'Name I');
+  IF r.status <> 'invalid' THEN RAISE EXCEPTION 'FAIL (i): deleted site claimed %', r.status; END IF;
+  RAISE NOTICE 'PASS (i)';
 END
 $t$;
 
