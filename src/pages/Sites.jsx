@@ -26,6 +26,7 @@ import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { warrantyEnd } from '../lib/warranty.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import FinishSiteModal from '../components/FinishSiteModal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
@@ -457,121 +458,6 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
   )
 }
 
-// Site completion with linked stock: per spec decision #6, the job keeps
-// 100% of its original cost -- leftover material re-enters stock at
-// unit_cost = 0 (it's already fully expensed). Modeled as a transfer_out
-// at this site paired with a transfer_in at the tenant's "ส่วนกลาง"
-// (central) site, both posted via record_stock_movement() so the
-// weighted-average recalculation happens atomically for each.
-function SiteCompleteModal({ site, onClose, onDone }) {
-  const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState([])
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
-
-  const loadRows = async () => {
-    let data
-    try {
-      data = await fetchAllRows(() => supabase
-        .from('inventory_stock_balances')
-        .select('inventory_item_id, quantity_on_hand, inventory_items(name, base_unit)')
-        .eq('site_id', site.id)
-        .gt('quantity_on_hand', 0)
-        .order('inventory_item_id'))
-    } catch (err) { setError(err.message); return }
-    setRows((data || []).map(r => ({
-      inventory_item_id: r.inventory_item_id,
-      name: r.inventory_items?.name,
-      base_unit: r.inventory_items?.base_unit,
-      quantity_on_hand: r.quantity_on_hand,
-      leftover: String(r.quantity_on_hand),
-    })))
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      await loadRows()
-      if (cancelled) return
-      setLoading(false)
-    })()
-    return () => { cancelled = true }
-  }, [site.id])
-
-  const setLeftover = (id, v) => setRows(rs => rs.map(r => r.inventory_item_id === id ? { ...r, leftover: v } : r))
-
-  const handleConfirm = async () => {
-    setSaving(true)
-    setError(null)
-    try {
-      const toTransfer = rows.filter(r => (parseFloat(r.leftover) || 0) > 0)
-      if (toTransfer.length) {
-        const { data: central, error: centralErr } = await supabase
-          .from('sites').select('id').eq('name', 'ส่วนกลาง').limit(1)
-        if (centralErr) throw centralErr
-        const centralId = central?.[0]?.id
-        if (!centralId) {
-          throw new Error('ไม่พบไซท์งานชื่อ "ส่วนกลาง" — กรุณาสร้างไซท์งานชื่อนี้ก่อน เพื่อใช้เป็นที่รับวัสดุที่เหลือกลับเข้าสต็อกกลาง')
-        }
-        for (const r of toTransfer) {
-          const qty = parseFloat(r.leftover) || 0
-          const { error: outErr } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: r.inventory_item_id, p_site_id: site.id, p_movement_type: 'transfer_out',
-            p_quantity: qty, p_unit_cost: null, p_reference_type: 'site_completion', p_reference_id: site.id, p_notes: null,
-          })
-          if (outErr) throw outErr
-          const { error: inErr } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: r.inventory_item_id, p_site_id: centralId, p_movement_type: 'transfer_in',
-            p_quantity: qty, p_unit_cost: 0, p_reference_type: 'site_completion', p_reference_id: site.id, p_notes: null,
-          })
-          if (inErr) throw inErr
-        }
-      }
-      const { error: siteErr } = await supabase.from('sites')
-        .update({ status: 'Completed', end_date: new Date().toISOString().slice(0, 10) }).eq('id', site.id)
-      if (siteErr) throw siteErr
-      onDone()
-    } catch (e) {
-      // Refresh rows from the live DB before surfacing the error: any item
-      // whose transfer_out/transfer_in already succeeded this attempt now has
-      // less/zero balance at this site, so a retry only reprocesses what's
-      // actually still on hand (see final-review Fix 1).
-      await loadRows()
-      setError(e.message)
-    }
-    finally { setSaving(false) }
-  }
-
-  return (
-    <Modal title={`จบไซท์งาน — ${site.name}`} onClose={onClose} maxWidth={560}>
-      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
-        <p style={{ color: 'var(--text2)', fontSize: 13 }}>
-          ไซท์นี้มีวัสดุคงคลังค้างอยู่ — กรอกจำนวนที่เหลือจริงต่อรายการ (ถ้าใช้หมดแล้วให้ใส่ 0) เพื่อโอนเข้าสต็อกกลาง (ส่วนกลาง) ที่ต้นทุน 0 บาท (งานนี้รับรู้ต้นทุนเต็มจำนวนไปแล้ว)
-        </p>
-        {loading ? <div>⏳ กำลังโหลด...</div> : (
-          <div style={{ display: 'grid', gap: 8 }}>
-            {rows.map(r => (
-              <div key={r.inventory_item_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13 }}>{r.name} (มี {fmt(r.quantity_on_hand)} {r.base_unit})</span>
-                <input className="input input-sm num-spin" style={{ width: 100 }} type="number" min="0" step="any" max={r.quantity_on_hand}
-                  value={r.leftover} onChange={e => setLeftover(r.inventory_item_id, e.target.value)} />
-              </div>
-            ))}
-            {!rows.length && <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่มีวัสดุคงคลังค้างอยู่ที่ไซท์นี้</div>}
-          </div>
-        )}
-        {error && <div className="alert alert-error">{error}</div>}
-      </div>
-      <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
-        <button type="button" className="btn btn-primary" disabled={saving || loading} onClick={handleConfirm}>
-          {saving ? '⏳...' : '✅ ยืนยันจบไซท์งาน'}
-        </button>
-      </div>
-    </Modal>
-  )
-}
-
 export default function Sites({ navigateTo, openSiteOverview, navState }) {
   const isPhone = useIsPhone()
   const { role } = useUserRole()
@@ -603,7 +489,6 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
     }
     setEditSite({ ...st, ...extra }); setShowForm(true)
   }
-  const [completeId,  setCompleteId]  = useState(null)     // id to mark completed
   const [completeSite, setCompleteSite] = useState(null)
   const [deleteId,    setDeleteId]    = useState(null)
   const [saving,      setSaving]      = useState(false)
@@ -694,20 +579,6 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
     }
   }
 
-  const handleComplete = async () => {
-    if (!completeId) return
-    const { error } = await supabase.from('sites').update({ status: 'Completed', end_date: new Date().toISOString().slice(0,10) }).eq('id', completeId)
-    if (!error) { setCompleteId(null); refetch() }
-    else alert('Error: ' + error.message)
-  }
-
-  const handleCompleteClick = async (s) => {
-    const { data, error } = await supabase.from('inventory_stock_balances').select('id').eq('site_id', s.id).gt('quantity_on_hand', 0).limit(1)
-    if (error) { alert('Error: ' + error.message); return }
-    if (data?.length) setCompleteSite(s)
-    else setCompleteId(s.id)
-  }
-
   const handleDelete = async () => {
     if (!deleteId) return
     const { error } = await supabase.from('sites').delete().eq('id', deleteId)
@@ -718,7 +589,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
   // Row ⋯ menu, shared by the table row and the phone card. PM gets none: completing and
   // deleting write sites directly; a PM sets the status in the edit form instead.
   const siteMenuItems = s => pm ? [] : [
-    ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => handleCompleteClick(s) }] : []),
+    ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => setCompleteSite(s) }] : []),
     { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
   ]
 
@@ -1009,18 +880,8 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
         </Modal>
       )}
 
-      {/* ── Confirm Complete ── */}
-      {completeId && (
-        <ConfirmDialog
-          title="จบไซท์งาน"
-          message={`ยืนยันการจบงานไซท์นี้? สถานะจะเปลี่ยนเป็น Completed และบันทึกวันที่วันนี้เป็นวันจบงาน`}
-          onConfirm={handleComplete}
-          onCancel={() => setCompleteId(null)}
-        />
-      )}
-
       {completeSite && (
-        <SiteCompleteModal
+        <FinishSiteModal
           site={completeSite}
           onClose={() => setCompleteSite(null)}
           onDone={() => { setCompleteSite(null); refetch() }}
