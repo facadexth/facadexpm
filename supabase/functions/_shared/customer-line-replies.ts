@@ -102,21 +102,21 @@ export function statusText(sites: SiteStatus[], today: string, brandName: string
 
 // ---- Flex carousel for "ประกันของฉัน" ----
 
-const ALT_TEXT_MAX = 400
-const COLOR_ACTIVE = '#2F6B3F'
+export const ALT_TEXT_MAX = 400
+export const COLOR_ACTIVE = '#2F6B3F'
 const COLOR_GREY = '#6B6660'
-const COLOR_PENDING = '#B7791F'
+export const COLOR_PENDING = '#B7791F'
 const COLOR_TRACK = '#EFEAE3'
-const COLOR_PRIMARY = '#D4B596'
+export const COLOR_PRIMARY = '#D4B596'
 
-type Flex = Record<string, unknown>
+export type Flex = Record<string, unknown>
 
-function dayNum(ymd: string): number {
+export function dayNum(ymd: string): number {
   const [y, m, d] = ymd.slice(0, 10).split('-').map(Number)
   return Math.round(Date.UTC(y, m - 1, d) / 86400000)
 }
 
-function row(label: string, value: string): Flex {
+export function row(label: string, value: string): Flex {
   return {
     type: 'box', layout: 'baseline', spacing: 'sm',
     contents: [

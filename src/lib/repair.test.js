@@ -35,6 +35,11 @@ function checkFlex(msg) {
         expect(n.layout).toBeTruthy()
         expect(Array.isArray(n.contents)).toBe(true)
       }
+      if (n.type === 'button') {
+        const label = n.action.label
+        expect([...label].length).toBeLessThanOrEqual(20)
+        expect(label.length).toBeLessThanOrEqual(20)
+      }
       if (n.type === 'image') expect(n.url.startsWith('https://')).toBe(true)
     }
   })
@@ -125,6 +130,26 @@ describe('texts', () => {
   })
 })
 
+describe('missing time', () => {
+  it('no start time leaves out the range', () => {
+    const t = { ...sched, scheduled_start: null }
+    expect(scheduleText(t)).toBe('📅 นัดเข้าซ่อม RP2610-001\nบ้านคุณสมชาย\nพ. 21/10/2569\nหากไม่สะดวก ตอบกลับในแชทนี้ได้เลยครับ')
+    expect(reminderText(t)).toBe('🔔 พรุ่งนี้ ทีมช่างจะเข้าซ่อมที่ บ้านคุณสมชาย\nพ. 21/10/2569\nรบกวนเตรียมพื้นที่หน้างานให้ด้วยนะครับ 🙏')
+    checkFlex(repairStatusFlex([t], '2026-10-20'))
+  })
+  it('no duration leaves out end time and hours', () => {
+    for (const d of [null, 0]) {
+      const t = { ...sched, duration_hours: d }
+      expect(scheduleText(t)).toContain('\nพ. 21/10/2569 09:00\n')
+      expect(scheduleText(t)).not.toMatch(/–|ประมาณ/)
+      expect(reminderText(t)).toContain('\nพ. 21/10/2569 · 09:00\n')
+      expect(reminderText(t)).not.toContain('–')
+      const s = JSON.stringify(repairStatusFlex([t], '2026-10-20').contents)
+      expect(s).not.toMatch(/–|ประมาณ/)
+    }
+  })
+})
+
 describe('repairStatusFlex', () => {
   const today = '2026-10-20'
   it('empty gives the no-tickets text', () => {
@@ -139,7 +164,7 @@ describe('repairStatusFlex', () => {
     expect(s).toContain('พ. 21/10/2569')
     expect(s).toContain('09:00–10:30')
     expect(s).toContain('อยู่ในประกัน · ไม่มีค่าใช้จ่าย')
-    expect(s).toContain('ติดต่อเรา / ขอเลื่อนนัด')
+    expect(s).toContain('ติดต่อ / ขอเลื่อนนัด')
     expect(s).toContain('"text":"ติดต่อเรา"')
     for (const l of ['รับเรื่อง', 'นัดเข้า', 'กำลังซ่อม', 'เสร็จ']) expect(s).toContain(`"${l}"`)
   })

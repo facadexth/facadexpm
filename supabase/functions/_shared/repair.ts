@@ -4,6 +4,8 @@
 import { warrantyStatus, warrantyEnd } from './warranty.ts'
 import { formatThaiDate } from './thai-date.ts'
 import type { LineMessage } from './line-reply.ts'
+import { row, dayNum, ALT_TEXT_MAX, COLOR_PRIMARY, COLOR_ACTIVE as COLOR_GREEN, COLOR_PENDING as COLOR_AMBER } from './customer-line-replies.ts'
+import type { Flex } from './customer-line-replies.ts'
 
 export type RepairStatus = 'pending_review' | 'received' | 'scheduled' | 'in_progress' | 'done' | 'declined'
 
@@ -120,55 +122,47 @@ export function repairNoTicketsText(): string {
   return 'ยังไม่มีรายการแจ้งซ่อมครับ หากพบปัญหา กด "แจ้งซ่อม" ได้ตลอด'
 }
 
+function timeRange(t: RepairTicket): string {
+  const st = startTime(t.scheduled_start)
+  if (!st) return ''
+  const en = Number(t.duration_hours) > 0 ? endTime(t.scheduled_start, t.duration_hours) : ''
+  return en && en !== st ? `${st}–${en}` : st
+}
+
+function durationNote(t: RepairTicket): string {
+  return startTime(t.scheduled_start) && Number(t.duration_hours) > 0 ? ` (ประมาณ ${fmtHours(t.duration_hours)} ชม.)` : ''
+}
+
 export function scheduleText(t: RepairTicket): string {
   const d = String(t.scheduled_date ?? '')
-  return `📅 นัดเข้าซ่อม ${t.ticket_number}\n${t.site_name}\n${thaiWeekday(d)} ${formatThaiDate(d)} ${startTime(t.scheduled_start)}–${endTime(t.scheduled_start, t.duration_hours)} (ประมาณ ${fmtHours(t.duration_hours)} ชม.)\nหากไม่สะดวก ตอบกลับในแชทนี้ได้เลยครับ`
+  const when = [thaiWeekday(d), formatThaiDate(d), timeRange(t)].filter(Boolean).join(' ')
+  return `📅 นัดเข้าซ่อม ${t.ticket_number}\n${t.site_name}\n${when}${durationNote(t)}\nหากไม่สะดวก ตอบกลับในแชทนี้ได้เลยครับ`
 }
 
 export function reminderText(t: RepairTicket): string {
   const d = String(t.scheduled_date ?? '')
-  return `🔔 พรุ่งนี้ ทีมช่างจะเข้าซ่อมที่ ${t.site_name}\n${thaiWeekday(d)} ${formatThaiDate(d)} · ${startTime(t.scheduled_start)}–${endTime(t.scheduled_start, t.duration_hours)}\nรบกวนเตรียมพื้นที่หน้างานให้ด้วยนะครับ 🙏`
+  const range = timeRange(t)
+  return `🔔 พรุ่งนี้ ทีมช่างจะเข้าซ่อมที่ ${t.site_name}\n${thaiWeekday(d)} ${formatThaiDate(d)}${range ? ` · ${range}` : ''}\nรบกวนเตรียมพื้นที่หน้างานให้ด้วยนะครับ 🙏`
 }
 
 // ---- Flex ----
-// Same style as warrantyFlex in customer-line-replies.ts (those constants are not exported there,
-// so the few colours are repeated here rather than editing that file).
+// Same style as warrantyFlex in customer-line-replies.ts; helpers and colours are imported from there.
 
-const ALT_TEXT_MAX = 400
 const MAX_BUBBLES = 10
 const DONE_WINDOW_DAYS = 30
-const COLOR_PRIMARY = '#D4B596'
-const COLOR_GREEN = '#2F6B3F'
 const COLOR_BEFORE = '#B04A38'
 const COLOR_DOT_ON = '#2B6CB0'
 const COLOR_DOT_OFF = '#DDDDDD'
 const HEADER_COLOR: Record<string, string> = {
-  pending_review: '#B7791F',
-  received: '#B7791F',
+  pending_review: COLOR_AMBER,
+  received: COLOR_AMBER,
   scheduled: '#2B6CB0',
   in_progress: '#6B46C1',
   done: '#2F6B3F',
 }
 
-type Flex = Record<string, unknown>
-
-function row(label: string, value: string): Flex {
-  return {
-    type: 'box', layout: 'baseline', spacing: 'sm',
-    contents: [
-      { type: 'text', text: label, size: 'sm', color: '#8A847C', flex: 2 },
-      { type: 'text', text: value, size: 'sm', color: '#2B2723', flex: 3, wrap: true },
-    ],
-  }
-}
-
 function altOf(text: string): string {
-  return Array.from(text).slice(0, ALT_TEXT_MAX).join('')
-}
-
-function dayNum(ymd: string): number {
-  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number)
-  return Math.round(Date.UTC(y, m - 1, d) / 86400000)
+  return text.slice(0, ALT_TEXT_MAX)
 }
 
 // ISO timestamp -> Bangkok 'YYYY-MM-DD'.
@@ -223,8 +217,8 @@ function statusBubble(t: RepairTicket, today: string): Flex {
       contents: [
         { type: 'text', text: '📅 นัดเข้าซ่อม', size: 'xs', color: '#2B6CB0', weight: 'bold' },
         { type: 'text', text: `${thaiWeekday(t.scheduled_date)} ${formatThaiDate(t.scheduled_date)}`, size: 'sm', weight: 'bold', wrap: true },
-        ...(startTime(t.scheduled_start)
-          ? [{ type: 'text', text: `${startTime(t.scheduled_start)}–${endTime(t.scheduled_start, t.duration_hours)} (ประมาณ ${fmtHours(t.duration_hours)} ชม.)`, size: 'sm', color: '#5C554D', wrap: true }]
+        ...(timeRange(t)
+          ? [{ type: 'text', text: `${timeRange(t)}${durationNote(t)}`, size: 'sm', color: '#5C554D', wrap: true }]
           : []),
       ],
     })
@@ -235,7 +229,7 @@ function statusBubble(t: RepairTicket, today: string): Flex {
     body.push({
       type: 'text', size: 'sm', wrap: true, weight: 'bold',
       text: w.kind === 'active' ? 'อยู่ในประกัน · ไม่มีค่าใช้จ่าย' : 'นอกระยะประกัน · เจ้าหน้าที่จะแจ้งค่าใช้จ่าย',
-      color: w.kind === 'active' ? COLOR_GREEN : '#B7791F',
+      color: w.kind === 'active' ? COLOR_GREEN : COLOR_AMBER,
     })
   }
   return {
@@ -251,7 +245,7 @@ function statusBubble(t: RepairTicket, today: string): Flex {
     footer: {
       type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
       contents: [
-        { type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'ติดต่อเรา / ขอเลื่อนนัด', text: 'ติดต่อเรา' } },
+        { type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'ติดต่อ / ขอเลื่อนนัด', text: 'ติดต่อเรา' } },
       ],
     },
   }
