@@ -130,8 +130,8 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const [workerIds, setWorkerIds] = useState([])
   const [workerQuery, setWorkerQuery] = useState('')
   const [crewNames, setCrewNames] = useState({}) // worker id -> label, for crew not in useWorkers()
-  const [notify, setNotify] = useState(true)
-  const [sendReport, setSendReport] = useState(true) // R32: close also pushes the report to the customer
+  const [notify, setNotify] = useState(false) // set from customerPushDefault once the ticket loads
+  const [sendReport, setSendReport] = useState(false) // R32 (off until the ticket loads): close also pushes the report to the customer
   const [fixNote, setFixNote] = useState('')
 
   const loadMedia = useCallback(async () => {
