@@ -15,6 +15,7 @@ export const PENDING_ITEMS = [
   // Customers who messaged the tenant's own LINE OA asking for a quote or a repair (owner only in practice,
   // like offboarded_in_group: the Communication Center is owner-only).
   { key: 'customer_requests_open', icon: '💬', label: 'ลูกค้าทักทาง LINE', tab: 'communication_center' },
+  { key: 'warranty_followup', icon: '🛡️', label: 'ประกันใกล้หมด — ทักลูกค้า', tab: 'sites' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา',          tab: 'quotations' },
 ]
 

@@ -75,3 +75,12 @@ describe('customer LINE requests', () => {
     expect(PENDING_ITEMS.find(i => i.key === 'customer_requests_open')).toMatchObject({ label: 'ลูกค้าทักทาง LINE' })
   })
 })
+
+describe('warranty_followup bell item', () => {
+  it('is listed, points at the Sites list page, and shows when something is due', () => {
+    const item = PENDING_ITEMS.find(i => i.key === 'warranty_followup')
+    expect(item).toMatchObject({ icon: '🛡️', label: 'ประกันใกล้หมด — ทักลูกค้า', tab: 'sites' })
+    const shown = visiblePendingItems({ warranty_followup: 3 }, all)
+    expect(shown.map(i => [i.key, i.count, i.tab])).toEqual([['warranty_followup', 3, 'sites']])
+  })
+})

@@ -25,6 +25,7 @@ import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { warrantyEnd } from '../lib/warranty.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import WarrantyFollowupCard from '../components/WarrantyFollowupCard.jsx'
 import FinishSiteModal from '../components/FinishSiteModal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -595,6 +596,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
+      {(role === 'OWNER' || role === 'ADMIN') && <WarrantyFollowupCard />}
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && !pm && <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>}
