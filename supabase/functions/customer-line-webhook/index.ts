@@ -10,6 +10,7 @@ import { sendLineReplyMessages } from '../_shared/line-reply.ts'
 import { replyWithFallback } from '../_shared/reply-fallback.ts'
 import { handleCustomerEvent, type CustomerDeps } from '../_shared/customer-line-handler.ts'
 import type { SiteStatus } from '../_shared/customer-line-replies.ts'
+import { mediaTooBig, repairMediaExt, repairMediaPath, type RepairTicket, type MediaCounts } from '../_shared/repair.ts'
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -22,6 +23,28 @@ async function verifySignature(secret: string, rawBody: string, header: string |
 }
 
 const SIGNED_URL_SECONDS = 604800
+const REPAIR_SESSION_MS = 30 * 60 * 1000
+const REPAIR_BUCKET = 'repair-media'
+const MEDIA_FETCH_TIMEOUT_MS = 60000
+
+// Reads a body up to the 50 MB cap; null when it goes over (the rest is cancelled, never buffered).
+async function readCapped(res: Response): Promise<Uint8Array | null> {
+  if (!res.body) return new Uint8Array(0)
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (mediaTooBig(total)) { await reader.cancel().catch(() => {}); return null }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(total)
+  let off = 0
+  for (const c of chunks) { out.set(c, off); off += c.byteLength }
+  return out
+}
 const text = (body: string, status: number) => new Response(body, { status })
 
 function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
@@ -126,6 +149,190 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       const { data, error } = await admin.rpc('claim_customer_welcome', { p_tenant: tenantId, p_line_user_id: lineUserId })
       if (error) { console.error('customer-line welcome claim failed', error.code); return false }
       return data === true
+    },
+    async getRepairSession(lineUserId) {
+      const { data, error } = await admin.from('customer_line_repair_sessions').select('ticket_id, expires_at')
+        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
+      if (error) throw error
+      if (!data) return null
+      const { data: t, error: tErr } = await admin.from('repair_tickets').select('site_id')
+        .eq('tenant_id', tenantId).eq('id', data.ticket_id).maybeSingle()
+      if (tErr) throw tErr
+      if (!t) return null
+      const { data: site } = await admin.from('sites').select('name')
+        .eq('tenant_id', tenantId).eq('id', t.site_id).maybeSingle()
+      return { ticketId: data.ticket_id as string, siteName: (site?.name as string) ?? '', expiresAt: data.expires_at as string }
+    },
+    async listClientSites(clientId) {
+      const { data, error } = await admin.from('sites').select('id, name')
+        .eq('tenant_id', tenantId).eq('client_id', clientId).neq('status', 'Cancelled')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []).map((s) => ({ id: s.id as string, name: (s.name as string) ?? '' }))
+    },
+    async startRepair(clientId, siteId, lineUserId, displayName) {
+      // The site must belong to this client in this tenant.
+      const { data: site, error: sErr } = await admin.from('sites').select('id, name')
+        .eq('tenant_id', tenantId).eq('id', siteId).eq('client_id', clientId).maybeSingle()
+      if (sErr) throw sErr
+      if (!site) throw new Error('repair site not found')
+      // ticket_number is set by the BEFORE INSERT trigger.
+      const { data: ticket, error: tErr } = await admin.from('repair_tickets').insert({
+        tenant_id: tenantId, site_id: siteId, client_id: clientId, source: 'line', line_user_id: lineUserId,
+        status: 'pending_review', created_by: displayName ? `LINE: ${displayName}` : 'LINE',
+      }).select('id').single()
+      if (tErr) throw tErr
+      const expiresAt = new Date(Date.now() + REPAIR_SESSION_MS).toISOString()
+      // Replaces any stale session (PK tenant_id + line_user_id).
+      const { error: sessErr } = await admin.from('customer_line_repair_sessions').upsert(
+        { tenant_id: tenantId, line_user_id: lineUserId, ticket_id: ticket.id, expires_at: expiresAt },
+        { onConflict: 'tenant_id,line_user_id' },
+      )
+      if (sessErr) {
+        await admin.from('repair_tickets').delete().eq('tenant_id', tenantId).eq('id', ticket.id)
+        throw sessErr
+      }
+      return { ticketId: ticket.id as string, siteName: (site.name as string) ?? '' }
+    },
+    async appendRepairText(ticketId, newText) {
+      // Compare-and-set on the old description so two webhook calls cannot drop a line.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data, error } = await admin.from('repair_tickets').select('description')
+          .eq('tenant_id', tenantId).eq('id', ticketId).maybeSingle()
+        if (error) throw error
+        if (!data) return
+        const old = (data.description as string | null) ?? null
+        const next = old ? `${old}\n${newText}` : newText
+        let q = admin.from('repair_tickets').update({ description: next }).eq('tenant_id', tenantId).eq('id', ticketId)
+        q = old === null ? q.is('description', null) : q.eq('description', old)
+        const { data: upd, error: uErr } = await q.select('id')
+        if (uErr) throw uErr
+        if ((upd ?? []).length > 0) return
+      }
+      throw new Error('repair description busy')
+    },
+    async storeRepairMedia(ticketId, messageId, mediaType, fileName) {
+      let res: Response
+      try {
+        res = await fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`, {
+          headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
+        })
+      } catch { return 'error' }
+      // 202 = video still being prepared; anything but 200 is a failure.
+      if (res.status !== 200) { await res.body?.cancel().catch(() => {}); return 'error' }
+      const len = Number(res.headers.get('content-length'))
+      if (Number.isFinite(len) && len > 0 && mediaTooBig(len)) { await res.body?.cancel().catch(() => {}); return 'too_big' }
+      let bytes: Uint8Array | null
+      try { bytes = await readCapped(res) } catch { return 'error' }
+      if (bytes === null) return 'too_big'
+      const mime = (res.headers.get('content-type') ?? '').split(';')[0].trim() || 'application/octet-stream'
+      const ext = repairMediaExt(mime, mediaType === 'file' ? fileName : null)
+      const path = repairMediaPath(tenantId, ticketId, Date.now(), messageId, ext)
+      const { error: upErr } = await admin.storage.from(REPAIR_BUCKET).upload(path, bytes, { contentType: mime, upsert: false })
+      if (upErr) { console.error('customer-line repair upload failed', upErr.message); return 'error' }
+      const { error: insErr } = await admin.from('repair_ticket_media').insert({
+        tenant_id: tenantId, ticket_id: ticketId, role: 'customer', media_type: mediaType, storage_path: path,
+        file_name: fileName ?? null, mime, size_bytes: bytes.byteLength,
+      })
+      if (insErr) {
+        await admin.storage.from(REPAIR_BUCKET).remove([path])
+        console.error('customer-line repair media row failed', insErr.code)
+        return 'error'
+      }
+      return 'ok'
+    },
+    async finishRepair(lineUserId) {
+      const { data: sess, error } = await admin.from('customer_line_repair_sessions').select('ticket_id')
+        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
+      if (error) throw error
+      if (!sess) return null
+      const { error: dErr } = await admin.from('customer_line_repair_sessions').delete()
+        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId)
+      if (dErr) throw dErr
+      const { data: t, error: tErr } = await admin.from('repair_tickets').select('ticket_number, description, site_id')
+        .eq('tenant_id', tenantId).eq('id', sess.ticket_id).maybeSingle()
+      if (tErr) throw tErr
+      if (!t) return null
+      const { data: site } = await admin.from('sites').select('name').eq('tenant_id', tenantId).eq('id', t.site_id).maybeSingle()
+      const { data: media, error: mErr } = await admin.from('repair_ticket_media').select('media_type')
+        .eq('tenant_id', tenantId).eq('ticket_id', sess.ticket_id)
+      if (mErr) throw mErr
+      const counts: MediaCounts = { text: String(t.description ?? '').trim() ? 1 : 0, image: 0, video: 0, file: 0 }
+      for (const m of media ?? []) {
+        const k = m.media_type as 'image' | 'video' | 'file'
+        if (k in counts) counts[k] = (counts[k] ?? 0) + 1
+      }
+      return { ticketNumber: t.ticket_number as string, siteName: (site?.name as string) ?? '', counts }
+    },
+    async cancelRepair(lineUserId) {
+      const { data: sess, error } = await admin.from('customer_line_repair_sessions').select('ticket_id')
+        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
+      if (error) throw error
+      if (!sess) return
+      const ticketId = sess.ticket_id as string
+      // Only discard the customer's own report that staff have not picked up yet.
+      const { data: t, error: tErr } = await admin.from('repair_tickets').select('id')
+        .eq('tenant_id', tenantId).eq('id', ticketId).eq('source', 'line').eq('line_user_id', lineUserId)
+        .eq('status', 'pending_review').maybeSingle()
+      if (tErr) throw tErr
+      if (t) {
+        const { data: media, error: mErr } = await admin.from('repair_ticket_media').select('storage_path')
+          .eq('tenant_id', tenantId).eq('ticket_id', ticketId)
+        if (mErr) throw mErr
+        const paths = (media ?? []).map((m) => m.storage_path as string)
+          .filter((p) => p.startsWith(`${tenantId}/${ticketId}/`))
+        if (paths.length > 0) {
+          // Best effort: the rows go even if storage fails.
+          const { error: rmErr } = await admin.storage.from(REPAIR_BUCKET).remove(paths)
+          if (rmErr) console.error('customer-line repair media remove failed', rmErr.message)
+        }
+        // Media rows and the session cascade with the ticket.
+        const { error: delErr } = await admin.from('repair_tickets').delete()
+          .eq('tenant_id', tenantId).eq('id', ticketId).eq('status', 'pending_review')
+        if (delErr) throw delErr
+      }
+      const { error: sErr } = await admin.from('customer_line_repair_sessions').delete()
+        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId)
+      if (sErr) throw sErr
+    },
+    async listRepairTickets(clientId) {
+      const { data, error } = await admin.from('repair_tickets')
+        .select('ticket_number, site_id, status, description, fix_note, scheduled_date, scheduled_start, duration_hours, created_at, done_at')
+        .eq('tenant_id', tenantId).eq('client_id', clientId).neq('status', 'declined')
+        .order('created_at', { ascending: false }).limit(30)
+      if (error) throw error
+      const rows = data ?? []
+      const siteIds = [...new Set(rows.map((r) => r.site_id as string))]
+      const sites = new Map<string, { name: string; handover_date: string | null; warranty_months: number | null }>()
+      if (siteIds.length > 0) {
+        const { data: s, error: sErr } = await admin.from('sites').select('id, name, handover_date, warranty_months')
+          .eq('tenant_id', tenantId).in('id', siteIds)
+        if (sErr) throw sErr
+        for (const x of s ?? []) {
+          sites.set(x.id as string, {
+            name: (x.name as string) ?? '',
+            handover_date: (x.handover_date as string | null) ?? null,
+            warranty_months: (x.warranty_months as number | null) ?? null,
+          })
+        }
+      }
+      return rows.map((r): RepairTicket => {
+        const site = sites.get(r.site_id as string)
+        return {
+          ticket_number: r.ticket_number as string,
+          site_name: site?.name ?? '',
+          status: r.status as string,
+          description: r.description as string | null,
+          fix_note: r.fix_note as string | null,
+          scheduled_date: r.scheduled_date as string | null,
+          scheduled_start: r.scheduled_start as string | null,
+          duration_hours: r.duration_hours == null ? null : Number(r.duration_hours),
+          created_at: r.created_at as string | null,
+          done_at: r.done_at as string | null,
+          handover_date: site?.handover_date ?? null,
+          warranty_months: site?.warranty_months ?? null,
+        }
+      })
     },
     async touchAccount(lineUserId) {
       await admin.from('customer_line_accounts').update({ last_seen_at: new Date().toISOString() })

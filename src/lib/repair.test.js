@@ -3,6 +3,7 @@ import {
   REPAIR_STATUS, REPAIR_STEPS, canMove, stepIndex, mediaTooBig, thaiWeekday, endTime,
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, scheduleText, reminderText, repairStatusFlex, repairReportFlex,
+  repairMediaExt, repairMediaPath, quickReplyLabel,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const sched = {
@@ -255,5 +256,34 @@ describe('repairReportFlex', () => {
     expect(imgs).toBe(0)
     expect(JSON.stringify(m.contents)).not.toContain('"ก่อน"')
     expect(JSON.stringify(m.contents)).not.toContain('"หลัง"')
+  })
+})
+
+describe('repair media helpers', () => {
+  it('ext from mime for images and videos', () => {
+    expect(repairMediaExt('image/jpeg')).toBe('jpg')
+    expect(repairMediaExt('image/png')).toBe('png')
+    expect(repairMediaExt('video/mp4')).toBe('mp4')
+    expect(repairMediaExt('video/quicktime')).toBe('mov')
+    expect(repairMediaExt('application/pdf')).toBe('pdf')
+    expect(repairMediaExt('image/jpeg; charset=binary')).toBe('jpg')
+    expect(repairMediaExt('application/octet-stream')).toBe('bin')
+    expect(repairMediaExt('')).toBe('bin')
+  })
+  it('ext from the file name for files, lowercased and safe', () => {
+    expect(repairMediaExt('application/octet-stream', 'แบบ.PDF')).toBe('pdf')
+    expect(repairMediaExt('application/pdf', 'scan.final.Docx')).toBe('docx')
+    expect(repairMediaExt('application/pdf', 'noext')).toBe('pdf')
+    expect(repairMediaExt('application/octet-stream', 'x.../../etc')).toBe('bin')
+    expect(repairMediaExt('application/pdf', 'a.thisistoolongext')).toBe('pdf')
+  })
+  it('storage path: tenant first, then ticket, ts-messageId.ext', () => {
+    expect(repairMediaPath('t1', 'k1', 1700000000000, '5551234', 'jpg')).toBe('t1/k1/1700000000000-5551234.jpg')
+    expect(repairMediaPath('t1', 'k1', 1, '../x/9', 'jpg')).toBe('t1/k1/1-x9.jpg')
+  })
+  it('quick-reply label keeps at most 20 characters', () => {
+    expect(quickReplyLabel('งาน A')).toBe('งาน A')
+    expect([...quickReplyLabel('โครงการบ้านพักอาศัยสองชั้นหลังที่ 0')].length).toBe(20)
+    expect(quickReplyLabel('')).toBe('-')
   })
 })

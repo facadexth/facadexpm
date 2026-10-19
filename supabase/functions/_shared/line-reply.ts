@@ -1,8 +1,10 @@
 // Multi-message LINE reply helper. No Deno or supabase imports: this file is also
 // imported by vitest from src/lib. Never throws.
 
+export type QuickReplyItem = { type: 'action'; action: { type: 'message'; label: string; text: string } }
+
 export type LineMessage =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; quickReply?: { items: QuickReplyItem[] } }
   | { type: 'flex'; altText: string; contents: object }
   | { type: 'image'; originalContentUrl: string; previewImageUrl: string }
 

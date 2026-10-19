@@ -327,3 +327,41 @@ export function repairReportFlex(
 export function repairWarrantyEnd(handoverDate: string | null | undefined, months: number | null | undefined): string | null {
   return warrantyEnd(handoverDate, Number(months) || 0)
 }
+
+// ---- Media storage helpers (used by customer-line-webhook) ----
+
+const MIME_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/3gpp': '3gp',
+  'video/webm': 'webm',
+  'application/pdf': 'pdf',
+}
+
+// File extension for a stored repair media object. Files use their own name's extension
+// (1-8 letters/digits, lowercased); otherwise the mime type decides; 'bin' if unknown.
+export function repairMediaExt(mime: string | null | undefined, fileName?: string | null): string {
+  const m = /\.([A-Za-z0-9]{1,8})$/.exec(String(fileName ?? ''))
+  if (m) return m[1].toLowerCase()
+  const base = String(mime ?? '').split(';')[0].trim().toLowerCase()
+  return MIME_EXT[base] ?? 'bin'
+}
+
+// repair-media/{tenant}/{ticket}/{ts}-{messageId}.{ext}. The first folder must be the tenant id
+// (storage policy). The message id is reduced to safe characters so it can never add a folder.
+export function repairMediaPath(tenantId: string, ticketId: string, ts: number, messageId: string, ext: string): string {
+  const id = String(messageId).replace(/[^A-Za-z0-9_-]/g, '')
+  return `${tenantId}/${ticketId}/${ts}-${id}.${ext}`
+}
+
+// LINE quick-reply labels allow at most 20 characters.
+export function quickReplyLabel(s: string): string {
+  const cut = [...String(s ?? '')].slice(0, 20).join('').trim()
+  return cut || '-'
+}

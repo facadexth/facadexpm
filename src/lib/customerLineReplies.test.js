@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  inviteOkText, inviteInvalidText, notLinkedText, quoteText, repairTempText,
-  repairStatusTempText, warrantyText, warrantyFlex, contactText, statusText,
+  inviteOkText, inviteInvalidText, notLinkedText, quoteText,
+  warrantyText, warrantyFlex, contactText, statusText,
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
 
 const big = { name: 'บ้านคุณบิ๊ก', status: 'Ongoing', pct: 62, phases: ['ติดตั้งกระจก ชั้น 2'], endDate: '2026-11-15', handoverDate: null, warrantyMonths: 12 }
@@ -17,10 +17,8 @@ describe('static reply texts', () => {
     expect(statusText([], '2026-10-19', '').split('\n')[0]).toBe('ขอบคุณที่ไว้วางใจครับ 🙏')
     expect(notLinkedText('')).not.toContain('  ')
   })
-  it('quote, repair and repair-status replies', () => {
+  it('quote reply', () => {
     expect(quoteText()).toBe('ขอบคุณที่สนใจครับ\nส่งแบบหรือรูปหน้างาน ขนาดคร่าวๆ ที่ตั้งหน้างาน และเบอร์โทรมาในแชทนี้ได้เลย\nเจ้าหน้าที่จะติดต่อกลับโดยเร็ว')
-    expect(repairTempText()).toBe('พิมพ์อาการและส่งรูปมาในแชทนี้ได้เลยครับ\nเจ้าหน้าที่จะรับเรื่องและติดต่อกลับ')
-    expect(repairStatusTempText()).toBe('ยังไม่มีรายการแจ้งซ่อมในระบบ\nถ้าแจ้งไว้ทางแชท เจ้าหน้าที่จะตอบในแชทนี้')
   })
   it('contact reply with and without phone and hours', () => {
     expect(contactText({ companyName: 'FacadeX', phone: '02-000-0000', hours: 'จันทร์–เสาร์ 08:00–17:00' }))

@@ -38,14 +38,6 @@ export function quoteText(): string {
   return 'ขอบคุณที่สนใจครับ\nส่งแบบหรือรูปหน้างาน ขนาดคร่าวๆ ที่ตั้งหน้างาน และเบอร์โทรมาในแชทนี้ได้เลย\nเจ้าหน้าที่จะติดต่อกลับโดยเร็ว'
 }
 
-export function repairTempText(): string {
-  return 'พิมพ์อาการและส่งรูปมาในแชทนี้ได้เลยครับ\nเจ้าหน้าที่จะรับเรื่องและติดต่อกลับ'
-}
-
-export function repairStatusTempText(): string {
-  return 'ยังไม่มีรายการแจ้งซ่อมในระบบ\nถ้าแจ้งไว้ทางแชท เจ้าหน้าที่จะตอบในแชทนี้'
-}
-
 export function warrantyText(sites: SiteStatus[], today: string): string {
   const lines = sites
     .filter((s) => s.status !== 'Cancelled')
