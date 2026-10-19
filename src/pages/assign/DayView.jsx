@@ -75,7 +75,7 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
         title={`${a.workers?.name || ''}${a.is_team_leader ? ' — หัวหน้าทีม' : ''}${a.type === 'factory' ? ' (โรงงาน)' : ''}${a.ot_hours > 0 ? ' OT' + a.ot_hours + 'h' : ''}`}
         style={{ background: tc.bg, color: tc.color, borderRadius: 5, padding: '3px 8px', margin: 2, fontSize: 11, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
         {a.is_team_leader && <img src={teamLeaderBadge} alt="หัวหน้าทีม" style={{ width: 14, height: 14, objectFit: 'contain' }} />}
-        {a.workers?.nickname || a.workers?.name}{a.type === 'factory' ? ' 🏭' : ''}{a.ot_hours > 0 ? ' ⚡' : ''}
+        {a.workers?.nickname || a.workers?.name}{a.type === 'factory' ? ' 🏭' : ''}{a.repair_ticket_id ? ' 🔧' : ''}{a.ot_hours > 0 ? ' ⚡' : ''}
       </span>
     )
   }

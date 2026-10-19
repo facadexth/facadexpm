@@ -11,7 +11,7 @@ import { supabase } from '../lib/supabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { ConfirmDialog } from '../components/Modal.jsx'
-import RepairTicketModal from '../components/RepairTicketModal.jsx'
+import RepairTicketModal, { CONFIRM_MOVE } from '../components/RepairTicketModal.jsx'
 import NewRepairTicketModal from '../components/NewRepairTicketModal.jsx'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { releasesCrew, removeFutureUnconfirmedCrew } from '../lib/repairCrew.js'
@@ -129,6 +129,7 @@ export default function Repairs() {
   const [openTicketId, setOpenTicketId] = useState(null)
   const [showNew, setShowNew] = useState(false)
   const [declineTicket, setDeclineTicket] = useState(null)
+  const [confirmDrag, setConfirmDrag] = useState(null) // { ticket, to } for drags that need a confirm
   const [busyId, setBusyId] = useState(null)
   const [dragging, setDragging] = useState(null) // the ticket being dragged
   const [dragOver, setDragOver] = useState(null) // column status under the pointer
@@ -223,6 +224,7 @@ export default function Repairs() {
     if (!t) return
     const action = dropAction(t.status, to)
     if (action === 'move' && to === 'declined') setDeclineTicket(t) // ไม่รับ always asks first
+    else if (action === 'move' && CONFIRM_MOVE[`${t.status}>${to}`]) setConfirmDrag({ ticket: t, to }) // releases crew / reopens
     else if (action === 'move') move(t, to)
     else if (action === 'modal') setOpenTicketId(t.id)
   }
@@ -291,6 +293,16 @@ export default function Repairs() {
       )}
       {showNew && (
         <NewRepairTicketModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load() }} />
+      )}
+      {confirmDrag && (
+        <ConfirmDialog
+          title={`ย้ายงานซ่อม ${confirmDrag.ticket.ticket_number}`}
+          message={CONFIRM_MOVE[`${confirmDrag.ticket.status}>${confirmDrag.to}`]}
+          danger
+          confirmDisabled={busyId === confirmDrag.ticket.id}
+          onCancel={() => setConfirmDrag(null)}
+          onConfirm={async () => { const { ticket, to } = confirmDrag; await move(ticket, to); setConfirmDrag(null) }}
+        />
       )}
       {declineTicket && (
         <ConfirmDialog

@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { buildWebhookUrl } from '../lib/customerLine.js'
+import { saveAppSetting } from '../hooks/useSupabase.js'
+import { parseToggle } from '../lib/linePushToggles.js'
 
 const COLS = 'channel_id, webhook_key, basic_id, display_name, contact_phone, contact_hours, verified_at'
 
@@ -49,6 +51,9 @@ export default function CustomerLineSettings() {
   const [testMsg, setTestMsg] = useState(null) // { ok, text }
   const [savingContact, setSavingContact] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [pushOn, setPushOn] = useState(true) // default ON when never saved
+  const [pushLoaded, setPushLoaded] = useState(false)
+  const [savingPush, setSavingPush] = useState(false)
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('customer_line_channels').select(COLS).maybeSingle()
@@ -64,6 +69,30 @@ export default function CustomerLineSettings() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    let alive = true
+    supabase.from('app_settings').select('value').eq('key', 'customer_line_push_enabled').maybeSingle()
+      .then(({ data, error }) => {
+        if (!alive) return
+        if (!error) setPushOn(parseToggle(data?.value, true))
+        setPushLoaded(true)
+      })
+    return () => { alive = false }
+  }, [])
+
+  const handlePushToggle = async () => {
+    const next = !pushOn
+    setSavingPush(true)
+    try {
+      await saveAppSetting('customer_line_push_enabled', next)
+      setPushOn(next)
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + e.message)
+    } finally {
+      setSavingPush(false)
+    }
+  }
 
   const badge = row?.verified_at
     ? { text: `เชื่อมแล้ว · @${String(row.basic_id || '').replace(/^@/, '')}`, color: 'var(--accent)' }
@@ -192,6 +221,16 @@ export default function CustomerLineSettings() {
             </ol>
           </div>
         )}
+      </div>
+
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" style={{ marginTop: 3 }} checked={pushOn} disabled={!pushLoaded || savingPush} onChange={handlePushToggle} />
+          <span>
+            <span style={{ fontWeight: 600 }}>ส่งไลน์แจ้งลูกค้าอัตโนมัติ (นัดซ่อม / เตือนก่อน 1 วัน / รายงานซ่อมเสร็จ)</span>
+            <span style={{ display: 'block', color: 'var(--text3)', fontSize: 12, marginTop: 2 }}>ปิดแล้วระบบจะไม่ส่งข้อความหาลูกค้าเอง ลูกค้ายังเช็คสถานะแจ้งซ่อมจากเมนูได้ตามปกติ</span>
+          </span>
+        </label>
       </div>
 
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>

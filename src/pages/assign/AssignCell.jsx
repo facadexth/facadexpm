@@ -15,11 +15,11 @@ function segInfo(seg, variant, isPhone) {
     const c = siteColor(seg.site_id)
     const full = seg.site_name || seg.site_number || '—'
     const weekLabel = siteCellLabel({ isPhone: isPhone && variant !== 'month', siteName: seg.site_name, siteNumber: seg.site_number, shortName: seg.site_short_name, isDefault: seg.site_is_default })
-    const pre = seg.type === 'factory' ? '🏭 ' : ''
+    const pre = (seg.type === 'factory' ? '🏭 ' : '') + (seg.is_repair ? '🔧 ' : '')
     const label = variant === 'month' ? siteAbbrev(seg.site_name || seg.site_number) : weekLabel
     return {
       bg: c.bg, color: c.color, label: pre + label,
-      title: `${full}${seg.type === 'factory' ? ' (ผลิตที่โรงงาน)' : ''}${seg.ot > 0 ? ' · OT ' + seg.ot + 'h' : ''}`,
+      title: `${full}${seg.type === 'factory' ? ' (ผลิตที่โรงงาน)' : ''}${seg.is_repair ? ' (งานซ่อม)' : ''}${seg.ot > 0 ? ' · OT ' + seg.ot + 'h' : ''}`,
     }
   }
   const tc = TYPE_COLOR[seg.type] || TYPE_COLOR.holiday

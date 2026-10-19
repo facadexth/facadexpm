@@ -880,7 +880,7 @@ export function useAssignmentsRange(from, to) {
     if (isPm()) {
       const { data, error } = await supabase
         .from('worker_assignments')
-        .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader')
+        .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, repair_ticket_id')
         .gte('date', from)
         .lte('date', to)
         .order('date')
@@ -889,7 +889,7 @@ export function useAssignmentsRange(from, to) {
     }
     const { data, error } = await supabase
       .from('worker_assignments')
-      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number, is_default)')
+      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, repair_ticket_id, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number, is_default)')
       .gte('date', from)
       .lte('date', to)
       .order('date')

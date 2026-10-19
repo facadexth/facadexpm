@@ -45,6 +45,7 @@ import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
 import { payslipWindow, inPayslipWindow, pickYtd } from '../_shared/payslip-data.ts'
 import { todaysSites, pickSiteForNow } from '../_shared/todays-sites.ts'
 import { resolveFactoryLocation } from '../_shared/factory-location.ts'
+import { mergeSiteLists, repairSiteOptions, REPAIR_ACTIVE_STATUSES } from '../_shared/material-sites.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -61,6 +62,12 @@ function json(body: unknown, status = 200) {
 // Bangkok has no DST -- a fixed +7h offset from UTC is always correct.
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+// Completed sites with a repair ticket booked for today (service-role client, so tenant is explicit).
+async function repairSitesToday(admin: any, tenantId: string): Promise<{ id: string; name: string }[]> {
+  const { data } = await admin.from('repair_tickets').select('sites(id, name)')
+    .eq('tenant_id', tenantId).in('status', REPAIR_ACTIVE_STATUSES).eq('scheduled_date', bangkokToday())
+  return repairSiteOptions(data)
 }
 function bangkokHour(): number {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).getUTCHours()
@@ -247,10 +254,11 @@ Deno.serve(async (req) => {
       const workerName = worker.nickname || worker.name
 
       if (tok.action_type === 'material_request') {
-        const [itemsRes, sitesRes] = await Promise.all([
+        const [itemsRes, sitesRes, repairSites] = await Promise.all([
           admin.from('inventory_items').select('id, name, base_unit, category_id, expense_categories(name)')
             .eq('tenant_id', worker.tenant_id).eq('item_kind', 'raw_material').eq('active', true).order('name'),
           admin.from('sites').select('id, name').eq('tenant_id', worker.tenant_id).eq('status', 'Ongoing').order('name'),
+          repairSitesToday(admin, worker.tenant_id),
         ])
         const items = (itemsRes.data ?? []).map((it: any) => ({
           id: it.id, name: it.name, unit: it.base_unit, categoryId: it.category_id, categoryName: it.expense_categories?.name || 'อื่นๆ',
@@ -258,7 +266,7 @@ Deno.serve(async (req) => {
         const categoryMap = new Map<string, string>()
         for (const it of items) if (it.categoryId) categoryMap.set(it.categoryId, it.categoryName)
         const categories = [...categoryMap.entries()].map(([id, name]) => ({ id, name }))
-        return json({ actionType: 'material_request', workerName, categories, items, sites: sitesRes.data ?? [] })
+        return json({ actionType: 'material_request', workerName, categories, items, sites: mergeSiteLists(sitesRes.data, repairSites) })
       }
 
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
