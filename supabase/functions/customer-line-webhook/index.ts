@@ -25,12 +25,15 @@ const text = (body: string, status: number) => new Response(body, { status })
 
 function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
   return {
+    // A DB error must throw (the per-event catch logs it, no reply), never look like "not linked".
     async getAccount(lineUserId) {
-      const { data } = await admin.from('customer_line_accounts').select('client_id')
+      const { data, error } = await admin.from('customer_line_accounts').select('client_id')
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
+      if (error) throw error
       if (!data) return null
-      const { data: client } = await admin.from('clients').select('name')
+      const { data: client, error: clientError } = await admin.from('clients').select('name')
         .eq('tenant_id', tenantId).eq('id', data.client_id).maybeSingle()
+      if (clientError) throw clientError
       return { clientId: data.client_id as string, clientName: (client?.name as string) ?? '' }
     },
     async claimInvite(code, lineUserId, displayName) {
@@ -100,7 +103,8 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
     async getContact() {
       const { data: ch } = await admin.from('customer_line_channels').select('contact_phone, contact_hours')
         .eq('tenant_id', tenantId).maybeSingle()
-      const { data: t } = await admin.from('tenants').select('company_name, phone').eq('id', tenantId).maybeSingle()
+      const { data: t, error: tError } = await admin.from('tenants').select('company_name, phone').eq('id', tenantId).maybeSingle()
+      if (tError) throw tError
       return {
         companyName: (t?.company_name as string) ?? '',
         phone: (ch?.contact_phone as string | null) || (t?.phone as string | null) || null,
