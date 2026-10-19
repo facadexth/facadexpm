@@ -18,6 +18,7 @@ const SAVE_ERRORS = {
 const TEST_ERRORS = {
   not_configured: 'ยังไม่ได้บันทึกข้อมูล OA',
   bad_token: 'token ไม่ถูกต้อง',
+  line_unreachable: 'ติดต่อ LINE ไม่ได้ ลองใหม่อีกครั้ง',
   forbidden: 'เฉพาะเจ้าของบัญชีเท่านั้น',
 }
 const errText = (e, map) => {
@@ -96,7 +97,7 @@ export default function CustomerLineSettings() {
       if (data?.error) {
         setTestMsg({ ok: false, text: TEST_ERRORS[data.error] || String(data.error) })
       } else if (data?.webhook && !data.webhook.success) {
-        setTestMsg({ ok: false, text: `LINE เรียก webhook ไม่ผ่าน (status ${data.webhook.statusCode ?? '?'}) — ตรวจว่าวาง URL และเปิด Use webhook แล้ว` })
+        setTestMsg({ ok: false, text: `LINE เรียก webhook ไม่ผ่าน (status ${data.webhook.reason === 'webhook_test_unreachable' ? '-' : (data.webhook.statusCode ?? '?')}) — ตรวจว่าวาง URL และเปิด Use webhook แล้ว` })
       } else if (data?.ok) {
         setTestMsg({ ok: true, text: 'ทดสอบผ่าน' })
       } else {

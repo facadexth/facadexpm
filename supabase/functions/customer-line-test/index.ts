@@ -33,18 +33,26 @@ Deno.serve(async (req) => {
   if (credsError || !creds?.access_token) return json({ ok: false, error: 'not_configured' })
   const accessToken = creds.access_token as string
 
+  // Network failure / timeout = LINE unreachable; a non-ok answer = the token is wrong.
+  let infoRes: Response
   try {
-    const infoRes = await fetch('https://api.line.me/v2/bot/info', {
+    infoRes = await fetch('https://api.line.me/v2/bot/info', {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(15000),
     })
-    if (!infoRes.ok) return json({ ok: false, error: 'bad_token' })
-    const info = await infoRes.json().catch(() => ({}))
-    const basicId = typeof info?.basicId === 'string' ? info.basicId.replace(/^@/, '') : null
-    const displayName = typeof info?.displayName === 'string' ? info.displayName : null
+  } catch (e) {
+    console.error('customer-line-test bot/info unreachable', (e as Error).name)
+    return json({ ok: false, error: 'line_unreachable' })
+  }
+  if (!infoRes.ok) return json({ ok: false, error: 'bad_token' })
+  const info = await infoRes.json().catch(() => ({}))
+  const basicId = typeof info?.basicId === 'string' ? info.basicId.replace(/^@/, '') : null
+  const displayName = typeof info?.displayName === 'string' ? info.displayName : null
 
-    const endpoint = `${Deno.env.get('SUPABASE_URL')}/functions/v1/customer-line-webhook?t=${channel.webhook_key}`
-    let webhook: { success: boolean; statusCode?: number; reason?: string } = { success: false, reason: 'webhook_test_failed' }
+  // The token is proven good above; a failure from here on is about the webhook, not the token.
+  const endpoint = `${Deno.env.get('SUPABASE_URL')}/functions/v1/customer-line-webhook?t=${channel.webhook_key}`
+  let webhook: { success: boolean; statusCode?: number; reason?: string }
+  try {
     const testRes = await fetch('https://api.line.me/v2/bot/channel/webhook/test', {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -57,15 +65,19 @@ Deno.serve(async (req) => {
     } else {
       webhook = { success: false, statusCode: testRes.status, reason: 'line_test_request_failed' }
     }
-
-    const update: Record<string, unknown> = { basic_id: basicId, display_name: displayName }
-    if (webhook.success) update.verified_at = new Date().toISOString()
-    const { error: saveError } = await admin.from('customer_line_channels').update(update).eq('tenant_id', tenantId)
-    if (saveError) console.error('customer-line-test save failed', saveError.code)
-
-    return json({ ok: webhook.success, basicId, displayName, webhook })
   } catch (e) {
-    console.error('customer-line-test failed', (e as Error).name)
-    return json({ ok: false, error: 'bad_token' })
+    console.error('customer-line-test webhook test unreachable', (e as Error).name)
+    webhook = { success: false, reason: 'webhook_test_unreachable' }
   }
+
+  // A failed test clears verified_at so the Settings badge stops saying "connected".
+  const update: Record<string, unknown> = {
+    basic_id: basicId,
+    display_name: displayName,
+    verified_at: webhook.success ? new Date().toISOString() : null,
+  }
+  const { error: saveError } = await admin.from('customer_line_channels').update(update).eq('tenant_id', tenantId)
+  if (saveError) console.error('customer-line-test save failed', saveError.code)
+
+  return json({ ok: webhook.success, basicId, displayName, webhook })
 })
