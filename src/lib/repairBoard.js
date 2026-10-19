@@ -1,6 +1,6 @@
 // Pure rules for the งานซ่อม Kanban board (src/pages/Repairs.jsx): which column a ticket
 // sits in, what a drag-and-drop does, the database patch for a move, and the card texts.
-import { REPAIR_STATUS, canMove } from './repairStatus.js'
+import { REPAIR_STATUS, REPAIR_STEPS, canMove } from './repairStatus.js'
 import { warrantyStatus } from './warranty.js'
 
 export const DONE_WINDOW_DAYS = 60
@@ -65,10 +65,20 @@ export function dropAction(from, to) {
 
 const STAMP = { received: 'received_at', in_progress: 'started_at', done: 'done_at', declined: 'declined_at' }
 
-// repair_tickets update for a board move.
-export function movePatch(to, nowIso) {
+// repair_tickets update for a board move (ruling R22). The target time is stamped only on a
+// forward move along REPAIR_STEPS, when leaving pending_review, or on ไม่รับ (terminal).
+// A backward move changes the status only, so the first received_at / started_at stay;
+// reopening a done ticket also clears done_at.
+export function movePatch(from, to, nowIso) {
   const p = { status: to }
-  if (STAMP[to]) p[STAMP[to]] = nowIso
+  const fi = REPAIR_STEPS.indexOf(from)
+  const ti = REPAIR_STEPS.indexOf(to)
+  const forward = from === 'pending_review' || to === 'declined' || (fi >= 0 && ti > fi)
+  if (forward) {
+    if (STAMP[to]) p[STAMP[to]] = nowIso
+  } else if (from === 'done') {
+    p.done_at = null
+  }
   return p
 }
 
@@ -114,13 +124,17 @@ export function matchesWarrantyFilter(ticket, filter, today) {
   return true
 }
 
-// ticket id -> { shown: first 3 media by created_at, more: how many are left over }.
+// ticket id -> { shown: first 3 media (customer, then before, then after; oldest first in each),
+// more: how many are left over }.
+const ROLE_ORDER = { customer: 0, before: 1, after: 2 }
+const roleRank = (m) => ROLE_ORDER[m.role] ?? 3
+
 export function pickThumbs(media, max = 3) {
   const by = {}
   for (const m of media || []) (by[m.ticket_id] ||= []).push(m)
   const out = {}
   for (const [id, list] of Object.entries(by)) {
-    list.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    list.sort((a, b) => roleRank(a) - roleRank(b) || String(a.created_at).localeCompare(String(b.created_at)))
     out[id] = { shown: list.slice(0, max), more: Math.max(0, list.length - max) }
   }
   return out

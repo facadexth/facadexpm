@@ -6,7 +6,7 @@
 // Pure rules: src/lib/repairBoard.js. Status rules: supabase/functions/_shared/repair.ts.
 // repair_tickets / repair_ticket_media are admin/owner RLS, so this page reads and writes directly.
 // ============================================================
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -27,7 +27,7 @@ const DECLINED_COLUMN = { status: 'declined', label: REPAIR_STATUS.declined, ico
 const SOURCE_LABEL = { line: 'LINE', staff: 'เปิดเอง' }
 
 const chipStyle = (on) => ({
-  border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontSize: 12.5, fontWeight: 600,
+  font: 'inherit', border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontSize: 12.5, fontWeight: 600,
   cursor: 'pointer', background: on ? 'var(--accent-fill)' : 'var(--bg3)', color: on ? 'var(--on-accent)' : 'var(--text2)',
 })
 
@@ -121,7 +121,8 @@ export default function Repairs() {
   const [urls, setUrls] = useState({})
   const [crew, setCrew] = useState({})
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('') // from the newest load
+  const [error, setError] = useState('') // from the last move
   const [warrantyFilter, setWarrantyFilter] = useState('all')
   const [showDeclined, setShowDeclined] = useState(false)
   const [openTicketId, setOpenTicketId] = useState(null)
@@ -131,9 +132,11 @@ export default function Repairs() {
   const [dragging, setDragging] = useState(null) // the ticket being dragged
   const [dragOver, setDragOver] = useState(null) // column status under the pointer
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const loadSeq = useRef(0) // only the newest load may apply its result
 
   const load = useCallback(async () => {
-    setError('')
+    const seq = ++loadSeq.current
+    const stale = () => seq !== loadSeq.current
     // Open tickets, plus done/declined ones from the window (one day of slack; groupTickets cuts exactly).
     const cutoff = new Date(Date.now() - (DONE_WINDOW_DAYS + 1) * 86400000).toISOString()
     const { data, error: e1 } = await supabase
@@ -141,7 +144,8 @@ export default function Repairs() {
       .select('id, ticket_number, site_id, client_id, source, status, description, scheduled_date, scheduled_start, duration_hours, created_at, received_at, started_at, done_at, declined_at, notified_schedule_at, reported_at, sites(name, site_number, handover_date, warranty_months), clients(name)')
       .or(`status.in.(${OPEN_STATUSES}),done_at.gte.${cutoff},declined_at.gte.${cutoff}`)
       .order('created_at', { ascending: false })
-    if (e1) { setError(`โหลดงานซ่อมไม่สำเร็จ: ${e1.message}`); setLoading(false); return }
+    if (stale()) return
+    if (e1) { setLoadError(`โหลดงานซ่อมไม่สำเร็จ: ${e1.message}`); setLoading(false); return }
     const rows = data || []
     setTickets(rows)
     setNowMs(Date.now())
@@ -157,19 +161,26 @@ export default function Repairs() {
         ? supabase.from('worker_assignments').select('repair_ticket_id, worker_id, date').in('repair_ticket_id', scheduled.map((t) => t.id))
         : Promise.resolve({ data: [] }),
     ])
+    if (stale()) return
+    const problems = []
+    if (mediaRes.error) problems.push(`รูป/ไฟล์: ${mediaRes.error.message}`)
+    if (crewRes.error) problems.push(`ทีมช่าง: ${crewRes.error.message}`)
     const picked = pickThumbs(mediaRes.data || [])
     setThumbs(picked)
     setCrew(crewCounts(scheduled, crewRes.data || []))
     // One batch of signed URLs for every thumbnail image on the board (private bucket).
     const paths = Object.values(picked).flatMap((p) => p.shown).filter((m) => m.media_type === 'image').map((m) => m.storage_path)
     if (paths.length) {
-      const { data: signed } = await supabase.storage.from('repair-media').createSignedUrls(paths, SIGNED_URL_SECONDS)
+      const { data: signed, error: e3 } = await supabase.storage.from('repair-media').createSignedUrls(paths, SIGNED_URL_SECONDS)
+      if (stale()) return
+      if (e3) problems.push(`ลิงก์รูป: ${e3.message}`)
       const map = {}
       for (const s of signed || []) if (s.signedUrl && s.path) map[s.path] = s.signedUrl
       setUrls(map)
     } else {
       setUrls({})
     }
+    setLoadError(problems.length ? `โหลดบางส่วนไม่สำเร็จ: ${problems.join(' · ')}` : '')
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -186,11 +197,17 @@ export default function Repairs() {
     setBusyId(ticket.id)
     setError('')
     const { data, error: e } = await supabase
-      .from('repair_tickets').update(movePatch(to, new Date().toISOString()))
+      .from('repair_tickets').update(movePatch(ticket.status, to, new Date().toISOString()))
       .eq('id', ticket.id).eq('status', ticket.status).select('id')
-    setBusyId(null)
     if (e) setError(`ย้ายงานซ่อม ${ticket.ticket_number} ไม่สำเร็จ: ${e.message}`)
-    else if (!data || data.length === 0) setError(`งานซ่อม ${ticket.ticket_number} ถูกเปลี่ยนสถานะไปแล้ว โหลดใหม่ให้แล้ว`)
+    else if (!data || data.length === 0) {
+      // 0 rows: either someone moved it meanwhile, or the write was refused (RLS: role or expired plan).
+      const { data: now } = await supabase.from('repair_tickets').select('status').eq('id', ticket.id).maybeSingle()
+      setError(now && now.status !== ticket.status
+        ? `งานซ่อม ${ticket.ticket_number} ถูกเปลี่ยนสถานะไปแล้ว โหลดใหม่ให้แล้ว`
+        : `บันทึกไม่ได้ (สิทธิ์หรือแพ็กเกจหมดอายุ)`)
+    }
+    setBusyId(null)
     load()
   }
 
@@ -212,18 +229,20 @@ export default function Repairs() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ fontSize: 18, fontWeight: 700 }}>งานซ่อม (ทุกไซท์)</div>
         <span style={{ flexGrow: 1 }} />
-        <span role="button" style={chipStyle(warrantyFilter === 'active')} onClick={() => toggleWarranty('active')}>ในประกัน</span>
-        <span role="button" style={chipStyle(warrantyFilter === 'expired')} onClick={() => toggleWarranty('expired')}>หมดประกัน</span>
-        <span role="button" style={chipStyle(showDeclined)} onClick={() => setShowDeclined((v) => !v)}>ไม่รับ ({declinedCount})</span>
+        <button type="button" aria-pressed={warrantyFilter === 'active'} style={chipStyle(warrantyFilter === 'active')} onClick={() => toggleWarranty('active')}>ในประกัน</button>
+        <button type="button" aria-pressed={warrantyFilter === 'expired'} style={chipStyle(warrantyFilter === 'expired')} onClick={() => toggleWarranty('expired')}>หมดประกัน</button>
+        <button type="button" aria-pressed={showDeclined} style={chipStyle(showDeclined)} onClick={() => setShowDeclined((v) => !v)}>ไม่รับ ({declinedCount})</button>
         {canEdit && <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ เปิดงานซ่อมเอง</button>}
       </div>
 
-      {error && (
-        <div style={{ background: 'rgba(var(--red-rgb), 0.12)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>{error}</div>
-      )}
+      {[error, loadError].filter(Boolean).map((msg) => (
+        <div key={msg} className="alert alert-error" style={{ marginBottom: 12, fontSize: 13 }}>{msg}</div>
+      ))}
 
       {loading ? (
         <div style={{ color: 'var(--text3)', padding: 20 }}>กำลังโหลด...</div>
+      ) : tickets.length === 0 && !loadError ? (
+        <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>ยังไม่มีงานซ่อม</div>
       ) : (
         <div data-phone="kanban" style={{ display: 'grid', gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`, gap: 12, alignItems: 'start' }}>
           {columns.map((col) => {

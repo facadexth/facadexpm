@@ -92,14 +92,26 @@ describe('dropAction', () => {
 
 describe('movePatch', () => {
   const now = '2026-10-20T05:00:00.000Z'
-  it('sets the status and its timestamp', () => {
-    expect(movePatch('received', now)).toEqual({ status: 'received', received_at: now })
-    expect(movePatch('in_progress', now)).toEqual({ status: 'in_progress', started_at: now })
-    expect(movePatch('done', now)).toEqual({ status: 'done', done_at: now })
-    expect(movePatch('declined', now)).toEqual({ status: 'declined', declined_at: now })
+  it('stamps the target time on a forward move or when leaving pending_review', () => {
+    expect(movePatch('pending_review', 'received', now)).toEqual({ status: 'received', received_at: now })
+    expect(movePatch('pending_review', 'declined', now)).toEqual({ status: 'declined', declined_at: now })
+    expect(movePatch('scheduled', 'in_progress', now)).toEqual({ status: 'in_progress', started_at: now })
+    expect(movePatch('in_progress', 'done', now)).toEqual({ status: 'done', done_at: now })
   })
-  it('sets only the status when the move has no timestamp of its own', () => {
-    expect(movePatch('scheduled', now)).toEqual({ status: 'scheduled' })
+  it('sets only the status when the forward move has no timestamp of its own', () => {
+    expect(movePatch('received', 'scheduled', now)).toEqual({ status: 'scheduled' })
+  })
+  it('stamps declined_at when a received ticket is declined (terminal, not a step back)', () => {
+    expect(movePatch('received', 'declined', now)).toEqual({ status: 'declined', declined_at: now })
+  })
+  it('scheduled -> received changes the status only and keeps the first received_at', () => {
+    expect(movePatch('scheduled', 'received', now)).toEqual({ status: 'received' })
+  })
+  it('in_progress -> scheduled changes the status only', () => {
+    expect(movePatch('in_progress', 'scheduled', now)).toEqual({ status: 'scheduled' })
+  })
+  it('done -> in_progress reopens: clears done_at and keeps the first started_at', () => {
+    expect(movePatch('done', 'in_progress', now)).toEqual({ status: 'in_progress', done_at: null })
   })
 })
 
@@ -169,5 +181,16 @@ describe('pickThumbs', () => {
     expect(out.a.more).toBe(1)
     expect(out.b.shown.map((m) => m.id)).toEqual([5])
     expect(out.b.more).toBe(0)
+  })
+  it('orders customer media first, then before, then after, within the cap', () => {
+    const rows = [
+      { id: 'af', ticket_id: 'a', role: 'after', created_at: '2026-10-19T03:00:00Z' },
+      { id: 'be', ticket_id: 'a', role: 'before', created_at: '2026-10-19T03:00:01Z' },
+      { id: 'c2', ticket_id: 'a', role: 'customer', created_at: '2026-10-19T03:00:03Z' },
+      { id: 'c1', ticket_id: 'a', role: 'customer', created_at: '2026-10-19T03:00:02Z' },
+    ]
+    const out = pickThumbs(rows)
+    expect(out.a.shown.map((m) => m.id)).toEqual(['c1', 'c2', 'be'])
+    expect(out.a.more).toBe(1)
   })
 })
