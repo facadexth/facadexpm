@@ -16,7 +16,7 @@
 // ไปเรื่อยๆ จนถึง leaf (ดู selectedChain ด้านล่าง) -- คลิกแท่ง leaf บนแท็บ
 // Gantt ก็จะ deep-link มาที่นี่พร้อม chip เลือกไว้ให้ทั้งเส้นผ่าน initialLeafId
 // ============================================================
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
 import SearchableSelect from '../../components/SearchableSelect.jsx'
@@ -329,7 +329,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setSelectedPhotoIds(new Set())
     setShowSwitchSitePicker(false)
     setLoadingViewPhotos(true)
-    const { data } = await supabase.from('line_site_photos').select('id, photo_path, worker_id, workers(name, nickname), created_at')
+    const { data } = await supabase.from('line_site_photos').select('id, photo_path, worker_id, workers(name, nickname), created_at, customer_visible')
       .eq('task_id', task.id).order('created_at')
     const rows = await attachPmWorkerNames(data)
     const paths = rows.map((p) => p.photo_path)
@@ -342,13 +342,26 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setLoadingViewPhotos(false)
   }
 
-  // Optimistic flip of "ให้ลูกค้าเห็น" on a tray photo; reverts on error.
+  // Optimistic flip of "ให้ลูกค้าเห็น" on a tray or task-viewer photo; reverts to the
+  // pre-tap value on error. A second tap while the RPC is pending is ignored.
+  const visibleInFlight = useRef(new Set())
   const handleToggleCustomerVisible = async (photo) => {
-    const next = !photo.customer_visible
-    const setVisible = (v) => setUnassignedPhotos((list) => list.map((x) => (x.id === photo.id ? { ...x, customer_visible: v } : x)))
+    if (visibleInFlight.current.has(photo.id)) return
+    visibleInFlight.current.add(photo.id)
+    const prev = !!photo.customer_visible
+    const next = !prev
+    const setVisible = (v) => {
+      const upd = (list) => list.map((x) => (x.id === photo.id ? { ...x, customer_visible: v } : x))
+      setUnassignedPhotos(upd)
+      setViewingPhotos(upd)
+    }
     setVisible(next)
-    const { error } = await supabase.rpc('set_customer_visible', { p_kind: 'line_site_photo', p_id: photo.id, p_visible: next })
-    if (error) { setVisible(!next); alert('Error: ' + error.message) }
+    try {
+      const { error } = await supabase.rpc('set_customer_visible', { p_kind: 'line_site_photo', p_id: photo.id, p_visible: next })
+      if (error) { setVisible(prev); alert('Error: ' + error.message) }
+    } finally {
+      visibleInFlight.current.delete(photo.id)
+    }
   }
 
   const handleTogglePhotoSelected = (photoId) => {
@@ -1092,6 +1105,20 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                         onChange={() => handleTogglePhotoSelected(p.id)}
                         style={{ position: 'absolute', top: 6, left: 6, width: 18, height: 18, zIndex: 1, cursor: 'pointer' }}
                       />
+                    )}
+                    {canManageSites(role) && (
+                      <button
+                        type="button"
+                        aria-label="ให้ลูกค้าเห็น"
+                        aria-pressed={!!p.customer_visible}
+                        title="ให้ลูกค้าเห็น"
+                        onClick={(e) => { e.stopPropagation(); handleToggleCustomerVisible(p) }}
+                        style={{
+                          position: 'absolute', top: 6, right: 6, zIndex: 1, minWidth: 26, minHeight: 26, padding: 0,
+                          border: p.customer_visible ? '2px solid var(--accent, #ff8c00)' : 'none', borderRadius: 6, fontSize: 14, lineHeight: 1, cursor: 'pointer',
+                          background: p.customer_visible ? 'var(--accent, #ff8c00)' : 'rgba(0,0,0,.6)', color: '#fff',
+                          opacity: p.customer_visible ? 1 : 0.75, boxSizing: 'border-box',
+                        }}>👁</button>
                     )}
                     <a href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
                       {p.url ? (

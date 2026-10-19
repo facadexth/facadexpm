@@ -5,7 +5,7 @@
 // the table/bucket/foreign key so each entity type gets its own private
 // bucket + tenant-prefixed path, matching its own migration.
 // ============================================================
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { sanitizeStorageFileName } from '../lib/storageKey.js'
 import { isCustomerImage } from '../lib/customerVisible.js'
@@ -64,13 +64,20 @@ export default function AttachmentsSection({ table, bucket, foreignKey, entityId
     }
   }
 
+  const inFlight = useRef(new Set())
   const handleToggleVisible = async (att, visible) => {
-    const prev = att.customer_visible
+    if (inFlight.current.has(att.id)) return
+    inFlight.current.add(att.id)
+    const prev = !!att.customer_visible
     setAttachments(list => list.map(a => a.id === att.id ? { ...a, customer_visible: visible } : a))
-    const { error } = await supabase.rpc('set_customer_visible', { p_kind: customerVisibleKind, p_id: att.id, p_visible: visible })
-    if (error) {
-      setAttachments(list => list.map(a => a.id === att.id ? { ...a, customer_visible: prev } : a))
-      alert('Error: ' + error.message)
+    try {
+      const { error } = await supabase.rpc('set_customer_visible', { p_kind: customerVisibleKind, p_id: att.id, p_visible: visible })
+      if (error) {
+        setAttachments(list => list.map(a => a.id === att.id ? { ...a, customer_visible: prev } : a))
+        alert('Error: ' + error.message)
+      }
+    } finally {
+      inFlight.current.delete(att.id)
     }
   }
 
