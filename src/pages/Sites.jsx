@@ -290,7 +290,11 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
                     already-Completed site keeps its value as a disabled option so the select shows it */}
                 {initial.status === 'Completed' && <option disabled>Completed</option>}
                 {STATUS_OPTS.filter(s => s !== 'Completed').map(s => <option key={s}>{s}</option>)}
-              </> : STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
+              </> : STATUS_OPTS
+                // Finishing goes through FinishSiteModal (handover + warranty + stock); Completed is offered
+                // here only to keep an already-Completed site's value
+                .filter(s => s !== 'Completed' || initial.status === 'Completed')
+                .map(s => <option key={s}>{s}</option>)}
             </select>
             {sitesFull && (
               <div className="alert alert-warning" style={{ fontSize: 12, marginTop: 6 }}>
@@ -589,7 +593,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
   // Row ⋯ menu, shared by the table row and the phone card. PM gets none: completing and
   // deleting write sites directly; a PM sets the status in the edit form instead.
   const siteMenuItems = s => pm ? [] : [
-    ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => setCompleteSite(s) }] : []),
+    ...(s.status === 'Ongoing' || s.status === 'On Hold' ? [{ label: '✅ จบไซท์งาน', onClick: () => setCompleteSite(s) }] : []),
     { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
   ]
 
