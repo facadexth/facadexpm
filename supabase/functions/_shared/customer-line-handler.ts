@@ -22,6 +22,8 @@ export type CustomerDeps = {
 // deno-lint-ignore no-explicit-any
 export async function handleCustomerEvent(event: any, ctx: { tenantId: string; today: string }, deps: CustomerDeps): Promise<LineMessage[]> {
   if (event?.type !== 'message' || event.message?.type !== 'text') return []
+  // 1:1 chats only. In a group/room the bot must not answer, link, or open requests.
+  if (event.source?.type !== 'user') return []
   const userId: string | undefined = event.source?.userId
   const text: string = event.message.text ?? ''
   if (!userId) return []

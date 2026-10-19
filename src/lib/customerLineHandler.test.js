@@ -6,7 +6,7 @@ import {
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
 
 const ctx = { tenantId: 't1', today: '2026-10-19' }
-const txt = (text) => ({ type: 'message', replyToken: 'rt', source: { userId: 'U1' }, message: { type: 'text', text } })
+const txt = (text) => ({ type: 'message', replyToken: 'rt', source: { type: 'user', userId: 'U1' }, message: { type: 'text', text } })
 const T = (text) => ({ type: 'text', text })
 const site = { name: 'งาน A', status: 'Ongoing', pct: 40, phases: ['ติดตั้ง'], endDate: '2026-12-01' }
 const contact = { companyName: 'บจก.', phone: '02', hours: '8-17' }
@@ -27,6 +27,17 @@ function deps(over = {}) {
 const linked = { clientId: 'c1', clientName: 'ลูกค้า' }
 
 describe('handleCustomerEvent', () => {
+  it.each(['group', 'room'])('%s source: no reply, no claim, no request', async (type) => {
+    const d = deps({ claimInvite: vi.fn().mockResolvedValue({ status: 'ok', clientName: 'ลูกค้า' }) })
+    for (const text of ['K7P2QM', 'ขอใบเสนอราคา', 'แจ้งซ่อม', 'สถานะงาน']) {
+      const ev = { ...txt(text), source: { type, groupId: 'G1', roomId: 'R1', userId: 'U1' } }
+      expect(await handleCustomerEvent(ev, ctx, d)).toEqual([])
+    }
+    expect(d.claimInvite).not.toHaveBeenCalled()
+    expect(d.openRequest).not.toHaveBeenCalled()
+    expect(d.getAccount).not.toHaveBeenCalled()
+    expect(d.touchAccount).not.toHaveBeenCalled()
+  })
   it('unlinked + code, claim ok', async () => {
     const d = deps({ claimInvite: vi.fn().mockResolvedValue({ status: 'ok', clientName: 'ลูกค้า' }) })
     expect(await handleCustomerEvent(txt('K7P2QM'), ctx, d)).toEqual([T(inviteOkText('ลูกค้า'))])
@@ -84,9 +95,9 @@ describe('handleCustomerEvent', () => {
   })
   it('non-text events silent', async () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
-    expect(await handleCustomerEvent({ type: 'message', replyToken: 'r', source: { userId: 'U1' }, message: { type: 'image' } }, ctx, d)).toEqual([])
-    expect(await handleCustomerEvent({ type: 'message', replyToken: 'r', source: { userId: 'U1' }, message: { type: 'sticker' } }, ctx, d)).toEqual([])
-    expect(await handleCustomerEvent({ type: 'follow', replyToken: 'r', source: { userId: 'U1' } }, ctx, d)).toEqual([])
+    expect(await handleCustomerEvent({ type: 'message', replyToken: 'r', source: { type: 'user', userId: 'U1' }, message: { type: 'image' } }, ctx, d)).toEqual([])
+    expect(await handleCustomerEvent({ type: 'message', replyToken: 'r', source: { type: 'user', userId: 'U1' }, message: { type: 'sticker' } }, ctx, d)).toEqual([])
+    expect(await handleCustomerEvent({ type: 'follow', replyToken: 'r', source: { type: 'user', userId: 'U1' } }, ctx, d)).toEqual([])
   })
   it('touches account on every text event when linked', async () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
