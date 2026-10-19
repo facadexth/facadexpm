@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from './Modal.jsx'
 import { useWorkers } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { formatThaiDate } from '../lib/thaiDate.js'
@@ -20,11 +21,13 @@ import { movePatch, warrantyOf, bangkokDateOf } from '../lib/repairBoard.js'
 import { planRepairAssignments, repairShifts } from '../lib/repairAssign.js'
 import { uploadRepairPhotos, REPAIR_BUCKET } from '../lib/repairUpload.js'
 import { invokeRepairPush } from '../lib/repairPush.js'
+import { releasesCrew, removeFutureUnconfirmedCrew } from '../lib/repairCrew.js'
 
 const SIGNED_URL_SECONDS = 3600
 const PILL_STEPS = ['pending_review', 'received', 'scheduled', 'in_progress', 'done']
 const SHIFT_TH = { morning: 'เช้า', evening: 'บ่าย' }
 const NOTIFY_LABEL = 'ส่งไลน์แจ้งนัดให้ลูกค้าเมื่อบันทึก + เตือนก่อน 1 วัน (13:00)'
+const RESEND_CONFIRM = 'ส่งรายงานซ้ำให้ลูกค้า? (ใช้โควต้าไลน์ 1 ข้อความ)'
 const NOTICE_CLASS = { success: 'alert-success', warning: 'alert-warning', error: 'alert-error', info: 'alert-info' }
 
 // In-between moves offered as buttons. received -> scheduled is the นัดหมาย save, in_progress -> done is ปิดงาน.
@@ -38,7 +41,8 @@ const MOVE_LABEL = {
   'done>in_progress': 'เปิดงานอีกครั้ง (กำลังซ่อม)',
 }
 const CONFIRM_MOVE = {
-  declined: 'ไม่รับงานซ่อมนี้? ดูย้อนหลังได้จากตัวกรอง "ไม่รับ" บนบอร์ด',
+  declined: 'ไม่รับงานซ่อมนี้? ช่างที่จองไว้ตั้งแต่วันนี้ (ที่ยังไม่เช็คอิน) จะถูกถอนออก ดูย้อนหลังได้จากตัวกรอง "ไม่รับ" บนบอร์ด',
+  'scheduled>received': 'ย้อนกลับเป็น "รับเรื่อง"? ช่างที่จองไว้ตั้งแต่วันนี้ (ที่ยังไม่เช็คอิน) จะถูกถอนออก',
   'done>in_progress': 'เปิดงานที่เสร็จแล้วกลับมาเป็น "กำลังซ่อม"? วันที่เสร็จจะถูกล้าง ปิดงานใหม่แล้วส่งรายงานซ้ำได้',
 }
 
@@ -100,6 +104,9 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const { role, isAtLeast } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'repairs')
   const { data: workers } = useWorkers()
+  // Crew booking writes worker_assignments, which RLS limits to tenants with the payroll module.
+  const { hasModuleAccess, loading: tenantLoading } = useTenant()
+  const hasCrew = !tenantLoading && hasModuleAccess('payroll')
   const today = bangkokTodayIso()
 
   const [ticket, setTicket] = useState(null)
@@ -113,6 +120,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const [changed, setChanged] = useState(false)
   const [lightbox, setLightbox] = useState(null) // signed image URL
   const [confirmMove, setConfirmMove] = useState(null) // target status
+  const [confirmResend, setConfirmResend] = useState(false)
 
   // form
   const [formReady, setFormReady] = useState(false)
@@ -121,6 +129,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const [hours, setHours] = useState('2')
   const [workerIds, setWorkerIds] = useState([])
   const [workerQuery, setWorkerQuery] = useState('')
+  const [crewNames, setCrewNames] = useState({}) // worker id -> label, for crew not in useWorkers()
   const [notify, setNotify] = useState(true)
   const [fixNote, setFixNote] = useState('')
 
@@ -159,12 +168,16 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       loadMedia()
       // Prefill the form from the saved appointment and the crew assigned on that date.
       let crew = []
+      const names = {}
       if (t.scheduled_date) {
-        const { data } = await supabase.from('worker_assignments').select('worker_id')
+        const { data } = await supabase.from('worker_assignments').select('worker_id, workers(name, nickname)')
           .eq('repair_ticket_id', t.id).eq('date', t.scheduled_date)
         crew = [...new Set((data || []).map((a) => a.worker_id))]
+        for (const a of data || []) if (a.workers) names[a.worker_id] = workerLabel(a.workers)
       }
       if (!alive) return
+      setCrewNames(names)
+      if (t.status === 'in_progress') setNotify(false)
       setDate(t.scheduled_date || '')
       setStart(startTime(t.scheduled_start) || '09:00')
       setHours(Number(t.duration_hours) > 0 ? String(Number(t.duration_hours)) : '2')
@@ -178,6 +191,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const handleClose = () => {
     if (lightbox) { setLightbox(null); return false }
     if (confirmMove) { setConfirmMove(null); return false }
+    if (confirmResend) { setConfirmResend(false); return false }
     if (busy || uploading) return false
     if (changed) onChanged()
     else onClose()
@@ -188,6 +202,8 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const canSchedule = canEdit && ['received', 'scheduled', 'in_progress'].includes(status)
   const closeAllowed = canEdit && !!status && canMove(status, 'done')
   const showClose = canEdit && ['received', 'scheduled', 'in_progress'].includes(status)
+  // R29: no schedule push for a repair already in progress (the server refuses it anyway).
+  const notifyAllowed = status !== 'in_progress'
   const canUpload = canEdit && !!status && !['pending_review', 'declined'].includes(status)
 
   const byRole = useMemo(() => {
@@ -238,6 +254,13 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       await guardedUpdate(movePatch(t.status, to, new Date().toISOString()))
       setChanged(true)
       setNotice({ kind: 'success', text: `ย้ายเป็น "${REPAIR_STATUS[to]}" แล้ว` })
+      if (releasesCrew(t.status, to)) {
+        // R30: release the booked crew (from today on, not yet checked in).
+        const { error: e2 } = await removeFutureUnconfirmedCrew(t.id)
+        if (e2) setError(`ย้ายสถานะแล้ว แต่ถอนช่างที่จองไว้ไม่สำเร็จ: ${e2.message} (ลบเองได้ในหน้าจ่ายงาน)`)
+        else if (to === 'received') setWorkerIds([])
+      }
+      if (to === 'in_progress') setNotify(false)
     } catch (e) {
       setError(`เปลี่ยนสถานะไม่สำเร็จ: ${e.message}`)
     }
@@ -250,7 +273,8 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     else doMove(to)
   }
 
-  // Ruling R24: plan -> stop on conflicts -> delete this ticket's future rows -> insert -> update ticket -> push.
+  // Ruling R28: one atomic RPC (lock ticket, conflict check, diff own rows keeping check-ins, update ticket).
+  // The shifts come from the tested repairShifts; the push runs after the save and never undoes it.
   const saveSchedule = async () => {
     if (!canSchedule) return
     setError(''); setNotice(null)
@@ -259,57 +283,33 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     if (!/^\d{2}:\d{2}$/.test(start)) { setError('กรุณาระบุเวลาเริ่ม'); return }
     const hrs = Number(hours)
     if (!(hrs > 0 && hrs <= 24)) { setError('ระยะเวลาต้องมากกว่า 0 และไม่เกิน 24 ชม.'); return }
+    const crewIds = hasCrew ? workerIds : []
+    const { rows } = planRepairAssignments({ workerIds: crewIds, date, start, durationHours: hrs, existing: [] })
+    const shifts = repairShifts(start, hrs)
+    const wantPush = notifyAllowed && notify
     setBusy(true)
     try {
-      let existing = []
-      if (workerIds.length) {
-        const { data, error: e } = await supabase.from('worker_assignments')
-          .select('worker_id, date, shift, type, workers(name, nickname), sites(name)')
-          .in('worker_id', workerIds).eq('date', date)
-          .or(`repair_ticket_id.is.null,repair_ticket_id.neq.${t.id}`)
-        if (e) throw e
-        existing = data || []
-      }
-      const { rows, conflicts } = planRepairAssignments({ workerIds, date, start, durationHours: hrs, existing })
-      if (conflicts.length) {
-        const lines = conflicts.map((c) => {
-          const ex = c.existing
-          const who = ex.workers ? workerLabel(ex.workers) : workerLabel(workerById[c.worker_id])
-          return `• ${who} — กะ${SHIFT_TH[c.shift]} มีงาน ${ex.sites?.name || ex.type || '-'} อยู่แล้ว`
+      const { data, error: e } = await supabase.rpc('schedule_repair_ticket', {
+        p_ticket: t.id, p_expected_status: t.status, p_date: date, p_start: start, p_hours: hrs,
+        p_worker_ids: crewIds, p_shifts: shifts, p_notify: wantPush,
+      })
+      if (e) throw e
+      if (!data?.ok) {
+        const lines = (data?.conflicts || []).map((c) => {
+          const who = workerById[c.worker_id] ? workerLabel(workerById[c.worker_id]) : (crewNames[c.worker_id] || 'ช่าง')
+          return `• ${who} — กะ${SHIFT_TH[c.shift] || c.shift} มีงานอื่นอยู่แล้ว`
         })
         setError(`ช่างติดงานอื่นวันที่ ${formatThaiDate(date)} ยังไม่ได้บันทึกอะไร:\n${lines.join('\n')}\nเอาช่างออก หรือเปลี่ยนวัน/เวลา แล้วบันทึกใหม่`)
         return
       }
-
-      const { error: delErr } = await supabase.from('worker_assignments').delete()
-        .eq('repair_ticket_id', t.id).gte('date', today)
-      if (delErr) throw delErr
-
-      if (rows.length) {
-        const insert = rows.map((r) => ({
-          ...r, tenant_id: t.tenant_id, type: 'site', site_id: t.site_id, repair_ticket_id: t.id,
-          notes: `งานซ่อม ${t.ticket_number}`,
-        }))
-        const { error: insErr } = await supabase.from('worker_assignments').insert(insert)
-        if (insErr) {
-          setChanged(true)
-          throw new Error(`ลบทีมเดิมของงานนี้แล้ว แต่ลงทีมใหม่ไม่สำเร็จ (${insErr.message}) วันนัดยังไม่ถูกบันทึก ลองบันทึกอีกครั้ง`)
-        }
-      }
-
-      const now = new Date().toISOString()
-      const patch = { scheduled_date: date, scheduled_start: start, duration_hours: hrs }
-      if (date !== t.scheduled_date) patch.reminded_at = null
-      if (t.status === 'received') Object.assign(patch, movePatch('received', 'scheduled', now), { scheduled_at: now })
-      await guardedUpdate(patch)
       setChanged(true)
-
-      const saved = `บันทึกนัด ${formatThaiDate(date)} ${start} · ช่าง ${new Set(rows.map((r) => r.worker_id)).size} คน แล้ว`
-      if (notify) {
+      const crewCount = new Set(rows.map((r) => r.worker_id)).size
+      const saved = `บันทึกนัด ${formatThaiDate(date)} ${start}${hasCrew ? ` · ช่าง ${crewCount} คน` : ''} แล้ว`
+      if (wantPush) {
         const push = await invokeRepairPush('schedule', t.id)
         setNotice({ kind: push.kind, text: `${saved} · ${push.text}` })
       } else {
-        setNotice({ kind: 'success', text: saved })
+        setNotice({ kind: 'success', text: `${saved} · ไม่ได้แจ้งลูกค้า และไม่เตือนก่อน 1 วัน` })
       }
       await loadTicket()
     } catch (e) {
@@ -340,6 +340,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   }
 
   const resendReport = async () => {
+    setConfirmResend(false)
     setError(''); setNotice(null); setBusy(true)
     try {
       const push = await invokeRepairPush('report', t.id, !!t.reported_at)
@@ -437,11 +438,14 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                   </div>
                   <div className="form-group">
                     <label className="label">ทีมช่าง</label>
-                    <div className="input" style={{ color: workerIds.length ? 'var(--text)' : 'var(--text3)' }}>
-                      {workerIds.length ? `${workerIds.length} คน` : 'ยังไม่เลือก'}
+                    <div className="input" style={{ color: hasCrew && workerIds.length ? 'var(--text)' : 'var(--text3)' }}>
+                      {!hasCrew ? '-' : workerIds.length ? `${workerIds.length} คน` : 'ยังไม่เลือก'}
                     </div>
                   </div>
                 </div>
+                {!hasCrew ? (
+                  !tenantLoading && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ต้องเปิดโมดูลค่าแรง/จ่ายงานช่าง เพื่อจัดช่าง</div>
+                ) : (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {(workers || []).length > 12 && (
                     <input className="input input-sm" placeholder="ค้นหาช่าง..." value={workerQuery} onChange={(e) => setWorkerQuery(e.target.value)} />
@@ -459,17 +463,19 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                     {hiddenCrew.map((id) => (
                       <label key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '4px 10px', borderRadius: 999, border: '1px solid var(--border)', background: 'rgba(var(--accent-rgb), 0.15)' }}>
                         <input type="checkbox" checked onChange={() => toggleWorker(id)} />
-                        ช่างที่ไม่แสดงในหน้าจ่ายงาน
+                        {crewNames[id] || 'ช่างที่ไม่แสดงในหน้าจ่ายงาน'}
                       </label>
                     ))}
                     {(workers || []).length === 0 && <span style={{ fontSize: 12, color: 'var(--text3)' }}>ไม่มีช่างที่ใช้งานอยู่</span>}
                   </div>
                 </div>
+                )}
                 <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-                  <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+                  <input type="checkbox" checked={notifyAllowed && notify} disabled={!notifyAllowed} onChange={(e) => setNotify(e.target.checked)} />
                   {NOTIFY_LABEL}
+                  {!notifyAllowed && <span style={{ fontSize: 12, color: 'var(--text3)' }}>(กำลังซ่อมอยู่ ไม่แจ้งซ้ำ)</span>}
                 </label>
-                <div style={{ fontSize: 12, color: 'var(--text3)' }}>ช่างเห็นงานนี้ในหน้าจ่ายงาน (กะเช้า/บ่ายตามเวลานัด) และเช็คอินที่ไซท์ได้ตามปกติ</div>
+                {hasCrew && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ช่างเห็นงานนี้ในหน้าจ่ายงาน (กะเช้า/บ่ายตามเวลานัด) และเช็คอินที่ไซท์ได้ตามปกติ</div>}
               </fieldset>
             )}
 
@@ -516,8 +522,8 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       <div className="modal-footer" style={{ flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-ghost" disabled={busy || !!uploading} onClick={handleClose}>ปิด</button>
         {t && canSchedule && (
-          <button type="button" className="btn btn-ghost" style={{ borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }} disabled={busy || !!uploading || !formReady} onClick={saveSchedule}>
-            {busy ? 'กำลังบันทึก...' : notify ? 'บันทึกนัด + แจ้งลูกค้า' : 'บันทึกนัด'}
+          <button type="button" className="btn btn-ghost" style={{ borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }} disabled={busy || !!uploading || !formReady || tenantLoading} onClick={saveSchedule}>
+            {busy ? 'กำลังบันทึก...' : notifyAllowed && notify ? 'บันทึกนัด + แจ้งลูกค้า' : 'บันทึกนัด'}
           </button>
         )}
         {t && showClose && (
@@ -527,7 +533,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
           </button>
         )}
         {t && canEdit && status === 'done' && (
-          <button type="button" className="btn btn-ghost" disabled={busy} onClick={resendReport}>
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setConfirmResend(true)}>
             {t.reported_at ? 'ส่งรายงานอีกครั้ง' : 'ส่งรายงานให้ลูกค้า'}
           </button>
         )}
@@ -541,6 +547,16 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
             style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,0.5)', color: '#fff', border: 0, borderRadius: 999, width: 36, height: 36, fontSize: 18, cursor: 'pointer' }}>✕</button>
         </div>,
         document.body,
+      )}
+
+      {confirmResend && (
+        <ConfirmDialog
+          title="ส่งรายงานให้ลูกค้า"
+          message={RESEND_CONFIRM}
+          confirmDisabled={busy}
+          onCancel={() => setConfirmResend(false)}
+          onConfirm={resendReport}
+        />
       )}
 
       {confirmMove && (

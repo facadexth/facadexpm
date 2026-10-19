@@ -14,6 +14,7 @@ import { ConfirmDialog } from '../components/Modal.jsx'
 import RepairTicketModal from '../components/RepairTicketModal.jsx'
 import NewRepairTicketModal from '../components/NewRepairTicketModal.jsx'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
+import { releasesCrew, removeFutureUnconfirmedCrew } from '../lib/repairCrew.js'
 import { formatThaiDate } from '../lib/thaiDate.js'
 import { REPAIR_STATUS, startTime } from '../lib/repairStatus.js'
 import {
@@ -206,6 +207,10 @@ export default function Repairs() {
       setError(now && now.status !== ticket.status
         ? `งานซ่อม ${ticket.ticket_number} ถูกเปลี่ยนสถานะไปแล้ว โหลดใหม่ให้แล้ว`
         : `บันทึกไม่ได้ (สิทธิ์หรือแพ็กเกจหมดอายุ)`)
+    } else if (releasesCrew(ticket.status, to)) {
+      // R30: release the booked crew (from today on, not yet checked in).
+      const { error: e2 } = await removeFutureUnconfirmedCrew(ticket.id)
+      if (e2) setError(`ย้ายงานซ่อม ${ticket.ticket_number} แล้ว แต่ถอนช่างที่จองไว้ไม่สำเร็จ: ${e2.message} (ลบเองได้ในหน้าจ่ายงาน)`)
     }
     setBusyId(null)
     load()
@@ -290,7 +295,7 @@ export default function Repairs() {
       {declineTicket && (
         <ConfirmDialog
           title="ไม่รับงานซ่อม"
-          message={`ไม่รับงานซ่อม ${declineTicket.ticket_number} (${declineTicket.sites?.name || '-'})? ดูย้อนหลังได้จากตัวกรอง "ไม่รับ"`}
+          message={`ไม่รับงานซ่อม ${declineTicket.ticket_number} (${declineTicket.sites?.name || '-'})? ช่างที่จองไว้ตั้งแต่วันนี้ (ที่ยังไม่เช็คอิน) จะถูกถอนออก ดูย้อนหลังได้จากตัวกรอง "ไม่รับ"`}
           danger
           confirmDisabled={busyId === declineTicket.id}
           onCancel={() => setDeclineTicket(null)}

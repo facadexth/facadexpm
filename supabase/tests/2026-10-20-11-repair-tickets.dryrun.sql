@@ -249,6 +249,108 @@ AS $function$
   );
 $function$;
 
+-- Ruling R28: the staff "บันทึกนัด" save is one atomic call. SECURITY INVOKER, so the caller's own RLS on
+-- repair_tickets (admin/owner, tenant, tenant_can_write) and worker_assignments (payroll module) applies.
+-- Locks the ticket, checks crew conflicts (any other assignment of those workers in those shifts that day),
+-- then diffs this ticket's own future rows: keeps the wanted (worker, shift) pairs, deletes the rest (never a
+-- checked-in row), inserts the missing pairs, and updates the ticket. Conflicts return {ok:false} unwritten.
+CREATE OR REPLACE FUNCTION public.schedule_repair_ticket(
+  p_ticket uuid, p_expected_status text, p_date date, p_start time, p_hours numeric,
+  p_worker_ids uuid[], p_shifts text[], p_notify boolean)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  t          public.repair_tickets%ROWTYPE;
+  v_today    date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
+  v_workers  uuid[];
+  v_conflict jsonb;
+  v_deleted  int;
+  v_inserted int;
+BEGIN
+  SELECT * INTO t FROM public.repair_tickets
+   WHERE id = p_ticket AND tenant_id = current_tenant_id()
+   FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบงานซ่อมนี้'; END IF;
+  IF t.status IS DISTINCT FROM p_expected_status THEN
+    RAISE EXCEPTION 'งานซ่อมนี้ถูกเปลี่ยนสถานะไปแล้ว ปิดแล้วเปิดใหม่อีกครั้ง';
+  END IF;
+  IF t.status NOT IN ('received', 'scheduled', 'in_progress') THEN
+    RAISE EXCEPTION 'สถานะนี้นัดวันไม่ได้';
+  END IF;
+
+  IF p_shifts IS NULL OR cardinality(p_shifts) = 0 OR NOT (p_shifts <@ ARRAY['morning', 'evening']) THEN
+    RAISE EXCEPTION 'กะไม่ถูกต้อง';
+  END IF;
+  IF p_date IS NULL OR p_date < v_today THEN RAISE EXCEPTION 'วันที่เข้าต้องไม่ก่อนวันนี้'; END IF;
+  IF p_start IS NULL THEN RAISE EXCEPTION 'กรุณาระบุเวลาเริ่ม'; END IF;
+  IF p_hours IS NULL OR p_hours <= 0 THEN RAISE EXCEPTION 'ระยะเวลาต้องมากกว่า 0 ชม.'; END IF;
+
+  SELECT COALESCE(array_agg(DISTINCT w), '{}') INTO v_workers FROM unnest(COALESCE(p_worker_ids, '{}'::uuid[])) w;
+  IF (SELECT count(*) FROM public.workers WHERE id = ANY(v_workers) AND tenant_id = t.tenant_id) <> cardinality(v_workers) THEN
+    RAISE EXCEPTION 'ไม่พบช่างบางคนในบริษัทนี้';
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('worker_id', wa.worker_id, 'shift', wa.shift) ORDER BY wa.worker_id, wa.shift), '[]'::jsonb)
+    INTO v_conflict
+    FROM public.worker_assignments wa
+   WHERE wa.tenant_id = t.tenant_id
+     AND wa.worker_id = ANY(v_workers)
+     AND wa.date = p_date
+     AND wa.shift = ANY(p_shifts)
+     AND wa.repair_ticket_id IS DISTINCT FROM p_ticket;
+  IF jsonb_array_length(v_conflict) > 0 THEN
+    RETURN jsonb_build_object('ok', false, 'conflicts', v_conflict);
+  END IF;
+
+  -- Own future rows outside the wanted set are dropped; a checked-in one blocks the whole save.
+  IF EXISTS (
+    SELECT 1 FROM public.worker_assignments wa
+     WHERE wa.tenant_id = t.tenant_id AND wa.repair_ticket_id = p_ticket AND wa.date >= v_today
+       AND wa.confirmed_at IS NOT NULL
+       AND NOT (wa.date = p_date AND wa.worker_id = ANY(v_workers) AND wa.shift = ANY(p_shifts))
+  ) THEN
+    RAISE EXCEPTION 'มีช่างเช็คอินแล้ว ลบไม่ได้';
+  END IF;
+
+  DELETE FROM public.worker_assignments wa
+   WHERE wa.tenant_id = t.tenant_id AND wa.repair_ticket_id = p_ticket AND wa.date >= v_today
+     AND NOT (wa.date = p_date AND wa.worker_id = ANY(v_workers) AND wa.shift = ANY(p_shifts));
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+
+  INSERT INTO public.worker_assignments (tenant_id, worker_id, site_id, date, shift, type, notes, repair_ticket_id)
+  SELECT t.tenant_id, w.id, t.site_id, p_date, s.shift, 'site', 'งานซ่อม ' || t.ticket_number, p_ticket
+    FROM unnest(v_workers) AS w(id)
+   CROSS JOIN (SELECT DISTINCT unnest(p_shifts) AS shift) s
+   WHERE NOT EXISTS (
+     SELECT 1 FROM public.worker_assignments wa
+      WHERE wa.worker_id = w.id AND wa.date = p_date AND wa.shift = s.shift);
+  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+
+  UPDATE public.repair_tickets SET
+    scheduled_date = p_date,
+    scheduled_start = p_start,
+    duration_hours = p_hours,
+    -- now() = reminder "suppressed": the 13:00 cron only reminds rows with reminded_at IS NULL.
+    reminded_at = CASE WHEN p_notify IS NOT TRUE THEN now()
+                       WHEN p_date IS DISTINCT FROM t.scheduled_date THEN NULL
+                       ELSE reminded_at END,
+    status = CASE WHEN t.status = 'received' THEN 'scheduled' ELSE status END,
+    scheduled_at = CASE WHEN t.status = 'received' THEN now() ELSE scheduled_at END,
+    received_at = CASE WHEN t.status = 'received' THEN COALESCE(received_at, now()) ELSE received_at END
+   WHERE id = p_ticket;
+  IF NOT FOUND THEN RAISE EXCEPTION 'บันทึกไม่ได้ (สิทธิ์หรือแพ็กเกจหมดอายุ)'; END IF;
+
+  RETURN jsonb_build_object('ok', true, 'deleted', v_deleted, 'inserted', v_inserted,
+    'status', CASE WHEN t.status = 'received' THEN 'scheduled' ELSE t.status END);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.schedule_repair_ticket(uuid, text, date, time, numeric, uuid[], text[], boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.schedule_repair_ticket(uuid, text, date, time, numeric, uuid[], text[], boolean) TO authenticated;
+
 -- ===== assertions =====
 DO $$
 DECLARE
@@ -257,6 +359,7 @@ DECLARE
   v_other_email text;
   v_site uuid; v_site2 uuid; v_t1 uuid; v_t2 uuid; v_t3 uuid; v_t4 uuid; v_worker uuid; v_wa uuid;
   n1 text; n2 text; n3 text; k text; i int; r boolean; cnt jsonb; n int; ra uuid;
+  v_w2 uuid; res jsonb; v_conf uuid; tk repair_tickets%ROWTYPE;
 BEGIN
   SELECT t.id, ur.user_email INTO v_other, v_other_email
     FROM tenants t JOIN user_roles ur ON ur.tenant_id = t.id AND ur.role = 'OWNER'
@@ -340,6 +443,119 @@ BEGIN
   IF ra IS NOT NULL THEN RAISE EXCEPTION 'FAIL (f): repair_ticket_id not nulled'; END IF;
   IF NOT EXISTS (SELECT 1 FROM worker_assignments WHERE id = v_wa) THEN RAISE EXCEPTION 'FAIL (f): assignment deleted'; END IF;
   RAISE NOTICE 'PASS (f)';
+
+  -- (h) schedule_repair_ticket (R28), as the demo owner (claims from (c)). v_worker has a free
+  -- morning row on 2099-12-01 from (f); v_t3 is 'received'.
+  INSERT INTO workers (tenant_id, name, monthly_salary) VALUES (v_tenant, 'ZZ Repair Worker 2', 0) RETURNING id INTO v_w2;
+
+  EXECUTE 'SET LOCAL role authenticated';
+  res := schedule_repair_ticket(v_t3, 'received', DATE '2099-12-01', TIME '09:00', 2, ARRAY[v_worker], ARRAY['morning'], true);
+  EXECUTE 'RESET ROLE';
+  IF (res->>'ok')::boolean OR jsonb_array_length(res->'conflicts') <> 1
+     OR res->'conflicts'->0->>'worker_id' <> v_worker::text OR res->'conflicts'->0->>'shift' <> 'morning' THEN
+    RAISE EXCEPTION 'FAIL (h1): conflict result %', res;
+  END IF;
+  SELECT * INTO tk FROM repair_tickets WHERE id = v_t3;
+  IF tk.status <> 'received' OR tk.scheduled_date IS NOT NULL THEN RAISE EXCEPTION 'FAIL (h1): ticket written on conflict'; END IF;
+  IF EXISTS (SELECT 1 FROM worker_assignments WHERE repair_ticket_id = v_t3) THEN RAISE EXCEPTION 'FAIL (h1): rows written on conflict'; END IF;
+  RAISE NOTICE 'PASS (h1)';
+
+  EXECUTE 'SET LOCAL role authenticated';
+  res := schedule_repair_ticket(v_t3, 'received', DATE '2099-12-02', TIME '10:00', 3, ARRAY[v_worker, v_w2, v_w2], ARRAY['morning','evening'], true);
+  EXECUTE 'RESET ROLE';
+  IF NOT (res->>'ok')::boolean OR (res->>'inserted')::int <> 4 OR res->>'status' <> 'scheduled' THEN RAISE EXCEPTION 'FAIL (h2): %', res; END IF;
+  SELECT * INTO tk FROM repair_tickets WHERE id = v_t3;
+  IF tk.status <> 'scheduled' OR tk.scheduled_at IS NULL OR tk.received_at IS NULL OR tk.reminded_at IS NOT NULL
+     OR tk.scheduled_date <> DATE '2099-12-02' OR tk.scheduled_start <> TIME '10:00' OR tk.duration_hours <> 3 THEN
+    RAISE EXCEPTION 'FAIL (h2): ticket %', row_to_json(tk);
+  END IF;
+  SELECT count(*) INTO n FROM worker_assignments
+   WHERE repair_ticket_id = v_t3 AND tenant_id = v_tenant AND site_id = v_site AND type = 'site'
+     AND date = DATE '2099-12-02' AND notes = 'งานซ่อม ' || tk.ticket_number;
+  IF n <> 4 THEN RAISE EXCEPTION 'FAIL (h2): % rows', n; END IF;
+  RAISE NOTICE 'PASS (h2)';
+
+  EXECUTE 'SET LOCAL role authenticated';
+  BEGIN
+    res := schedule_repair_ticket(v_t3, 'received', DATE '2099-12-02', TIME '10:00', 3, ARRAY[v_worker], ARRAY['morning'], true);
+    EXECUTE 'RESET ROLE';
+    RAISE EXCEPTION 'FAIL (h3): stale expected status accepted';
+  EXCEPTION WHEN raise_exception THEN
+    EXECUTE 'RESET ROLE';
+    IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'PASS (h3)';
+
+  -- (h4) diff keeps the wanted checked-in row, drops the rest; notify off suppresses the reminder.
+  UPDATE worker_assignments SET confirmed_at = now()
+   WHERE repair_ticket_id = v_t3 AND worker_id = v_worker AND shift = 'morning' RETURNING id INTO v_conf;
+  EXECUTE 'SET LOCAL role authenticated';
+  res := schedule_repair_ticket(v_t3, 'scheduled', DATE '2099-12-02', TIME '09:00', 2, ARRAY[v_worker], ARRAY['morning'], false);
+  EXECUTE 'RESET ROLE';
+  IF NOT (res->>'ok')::boolean OR (res->>'deleted')::int <> 3 OR (res->>'inserted')::int <> 0 THEN RAISE EXCEPTION 'FAIL (h4): %', res; END IF;
+  IF NOT EXISTS (SELECT 1 FROM worker_assignments WHERE id = v_conf AND confirmed_at IS NOT NULL) THEN RAISE EXCEPTION 'FAIL (h4): kept row replaced'; END IF;
+  SELECT count(*) INTO n FROM worker_assignments WHERE repair_ticket_id = v_t3;
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL (h4): % rows left', n; END IF;
+  SELECT * INTO tk FROM repair_tickets WHERE id = v_t3;
+  IF tk.reminded_at IS NULL OR tk.status <> 'scheduled' THEN RAISE EXCEPTION 'FAIL (h4): reminder not suppressed / status %', tk.status; END IF;
+  RAISE NOTICE 'PASS (h4)';
+
+  -- (h5) moving away from a checked-in row is refused and nothing changes.
+  EXECUTE 'SET LOCAL role authenticated';
+  BEGIN
+    res := schedule_repair_ticket(v_t3, 'scheduled', DATE '2099-12-03', TIME '09:00', 2, ARRAY[v_worker], ARRAY['morning'], true);
+    EXECUTE 'RESET ROLE';
+    RAISE EXCEPTION 'FAIL (h5): checked-in row dropped';
+  EXCEPTION WHEN raise_exception THEN
+    EXECUTE 'RESET ROLE';
+    IF SQLERRM NOT LIKE 'มีช่างเช็คอินแล้ว%' THEN RAISE; END IF;
+  END;
+  IF NOT EXISTS (SELECT 1 FROM worker_assignments WHERE id = v_conf) THEN RAISE EXCEPTION 'FAIL (h5): row gone'; END IF;
+  IF (SELECT scheduled_date FROM repair_tickets WHERE id = v_t3) <> DATE '2099-12-02' THEN RAISE EXCEPTION 'FAIL (h5): ticket moved'; END IF;
+  RAISE NOTICE 'PASS (h5)';
+
+  -- (h6) bad shifts and a past date are refused.
+  EXECUTE 'SET LOCAL role authenticated';
+  BEGIN
+    res := schedule_repair_ticket(v_t3, 'scheduled', DATE '2099-12-02', TIME '09:00', 2, ARRAY[v_worker], ARRAY['night'], true);
+    EXECUTE 'RESET ROLE';
+    RAISE EXCEPTION 'FAIL (h6): bad shift accepted';
+  EXCEPTION WHEN raise_exception THEN
+    EXECUTE 'RESET ROLE';
+    IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
+  END;
+  EXECUTE 'SET LOCAL role authenticated';
+  BEGIN
+    res := schedule_repair_ticket(v_t3, 'scheduled', DATE '2000-01-01', TIME '09:00', 2, '{}'::uuid[], ARRAY['morning'], true);
+    EXECUTE 'RESET ROLE';
+    RAISE EXCEPTION 'FAIL (h6): past date accepted';
+  EXCEPTION WHEN raise_exception THEN
+    EXECUTE 'RESET ROLE';
+    IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'PASS (h6)';
+
+  -- (h7) a new date with notify on clears reminded_at; an empty crew is allowed (removes unconfirmed own rows).
+  UPDATE worker_assignments SET confirmed_at = NULL WHERE id = v_conf;
+  EXECUTE 'SET LOCAL role authenticated';
+  res := schedule_repair_ticket(v_t3, 'scheduled', DATE '2099-12-04', TIME '13:00', 1, '{}'::uuid[], ARRAY['evening'], true);
+  EXECUTE 'RESET ROLE';
+  IF NOT (res->>'ok')::boolean OR (res->>'deleted')::int <> 1 THEN RAISE EXCEPTION 'FAIL (h7): %', res; END IF;
+  SELECT * INTO tk FROM repair_tickets WHERE id = v_t3;
+  IF tk.reminded_at IS NOT NULL OR tk.scheduled_date <> DATE '2099-12-04' THEN RAISE EXCEPTION 'FAIL (h7): ticket %', row_to_json(tk); END IF;
+  IF EXISTS (SELECT 1 FROM worker_assignments WHERE repair_ticket_id = v_t3) THEN RAISE EXCEPTION 'FAIL (h7): rows left'; END IF;
+  RAISE NOTICE 'PASS (h7)';
+
+  -- (h8) anon may not execute it.
+  EXECUTE 'SET LOCAL role anon';
+  BEGIN
+    res := schedule_repair_ticket(v_t3, 'scheduled', DATE '2099-12-04', TIME '13:00', 1, '{}'::uuid[], ARRAY['evening'], true);
+    EXECUTE 'RESET ROLE';
+    RAISE EXCEPTION 'FAIL (h8): anon may execute schedule_repair_ticket';
+  EXCEPTION WHEN insufficient_privilege THEN
+    EXECUTE 'RESET ROLE';
+  END;
+  RAISE NOTICE 'PASS (h8)';
 
   PERFORM set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-000000000002','role','authenticated','email',v_other_email)::text, true);
   EXECUTE 'SET LOCAL role authenticated';
