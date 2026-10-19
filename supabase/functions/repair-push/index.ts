@@ -17,6 +17,7 @@ import type { CustomerPushDeps, CustomerPushResult } from '../_shared/customer-p
 import { scheduleText, reminderText, repairReportFlex } from '../_shared/repair.ts'
 import type { RepairTicket } from '../_shared/repair.ts'
 import { warrantyStatus } from '../_shared/warranty.ts'
+import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -148,10 +149,11 @@ async function actionSchedule(tenantId: string, t: TicketRow): Promise<Response>
   const to = await recipientFor(tenantId, t)
   const result = await pushToCustomer(customerPushDeps(admin), tenantId, to,
     [{ type: 'text', text: scheduleText(toRepairTicket(t, site)) }])
-  if (result.sent) {
-    const patch: Record<string, unknown> = { notified_schedule_at: new Date().toISOString() }
-    // A moved appointment that is still ahead gets reminded again.
-    if (t.scheduled_date > bangkokToday()) patch.reminded_at = null
+  const patch: Record<string, unknown> = {}
+  if (result.sent) patch.notified_schedule_at = new Date().toISOString()
+  // A moved appointment that is still ahead gets reminded again, whether or not this push went out.
+  if (t.scheduled_date > bangkokToday()) patch.reminded_at = null
+  if (Object.keys(patch).length > 0) {
     const { error } = await admin.from('repair_tickets').update(patch).eq('tenant_id', tenantId).eq('id', t.id)
     if (error) console.error('repair-push schedule mark failed', errCode(error))
   }
@@ -245,13 +247,20 @@ async function runReminders(): Promise<Response> {
     byTenant.set(t.tenant_id, list)
   }
 
-  const summary = { date: tomorrow, tenants: byTenant.size, tickets: 0, sent: 0, off: 0, no_recipient: 0, budget: 0, error: 0 }
+  const summary = { date: tomorrow, tenants: byTenant.size, tickets: 0, skipped_module_tenants: 0, sent: 0, off: 0, no_recipient: 0, budget: 0, error: 0 }
   const deps = cachedDeps(customerPushDeps(admin))
 
   for (const [tenantId, tickets] of byTenant) {
-    summary.tickets += tickets.length
     let handled = 0
+    let counted = false
     try {
+      // No line_bot module: skip the tenant entirely, no markers set.
+      if (!(await tenantHasModuleAccess(admin, tenantId, 'line_bot'))) {
+        summary.skipped_module_tenants++
+        continue
+      }
+      summary.tickets += tickets.length
+      counted = true
       const siteIds = [...new Set(tickets.map((t) => t.site_id))]
       const { data: s, error: sErr } = await admin.from('sites').select('id, name, handover_date, warranty_months')
         .eq('tenant_id', tenantId).in('id', siteIds)
@@ -283,7 +292,8 @@ async function runReminders(): Promise<Response> {
       }
     } catch (e) {
       console.error('repair-push reminders tenant failed', tenantId, errCode(e))
-      summary.error += tickets.length - handled
+      if (!counted) summary.tickets += tickets.length
+      summary.error += Math.max(0, tickets.length - handled)
     }
   }
   return json({ ok: true, ...summary })
@@ -324,6 +334,7 @@ Deno.serve(async (req) => {
     if (action !== 'schedule' && action !== 'report') return json({ error: 'bad_action' }, 400)
     const ticketId = typeof body.ticket_id === 'string' ? body.ticket_id : ''
     if (!UUID_RE.test(ticketId)) return json({ error: 'bad_ticket_id' }, 400)
+    if (!(await tenantHasModuleAccess(admin, tenantId, 'line_bot'))) return json({ sent: false, skipped: 'off' })
 
     const ticket = await loadTicket(tenantId, ticketId)
     if (!ticket) return json({ error: 'not_found' }, 404)

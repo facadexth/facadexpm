@@ -4,7 +4,7 @@
 //   1. tenant setting customer_line_push_enabled (missing = ON, 'false' = OFF)
 //   2. a recipient exists
 //   3. the tenant's OA token exists (read before spending budget, so a tenant without an OA
-//      does not burn its daily allowance)
+//      does not burn its daily allowance); no OA = 'off'
 //   4. consume_customer_push(p_tenant) -- 100 per Bangkok day per tenant; fails closed
 //   5. POST https://api.line.me/v2/bot/message/push
 //
@@ -44,8 +44,8 @@ export async function pushToCustomer(
     token = ''
   }
   if (!token) {
-    console.error('customer push: tenant OA not configured', tenantId)
-    return { sent: false, skipped: 'error' }
+    // No OA connected = the tenant has not turned customer LINE on.
+    return { sent: false, skipped: 'off' }
   }
 
   let allowed = false

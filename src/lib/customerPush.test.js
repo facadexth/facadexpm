@@ -49,10 +49,10 @@ describe('pushToCustomer', () => {
     expect(d.fetch).not.toHaveBeenCalled()
   })
 
-  it('missing token: error, no budget spent', async () => {
+  it('missing token (no OA connected): off, no budget spent', async () => {
     const d = deps({ accessToken: vi.fn(async () => null) })
     const r = await pushToCustomer(d, 't1', 'U1', MSG)
-    expect(r).toEqual({ sent: false, skipped: 'error' })
+    expect(r).toEqual({ sent: false, skipped: 'off' })
     expect(d.consumeBudget).not.toHaveBeenCalled()
     expect(d.fetch).not.toHaveBeenCalled()
   })
