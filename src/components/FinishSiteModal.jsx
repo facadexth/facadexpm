@@ -3,7 +3,7 @@
 // Stock: per spec decision #6, the job keeps 100% of its original cost -- leftover material
 // re-enters stock at unit_cost = 0 (already fully expensed). Modeled as a transfer_out at this
 // site paired with a transfer_in at the tenant's "ส่วนกลาง" site, both via record_stock_movement().
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import { fetchAllRows } from '../lib/fetchAllRows.js'
 import { warrantyEnd } from '../lib/warranty.js'
@@ -19,7 +19,9 @@ export default function FinishSiteModal({ site, onClose, onDone }) {
   const [months, setMonths] = useState('12')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const stockErrRef = useRef('')
 
+  // Returns true on success. Open-time callers fail closed; the save-retry path stays soft.
   const loadRows = async () => {
     let data
     try {
@@ -29,7 +31,7 @@ export default function FinishSiteModal({ site, onClose, onDone }) {
         .eq('site_id', site.id)
         .gt('quantity_on_hand', 0)
         .order('inventory_item_id'))
-    } catch (err) { setError(err.message); return }
+    } catch (err) { stockErrRef.current = err.message; setError(err.message); return false }
     setRows((data || []).map(r => ({
       inventory_item_id: r.inventory_item_id,
       name: r.inventory_items?.name,
@@ -37,6 +39,7 @@ export default function FinishSiteModal({ site, onClose, onDone }) {
       quantity_on_hand: r.quantity_on_hand,
       leftover: String(r.quantity_on_hand),
     })))
+    return true
   }
 
   useEffect(() => {
@@ -50,8 +53,13 @@ export default function FinishSiteModal({ site, onClose, onDone }) {
         return
       }
       setMonths(String(data?.warranty_months ?? 12))
-      await loadRows()
+      const ok = await loadRows()
       if (cancelled) return
+      if (!ok) {
+        alert('โหลดข้อมูลสต็อกไม่สำเร็จ: ' + stockErrRef.current)
+        onClose()
+        return
+      }
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -110,6 +118,7 @@ export default function FinishSiteModal({ site, onClose, onDone }) {
   return (
     <Modal title={`จบไซท์งาน — ${site.name}`} onClose={onClose} maxWidth={560}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <p style={{ color: 'var(--text2)', fontSize: 13 }}>สถานะจะเปลี่ยนเป็น Completed และถือเป็นวันส่งมอบงาน ประกันเริ่มนับจากวันนี้</p>
         {loading ? <div>⏳ กำลังโหลด...</div> : (
           <>
             {rows.length > 0 && (
@@ -141,6 +150,7 @@ export default function FinishSiteModal({ site, onClose, onDone }) {
                 : m === 0 ? 'ไม่มีประกัน'
                 : <>ประกันถึง <b>{dmy(endDate)}</b></>}
             </div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>แก้วันส่งมอบหรือระยะประกันทีหลังได้ในหน้าแก้ไขไซท์</div>
             {error && <div className="alert alert-error">{error}</div>}
           </>
         )}
