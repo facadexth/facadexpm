@@ -21,6 +21,7 @@ function deps(over = {}) {
     getContact: vi.fn().mockResolvedValue(contact),
     openRequest: vi.fn().mockResolvedValue(undefined),
     touchAccount: vi.fn().mockResolvedValue(undefined),
+    claimWelcome: vi.fn().mockResolvedValue(true),
     ...over,
   }
 }
@@ -113,5 +114,40 @@ describe('handleCustomerEvent', () => {
   it('a throwing dep rejects (shell is the only catch)', async () => {
     const d = deps({ claimInvite: vi.fn().mockRejectedValue(new Error('23505')) })
     await expect(handleCustomerEvent(txt('K7P2QM'), ctx, d)).rejects.toThrow('23505')
+  })
+})
+
+describe('welcome behaviours', () => {
+  const follow = (source = { type: 'user', userId: 'U1' }) => ({ type: 'follow', replyToken: 'rt', source })
+  it('follow from unlinked user: welcome, no claim', async () => {
+    const d = deps()
+    expect(await handleCustomerEvent(follow(), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
+    expect(d.claimWelcome).not.toHaveBeenCalled()
+  })
+  it('follow from linked user: silent', async () => {
+    const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
+    expect(await handleCustomerEvent(follow(), ctx, d)).toEqual([])
+  })
+  it('follow from a group: silent', async () => {
+    expect(await handleCustomerEvent(follow({ type: 'group', groupId: 'G1', userId: 'U1' }), ctx, deps())).toEqual([])
+  })
+  it('unlinked chat, claim true: welcome', async () => {
+    const d = deps()
+    expect(await handleCustomerEvent(txt('สวัสดี'), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
+    expect(d.claimWelcome).toHaveBeenCalledWith('U1')
+  })
+  it('unlinked chat, claim false: silent', async () => {
+    const d = deps({ claimWelcome: vi.fn().mockResolvedValue(false) })
+    expect(await handleCustomerEvent(txt('สวัสดี'), ctx, d)).toEqual([])
+  })
+  it('linked chat: silent, no claim', async () => {
+    const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
+    expect(await handleCustomerEvent(txt('สวัสดี'), ctx, d)).toEqual([])
+    expect(d.claimWelcome).not.toHaveBeenCalled()
+  })
+  it('unlinked code-like text takes the invite path, no claim', async () => {
+    const d = deps()
+    expect(await handleCustomerEvent(txt('K7P2QM'), ctx, d)).toEqual([T(inviteInvalidText())])
+    expect(d.claimWelcome).not.toHaveBeenCalled()
   })
 })

@@ -17,10 +17,18 @@ export type CustomerDeps = {
   getContact: () => Promise<{ companyName: string; phone: string | null; hours: string | null; brandName: string }>
   openRequest: (kind: 'quote' | 'repair', lineUserId: string, clientId: string | null, displayName: string | null) => Promise<void>
   touchAccount: (lineUserId: string) => Promise<void>
+  // true = this (tenant, user) has not been welcomed yet today (Bangkok); the claim is atomic.
+  claimWelcome: (lineUserId: string) => Promise<boolean>
 }
 
 // deno-lint-ignore no-explicit-any
 export async function handleCustomerEvent(event: any, ctx: { tenantId: string; today: string }, deps: CustomerDeps): Promise<LineMessage[]> {
+  if (event?.type === 'follow') {
+    if (event.source?.type !== 'user' || !event.source?.userId) return []
+    // Always greet a new friend; follow events are rare, so no daily claim here.
+    if (await deps.getAccount(event.source.userId)) return []
+    return [{ type: 'text', text: notLinkedText((await deps.getContact()).brandName) }]
+  }
   if (event?.type !== 'message' || event.message?.type !== 'text') return []
   // 1:1 chats only. In a group/room the bot must not answer, link, or open requests.
   if (event.source?.type !== 'user') return []
@@ -42,7 +50,11 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
   }
 
   const cmd = matchCustomerCommand(text)
-  if (!cmd) return []
+  if (!cmd) {
+    // Ordinary chat from someone not linked yet: greet at most once per Bangkok day, else stay silent for staff.
+    if (!account && await deps.claimWelcome(userId)) return txt(notLinkedText((await deps.getContact()).brandName))
+    return []
+  }
 
   if (cmd === 'contact') return txt(contactText(await deps.getContact()))
 

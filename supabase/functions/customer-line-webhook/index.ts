@@ -122,6 +122,11 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       // 23505 = an open request of this kind already exists (partial unique index): success.
       if (error && error.code !== '23505') throw error
     },
+    async claimWelcome(lineUserId) {
+      const { data, error } = await admin.rpc('claim_customer_welcome', { p_tenant: tenantId, p_line_user_id: lineUserId })
+      if (error) { console.error('customer-line welcome claim failed', error.code); return false }
+      return data === true
+    },
     async touchAccount(lineUserId) {
       await admin.from('customer_line_accounts').update({ last_seen_at: new Date().toISOString() })
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId)
