@@ -101,7 +101,7 @@ export default function CustomerInviteModal({ siteId, siteName, canUnlink, onClo
               <div style={{ background: 'var(--bg2, #FBF8F3)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.8 }}>
                 <b style={{ color: 'var(--text)' }}>ลูกค้าทำแค่ 2 ขั้น</b><br />
                 1. สแกน QR (หรือกดลิงก์) จะเปิดแชท @{String(invite.basic_id).replace(/^@/, '')}<br />
-                2. กดส่งรหัสที่พิมพ์ไว้ให้แล้ว เสร็จ บอทตอบว่า “เชื่อมกับงาน {siteName} แล้ว”
+                2. กดส่งรหัสที่พิมพ์ไว้ให้แล้ว เสร็จ บอทตอบว่า “เชื่อมกับ {invite.client_name} เรียบร้อยครับ”
               </div>
               <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={share}>แชร์ไปไลน์ลูกค้า</button>
             </div>
@@ -120,7 +120,7 @@ export default function CustomerInviteModal({ siteId, siteName, canUnlink, onClo
                 <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{account.line_display_name || '(ไม่มีชื่อ)'} · ลูกค้า: {invite.client_name}</div>
-                    <div style={muted}>เชื่อมเมื่อ {formatBkkDate(account.linked_at)} · ล่าสุดถามสถานะงาน {formatBkkDate(account.last_seen_at)}</div>
+                    <div style={muted}>เชื่อมเมื่อ {formatBkkDate(account.linked_at)} · ทักล่าสุด {formatBkkDate(account.last_seen_at)}</div>
                   </div>
                   {canUnlink && <button className="btn btn-sm btn-danger" disabled={busy} onClick={unlink}>ยกเลิกการเชื่อม</button>}
                 </div>
