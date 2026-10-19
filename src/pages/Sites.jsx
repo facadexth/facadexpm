@@ -597,8 +597,9 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
   const openEdit = async st => {
     let extra = {}
     if (!pm) {
-      const { data } = await supabase.from('sites').select('warranty_months, handover_date').eq('id', st.id).single()
-      if (data) extra = data
+      const { data, error } = await supabase.from('sites').select('warranty_months, handover_date').eq('id', st.id).single()
+      if (error || !data) { alert('โหลดข้อมูลไซท์ไม่สำเร็จ: ' + (error?.message || 'ไม่พบข้อมูล')); return }
+      extra = data
     }
     setEditSite({ ...st, ...extra }); setShowForm(true)
   }
