@@ -1,28 +1,558 @@
-// Detail modal of one repair ticket (งานซ่อม). PLACEHOLDER: Task 6 of the repair-tickets plan replaces
-// this body (schedule, crew, before/after photos, close-with-after-photo, report). Keep the props:
-//   ticketId  -- repair_tickets.id
-//   onClose() -- close without changes
-//   onChanged() -- something was saved; the board reloads
-import { useEffect, useState } from 'react'
+// Detail modal of one repair ticket (งานซ่อม), opened from the board (src/pages/Repairs.jsx).
+//   ticketId    -- repair_tickets.id
+//   onClose()   -- closed and nothing was saved
+//   onChanged() -- closed after something was saved; the board reloads
+// Sections: header (number, site, warranty, site status, status pills + in-between moves),
+// จากลูกค้า (description + customer media), นัดหมาย (date, time, hours, crew -> worker_assignments,
+// optional LINE push), ผลการซ่อม (before/after photos, fix note, ปิดงาน + report push).
+// Status changes go through movePatch (ruling R22). A push never undoes a saved schedule or close.
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase.js'
-import { Modal } from './Modal.jsx'
+import { Modal, ConfirmDialog } from './Modal.jsx'
+import { useWorkers } from '../hooks/useSupabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
+import { bangkokTodayIso } from '../lib/photoUpload.js'
+import { formatThaiDate } from '../lib/thaiDate.js'
+import { REPAIR_STATUS, canMove, startTime } from '../lib/repairStatus.js'
+import { movePatch, warrantyOf, bangkokDateOf } from '../lib/repairBoard.js'
+import { planRepairAssignments, repairShifts } from '../lib/repairAssign.js'
+import { uploadRepairPhotos, REPAIR_BUCKET } from '../lib/repairUpload.js'
+import { invokeRepairPush } from '../lib/repairPush.js'
+
+const SIGNED_URL_SECONDS = 3600
+const PILL_STEPS = ['pending_review', 'received', 'scheduled', 'in_progress', 'done']
+const SHIFT_TH = { morning: 'เช้า', evening: 'บ่าย' }
+const NOTIFY_LABEL = 'ส่งไลน์แจ้งนัดให้ลูกค้าเมื่อบันทึก + เตือนก่อน 1 วัน (13:00)'
+const NOTICE_CLASS = { success: 'alert-success', warning: 'alert-warning', error: 'alert-error', info: 'alert-info' }
+
+// In-between moves offered as buttons. received -> scheduled is the นัดหมาย save, in_progress -> done is ปิดงาน.
+const MOVE_LABEL = {
+  'pending_review>received': 'เปิดงานซ่อม',
+  'pending_review>declined': 'ไม่รับ',
+  'received>declined': 'ไม่รับ',
+  'scheduled>in_progress': 'เริ่มซ่อม',
+  'scheduled>received': 'ย้อนกลับ: รับเรื่อง',
+  'in_progress>scheduled': 'ย้อนกลับ: นัดเข้า',
+  'done>in_progress': 'เปิดงานอีกครั้ง (กำลังซ่อม)',
+}
+const CONFIRM_MOVE = {
+  declined: 'ไม่รับงานซ่อมนี้? ดูย้อนหลังได้จากตัวกรอง "ไม่รับ" บนบอร์ด',
+  'done>in_progress': 'เปิดงานที่เสร็จแล้วกลับมาเป็น "กำลังซ่อม"? วันที่เสร็จจะถูกล้าง ปิดงานใหม่แล้วส่งรายงานซ้ำได้',
+}
+
+const bkkTime = (iso) => {
+  const ms = Date.parse(iso || '')
+  return Number.isNaN(ms) ? '' : new Date(ms + 7 * 3600 * 1000).toISOString().slice(11, 16)
+}
+const workerLabel = (w) => (w ? `${w.name || '-'}${w.nickname ? ` (${w.nickname})` : ''}` : '-')
+const box = { width: 84, height: 84, borderRadius: 8, overflow: 'hidden', flex: '0 0 auto', border: '1px solid var(--border)', background: 'var(--bg3)' }
+const sec = { fontSize: 14, fontWeight: 700, marginTop: 4 }
+
+function WarrantyPill({ ticket, today }) {
+  const w = warrantyOf(ticket, today)
+  if (w.kind === 'active') return <span className="badge badge-accepted" style={{ cursor: 'default' }}>ในประกัน ถึง {formatThaiDate(w.end)}</span>
+  if (w.kind === 'expired') return <span className="badge badge-expired" style={{ cursor: 'default' }}>หมดประกัน {formatThaiDate(w.end)}</span>
+  if (w.kind === 'none') return <span className="badge badge-expired" style={{ cursor: 'default' }}>ไม่มีประกัน</span>
+  return <span className="badge badge-draft" style={{ cursor: 'default' }}>ยังไม่ส่งมอบ</span>
+}
+
+function MediaTiles({ items, urls, onOpenImage, onAdd, adding }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+      {items.map((m) => {
+        const url = urls[m.storage_path]
+        if (m.media_type === 'image') {
+          return (
+            <button key={m.id} type="button" title={m.file_name || ''} onClick={() => url && onOpenImage(url)}
+              style={{ ...box, padding: 0, cursor: url ? 'zoom-in' : 'default' }}>
+              {url ? <img src={url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : '🖼️'}
+            </button>
+          )
+        }
+        if (m.media_type === 'video') {
+          return url
+            ? <video key={m.id} src={url} controls preload="metadata" style={{ width: 200, height: 112, borderRadius: 8, background: '#000' }} />
+            : <div key={m.id} style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🎬</div>
+        }
+        return (
+          <a key={m.id} href={url || undefined} target="_blank" rel="noreferrer" download={m.file_name || true}
+            style={{ ...box, width: 'auto', minWidth: 84, maxWidth: 200, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text)', textDecoration: 'none' }}>
+            📄 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.file_name || 'ไฟล์'}</span>
+          </a>
+        )
+      })}
+      {onAdd && (
+        <label style={{ ...box, border: '2px dashed var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: adding ? 12 : 22, color: 'var(--text3)', cursor: adding ? 'wait' : 'pointer' }}
+          title="เพิ่มรูป">
+          {adding ? 'กำลังอัปโหลด…' : '+'}
+          <input type="file" accept="image/*" multiple hidden disabled={adding}
+            onChange={(e) => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) onAdd(f) }} />
+        </label>
+      )}
+      {items.length === 0 && !onAdd && <span style={{ fontSize: 12, color: 'var(--text3)' }}>ไม่มี</span>}
+    </div>
+  )
+}
 
 export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
-  const [number, setNumber] = useState('')
+  const { role, isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'repairs')
+  const { data: workers } = useWorkers()
+  const today = bangkokTodayIso()
+
+  const [ticket, setTicket] = useState(null)
+  const [media, setMedia] = useState([])
+  const [urls, setUrls] = useState({})
+  const [loadError, setLoadError] = useState('')
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState(null) // { kind, text }
+  const [busy, setBusy] = useState(false)
+  const [uploading, setUploading] = useState(null) // 'before' | 'after'
+  const [changed, setChanged] = useState(false)
+  const [lightbox, setLightbox] = useState(null) // signed image URL
+  const [confirmMove, setConfirmMove] = useState(null) // target status
+
+  // form
+  const [formReady, setFormReady] = useState(false)
+  const [date, setDate] = useState('')
+  const [start, setStart] = useState('09:00')
+  const [hours, setHours] = useState('2')
+  const [workerIds, setWorkerIds] = useState([])
+  const [workerQuery, setWorkerQuery] = useState('')
+  const [notify, setNotify] = useState(true)
+  const [fixNote, setFixNote] = useState('')
+
+  const loadMedia = useCallback(async () => {
+    const { data, error: e } = await supabase.from('repair_ticket_media')
+      .select('id, ticket_id, role, media_type, storage_path, file_name, created_at')
+      .eq('ticket_id', ticketId).order('created_at', { ascending: true })
+    if (e) { setLoadError(`โหลดรูป/ไฟล์ไม่สำเร็จ: ${e.message}`); return }
+    const rows = data || []
+    setMedia(rows)
+    const paths = rows.map((m) => m.storage_path).filter(Boolean)
+    if (!paths.length) { setUrls({}); return }
+    const { data: signed, error: e2 } = await supabase.storage.from(REPAIR_BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS)
+    if (e2) setLoadError(`ลิงก์รูป/ไฟล์ไม่สำเร็จ: ${e2.message}`)
+    const map = {}
+    for (const s of signed || []) if (s.signedUrl && s.path) map[s.path] = s.signedUrl
+    setUrls(map)
+  }, [ticketId])
+
+  // Returns the fresh ticket row (or null).
+  const loadTicket = useCallback(async () => {
+    const { data, error: e } = await supabase.from('repair_tickets')
+      .select('*, sites(name, site_number, status, handover_date, warranty_months), clients(name)')
+      .eq('id', ticketId).maybeSingle()
+    if (e) { setLoadError(`โหลดงานซ่อมไม่สำเร็จ: ${e.message}`); return null }
+    if (!data) { setLoadError('ไม่พบงานซ่อมนี้ (อาจถูกลบ หรือไม่มีสิทธิ์)'); return null }
+    setTicket(data)
+    return data
+  }, [ticketId])
+
   useEffect(() => {
     let alive = true
-    supabase.from('repair_tickets').select('ticket_number').eq('id', ticketId).maybeSingle()
-      .then(({ data }) => { if (alive) setNumber(data?.ticket_number || '') })
+    ;(async () => {
+      const t = await loadTicket()
+      if (!alive || !t) return
+      loadMedia()
+      // Prefill the form from the saved appointment and the crew assigned on that date.
+      let crew = []
+      if (t.scheduled_date) {
+        const { data } = await supabase.from('worker_assignments').select('worker_id')
+          .eq('repair_ticket_id', t.id).eq('date', t.scheduled_date)
+        crew = [...new Set((data || []).map((a) => a.worker_id))]
+      }
+      if (!alive) return
+      setDate(t.scheduled_date || '')
+      setStart(startTime(t.scheduled_start) || '09:00')
+      setHours(Number(t.duration_hours) > 0 ? String(Number(t.duration_hours)) : '2')
+      setWorkerIds(crew)
+      setFixNote(t.fix_note || '')
+      setFormReady(true)
+    })()
     return () => { alive = false }
-  }, [ticketId])
+  }, [loadTicket, loadMedia])
+
+  const handleClose = () => {
+    if (lightbox) { setLightbox(null); return false }
+    if (confirmMove) { setConfirmMove(null); return false }
+    if (busy || uploading) return false
+    if (changed) onChanged()
+    else onClose()
+  }
+
+  const t = ticket
+  const status = t?.status
+  const canSchedule = canEdit && ['received', 'scheduled', 'in_progress'].includes(status)
+  const closeAllowed = canEdit && !!status && canMove(status, 'done')
+  const showClose = canEdit && ['received', 'scheduled', 'in_progress'].includes(status)
+  const canUpload = canEdit && !!status && !['pending_review', 'declined'].includes(status)
+
+  const byRole = useMemo(() => {
+    const g = { customer: [], before: [], after: [] }
+    for (const m of media) (g[m.role] || (g[m.role] = [])).push(m)
+    return g
+  }, [media])
+
+  const workerById = useMemo(() => Object.fromEntries((workers || []).map((w) => [w.id, w])), [workers])
+  const shownWorkers = useMemo(() => {
+    const q = workerQuery.trim().toLowerCase()
+    const list = workers || []
+    return q ? list.filter((w) => `${w.name || ''} ${w.nickname || ''}`.toLowerCase().includes(q) || workerIds.includes(w.id)) : list
+  }, [workers, workerQuery, workerIds])
+  // Crew assigned earlier who no longer show up in Assign (inactive / hidden) still count until unticked.
+  const hiddenCrew = workers ? workerIds.filter((id) => !workerById[id]) : []
+
+  const shiftsText = useMemo(() => {
+    try { return repairShifts(start, Number(hours)).map((s) => SHIFT_TH[s]).join(' + ') } catch { return '' }
+  }, [start, hours])
+
+  const moves = useMemo(() => {
+    if (!canEdit || !status) return []
+    return ['received', 'scheduled', 'in_progress', 'done', 'declined']
+      .filter((to) => canMove(status, to) && MOVE_LABEL[`${status}>${to}`])
+      .map((to) => ({ to, label: MOVE_LABEL[`${status}>${to}`] }))
+  }, [canEdit, status])
+
+  const toggleWorker = (id) => setWorkerIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
+
+  // Status write guarded on the status we saw (0 rows -> someone moved it meanwhile, or RLS refused).
+  const guardedUpdate = async (patch) => {
+    const { data, error: e } = await supabase.from('repair_tickets').update(patch)
+      .eq('id', t.id).eq('status', t.status).select('id')
+    if (e) throw e
+    if (!data || data.length === 0) {
+      const { data: now } = await supabase.from('repair_tickets').select('status').eq('id', t.id).maybeSingle()
+      throw new Error(now && now.status !== t.status
+        ? `งานซ่อมนี้ถูกเปลี่ยนสถานะเป็น "${REPAIR_STATUS[now.status] || now.status}" ไปแล้ว ปิดแล้วเปิดใหม่อีกครั้ง`
+        : 'บันทึกไม่ได้ (สิทธิ์หรือแพ็กเกจหมดอายุ)')
+    }
+  }
+
+  const doMove = async (to) => {
+    setConfirmMove(null)
+    setError(''); setNotice(null); setBusy(true)
+    try {
+      await guardedUpdate(movePatch(t.status, to, new Date().toISOString()))
+      setChanged(true)
+      setNotice({ kind: 'success', text: `ย้ายเป็น "${REPAIR_STATUS[to]}" แล้ว` })
+    } catch (e) {
+      setError(`เปลี่ยนสถานะไม่สำเร็จ: ${e.message}`)
+    }
+    await loadTicket()
+    setBusy(false)
+  }
+
+  const askMove = (to) => {
+    if (CONFIRM_MOVE[to] || CONFIRM_MOVE[`${status}>${to}`]) setConfirmMove(to)
+    else doMove(to)
+  }
+
+  // Ruling R24: plan -> stop on conflicts -> delete this ticket's future rows -> insert -> update ticket -> push.
+  const saveSchedule = async () => {
+    if (!canSchedule) return
+    setError(''); setNotice(null)
+    if (!date) { setError('กรุณาเลือกวันที่เข้า'); return }
+    if (date < today) { setError('วันที่เข้าต้องไม่ก่อนวันนี้'); return }
+    if (!/^\d{2}:\d{2}$/.test(start)) { setError('กรุณาระบุเวลาเริ่ม'); return }
+    const hrs = Number(hours)
+    if (!(hrs > 0 && hrs <= 24)) { setError('ระยะเวลาต้องมากกว่า 0 และไม่เกิน 24 ชม.'); return }
+    setBusy(true)
+    try {
+      let existing = []
+      if (workerIds.length) {
+        const { data, error: e } = await supabase.from('worker_assignments')
+          .select('worker_id, date, shift, type, workers(name, nickname), sites(name)')
+          .in('worker_id', workerIds).eq('date', date)
+          .or(`repair_ticket_id.is.null,repair_ticket_id.neq.${t.id}`)
+        if (e) throw e
+        existing = data || []
+      }
+      const { rows, conflicts } = planRepairAssignments({ workerIds, date, start, durationHours: hrs, existing })
+      if (conflicts.length) {
+        const lines = conflicts.map((c) => {
+          const ex = c.existing
+          const who = ex.workers ? workerLabel(ex.workers) : workerLabel(workerById[c.worker_id])
+          return `• ${who} — กะ${SHIFT_TH[c.shift]} มีงาน ${ex.sites?.name || ex.type || '-'} อยู่แล้ว`
+        })
+        setError(`ช่างติดงานอื่นวันที่ ${formatThaiDate(date)} ยังไม่ได้บันทึกอะไร:\n${lines.join('\n')}\nเอาช่างออก หรือเปลี่ยนวัน/เวลา แล้วบันทึกใหม่`)
+        return
+      }
+
+      const { error: delErr } = await supabase.from('worker_assignments').delete()
+        .eq('repair_ticket_id', t.id).gte('date', today)
+      if (delErr) throw delErr
+
+      if (rows.length) {
+        const insert = rows.map((r) => ({
+          ...r, tenant_id: t.tenant_id, type: 'site', site_id: t.site_id, repair_ticket_id: t.id,
+          notes: `งานซ่อม ${t.ticket_number}`,
+        }))
+        const { error: insErr } = await supabase.from('worker_assignments').insert(insert)
+        if (insErr) {
+          setChanged(true)
+          throw new Error(`ลบทีมเดิมของงานนี้แล้ว แต่ลงทีมใหม่ไม่สำเร็จ (${insErr.message}) วันนัดยังไม่ถูกบันทึก ลองบันทึกอีกครั้ง`)
+        }
+      }
+
+      const now = new Date().toISOString()
+      const patch = { scheduled_date: date, scheduled_start: start, duration_hours: hrs }
+      if (date !== t.scheduled_date) patch.reminded_at = null
+      if (t.status === 'received') Object.assign(patch, movePatch('received', 'scheduled', now), { scheduled_at: now })
+      await guardedUpdate(patch)
+      setChanged(true)
+
+      const saved = `บันทึกนัด ${formatThaiDate(date)} ${start} · ช่าง ${new Set(rows.map((r) => r.worker_id)).size} คน แล้ว`
+      if (notify) {
+        const push = await invokeRepairPush('schedule', t.id)
+        setNotice({ kind: push.kind, text: `${saved} · ${push.text}` })
+      } else {
+        setNotice({ kind: 'success', text: saved })
+      }
+      await loadTicket()
+    } catch (e) {
+      setError(`บันทึกนัดไม่สำเร็จ: ${e.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Ruling R25: at least one after photo + a fix note; done via movePatch; then the report push.
+  const closeTicket = async () => {
+    if (!closeAllowed) return
+    setError(''); setNotice(null)
+    if (byRole.after.length === 0) { setError('ต้องมีรูปหลังซ่อมอย่างน้อย 1 รูปก่อนปิดงาน'); return }
+    if (!fixNote.trim()) { setError('กรุณากรอก "สิ่งที่แก้ไข" ก่อนปิดงาน'); return }
+    setBusy(true)
+    try {
+      await guardedUpdate({ fix_note: fixNote.trim(), ...movePatch(t.status, 'done', new Date().toISOString()) })
+      setChanged(true)
+      const push = await invokeRepairPush('report', t.id, !!t.reported_at)
+      setNotice({ kind: push.kind, text: `ปิดงานแล้ว · ${push.text}` })
+      await loadTicket()
+    } catch (e) {
+      setError(`ปิดงานไม่สำเร็จ: ${e.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const resendReport = async () => {
+    setError(''); setNotice(null); setBusy(true)
+    try {
+      const push = await invokeRepairPush('report', t.id, !!t.reported_at)
+      setNotice({ kind: push.kind, text: push.text })
+      await loadTicket()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const upload = async (role, files) => {
+    setError(''); setNotice(null); setUploading(role)
+    try {
+      const { succeeded, failed } = await uploadRepairPhotos(files, { tenantId: t.tenant_id, ticketId: t.id, role })
+      if (succeeded.length) setChanged(true)
+      if (failed.length) setError(`อัปโหลดไม่สำเร็จ ${failed.length} จาก ${files.length} รูป: ${failed[0].error?.message || failed[0].error}`)
+      await loadMedia()
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  const title = t ? `🔧 ${t.ticket_number} · ${t.sites?.name || '-'}` : '🔧 งานซ่อม'
+
   return (
-    <Modal title={`🔧 งานซ่อม ${number}`} onClose={onClose} maxWidth={480}>
-      <div className="modal-body" style={{ color: 'var(--text2)' }}>
-        หน้ารายละเอียดงานซ่อม (นัดวัน, ทีมช่าง, รูปก่อน/หลัง, ปิดงาน) กำลังจะมาในรอบถัดไป
+    <Modal title={title} onClose={handleClose} maxWidth={860}>
+      <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {!t ? (
+          loadError ? <div className="alert alert-error">{loadError}</div> : <div style={{ color: 'var(--text3)' }}>กำลังโหลด...</div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <WarrantyPill ticket={t} today={today} />
+              <span style={{ flexGrow: 1 }} />
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>สถานะไซท์: {t.sites?.status || '-'} (ไม่เปลี่ยน)</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              {status === 'declined' ? (
+                <span style={{ padding: '5px 12px', borderRadius: 999, background: 'var(--red)', color: 'var(--on-red)', fontWeight: 700 }}>{REPAIR_STATUS.declined}</span>
+              ) : PILL_STEPS.map((s) => (
+                <span key={s} style={s === status
+                  ? { padding: '5px 12px', borderRadius: 999, background: 'var(--accent-fill)', color: 'var(--on-accent)', fontWeight: 700 }
+                  : { padding: '5px 12px', borderRadius: 999, background: 'var(--bg3)', color: 'var(--text2)' }}>
+                  {REPAIR_STATUS[s]}
+                </span>
+              ))}
+              {moves.length > 0 && <span style={{ flexGrow: 1 }} />}
+              {moves.map((m) => (
+                <button key={m.to} type="button" className={`btn btn-sm ${m.to === 'declined' ? 'btn-danger' : 'btn-ghost'}`} disabled={busy} onClick={() => askMove(m.to)}>{m.label}</button>
+              ))}
+            </div>
+
+            {loadError && <div className="alert alert-error">{loadError}</div>}
+
+            <div style={sec}>
+              {t.source === 'line'
+                ? `จากลูกค้า (LINE · ${t.clients?.name || '-'} · ${formatThaiDate(bangkokDateOf(t.created_at))} ${bkkTime(t.created_at)})`
+                : `รายละเอียด (เปิดเอง${t.created_by ? ` โดย ${t.created_by}` : ''} · ${formatThaiDate(bangkokDateOf(t.created_at))} ${bkkTime(t.created_at)})`}
+            </div>
+            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{t.description || <span style={{ color: 'var(--text3)' }}>ไม่มีรายละเอียด</span>}</div>
+            {byRole.customer.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>จากลูกค้า</div>
+                <MediaTiles items={byRole.customer} urls={urls} onOpenImage={setLightbox} />
+              </div>
+            )}
+
+            <div style={sec}>นัดหมาย</div>
+            {!canSchedule && status !== 'done' && status !== 'declined' && canEdit && (
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>กด "เปิดงานซ่อม" ก่อน แล้วจึงนัดวันเข้าซ่อมได้</div>
+            )}
+            {(status === 'done' || status === 'declined' || !canEdit) ? (
+              <div style={{ fontSize: 13 }}>
+                {t.scheduled_date
+                  ? `${formatThaiDate(t.scheduled_date)} ${startTime(t.scheduled_start)}${Number(t.duration_hours) > 0 ? ` · ${Number(t.duration_hours)} ชม.` : ''}`
+                  : <span style={{ color: 'var(--text3)' }}>ยังไม่ได้นัด</span>}
+              </div>
+            ) : (
+              <fieldset disabled={!canSchedule || busy || !formReady} style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+                <div className="form-grid-4">
+                  <div className="form-group">
+                    <label className="label">วันที่เข้า</label>
+                    <input type="date" className="input" value={date} min={today} onChange={(e) => setDate(e.target.value)} />
+                    {date && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{formatThaiDate(date)}</div>}
+                  </div>
+                  <div className="form-group">
+                    <label className="label">เวลา</label>
+                    <input type="time" className="input" value={start} onChange={(e) => setStart(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">ระยะเวลา (ชม.)</label>
+                    <input type="number" className="input num-spin" min="0.5" max="24" step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} />
+                    {shiftsText && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>ลงกะ{shiftsText}</div>}
+                  </div>
+                  <div className="form-group">
+                    <label className="label">ทีมช่าง</label>
+                    <div className="input" style={{ color: workerIds.length ? 'var(--text)' : 'var(--text3)' }}>
+                      {workerIds.length ? `${workerIds.length} คน` : 'ยังไม่เลือก'}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {(workers || []).length > 12 && (
+                    <input className="input input-sm" placeholder="ค้นหาช่าง..." value={workerQuery} onChange={(e) => setWorkerQuery(e.target.value)} />
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 160, overflowY: 'auto' }}>
+                    {shownWorkers.map((w) => {
+                      const on = workerIds.includes(w.id)
+                      return (
+                        <label key={w.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--border)', background: on ? 'rgba(var(--accent-rgb), 0.15)' : 'var(--bg2)' }}>
+                          <input type="checkbox" checked={on} onChange={() => toggleWorker(w.id)} />
+                          {workerLabel(w)}
+                        </label>
+                      )
+                    })}
+                    {hiddenCrew.map((id) => (
+                      <label key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '4px 10px', borderRadius: 999, border: '1px solid var(--border)', background: 'rgba(var(--accent-rgb), 0.15)' }}>
+                        <input type="checkbox" checked onChange={() => toggleWorker(id)} />
+                        ช่างที่ไม่แสดงในหน้าจ่ายงาน
+                      </label>
+                    ))}
+                    {(workers || []).length === 0 && <span style={{ fontSize: 12, color: 'var(--text3)' }}>ไม่มีช่างที่ใช้งานอยู่</span>}
+                  </div>
+                </div>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                  <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+                  {NOTIFY_LABEL}
+                </label>
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>ช่างเห็นงานนี้ในหน้าจ่ายงาน (กะเช้า/บ่ายตามเวลานัด) และเช็คอินที่ไซท์ได้ตามปกติ</div>
+              </fieldset>
+            )}
+
+            {status !== 'pending_review' && status !== 'declined' && (
+              <>
+                <div style={sec}>ผลการซ่อม (ตอนปิดงาน)</div>
+                <div className="form-grid-2" style={{ gap: 14 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>ก่อนซ่อม</div>
+                    <MediaTiles items={byRole.before} urls={urls} onOpenImage={setLightbox}
+                      onAdd={canUpload ? (f) => upload('before', f) : null} adding={uploading === 'before'} />
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>รูปจากลูกค้า + ช่างถ่ายก่อนเริ่ม</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)' }}>หลังซ่อม</div>
+                    <MediaTiles items={byRole.after} urls={urls} onOpenImage={setLightbox}
+                      onAdd={canUpload ? (f) => upload('after', f) : null} adding={uploading === 'after'} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="label">สิ่งที่แก้ไข</label>
+                  <textarea className="textarea" rows={3} value={fixNote} disabled={!showClose || busy}
+                    onChange={(e) => setFixNote(e.target.value)} placeholder="เช่น เปลี่ยนลูกล้อ 2 ตัว ปรับตั้งล็อก" />
+                </div>
+                {status === 'done' && (
+                  <div style={{ fontSize: 12, color: t.reported_at ? 'var(--green)' : 'var(--text3)' }}>
+                    {t.done_at ? `เสร็จ ${formatThaiDate(bangkokDateOf(t.done_at))} · ` : ''}
+                    {t.reported_at ? `✓ ส่งรายงานแล้ว ${formatThaiDate(bangkokDateOf(t.reported_at))} ${bkkTime(t.reported_at)}` : 'ยังไม่ได้ส่งรายงานให้ลูกค้า'}
+                  </div>
+                )}
+                {showClose && !closeAllowed && (
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                    ปิดงานได้เมื่อสถานะเป็น "{REPAIR_STATUS.in_progress}" — {status === 'received' ? 'นัดวันก่อน แล้วกด "เริ่มซ่อม"' : 'กด "เริ่มซ่อม" ด้านบนก่อน'}
+                  </div>
+                )}
+              </>
+            )}
+
+            {notice && <div className={`alert ${NOTICE_CLASS[notice.kind] || 'alert-info'}`}>{notice.text}</div>}
+            {error && <div className="alert alert-error" style={{ whiteSpace: 'pre-line' }}>{error}</div>}
+          </>
+        )}
       </div>
-      <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onClose}>ปิด</button>
+      <div className="modal-footer" style={{ flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-ghost" disabled={busy || !!uploading} onClick={handleClose}>ปิด</button>
+        {t && canSchedule && (
+          <button type="button" className="btn btn-ghost" style={{ borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }} disabled={busy || !!uploading || !formReady} onClick={saveSchedule}>
+            {busy ? 'กำลังบันทึก...' : notify ? 'บันทึกนัด + แจ้งลูกค้า' : 'บันทึกนัด'}
+          </button>
+        )}
+        {t && showClose && (
+          <button type="button" className="btn btn-success" disabled={busy || !!uploading || !closeAllowed} onClick={closeTicket}
+            title={closeAllowed ? '' : `ต้องเป็นสถานะ "${REPAIR_STATUS.in_progress}" ก่อน`}>
+            ปิดงาน (เสร็จ) + ส่งรายงาน
+          </button>
+        )}
+        {t && canEdit && status === 'done' && (
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={resendReport}>
+            {t.reported_at ? 'ส่งรายงานอีกครั้ง' : 'ส่งรายงานให้ลูกค้า'}
+          </button>
+        )}
       </div>
+
+      {lightbox && createPortal(
+        <div role="dialog" aria-label="ดูรูป" onClick={() => setLightbox(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, cursor: 'zoom-out' }}>
+          <img src={lightbox} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} />
+          <button type="button" aria-label="ปิดรูป" onClick={() => setLightbox(null)}
+            style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,0.5)', color: '#fff', border: 0, borderRadius: 999, width: 36, height: 36, fontSize: 18, cursor: 'pointer' }}>✕</button>
+        </div>,
+        document.body,
+      )}
+
+      {confirmMove && (
+        <ConfirmDialog
+          title={MOVE_LABEL[`${status}>${confirmMove}`] || 'เปลี่ยนสถานะ'}
+          message={CONFIRM_MOVE[`${status}>${confirmMove}`] || CONFIRM_MOVE[confirmMove]}
+          danger
+          confirmDisabled={busy}
+          onCancel={() => setConfirmMove(null)}
+          onConfirm={() => doMove(confirmMove)}
+        />
+      )}
     </Modal>
   )
 }

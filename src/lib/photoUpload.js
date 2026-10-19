@@ -60,7 +60,7 @@ async function decodePhotoSource(file) {
   return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => {} }
 }
 
-async function downscaleToJpegBlob(file, maxDim = 1600, quality = 0.8) {
+export async function downscaleToJpegBlob(file, maxDim = 1600, quality = 0.8) {
   const { source, width: srcWidth, height: srcHeight, close } = await decodePhotoSource(file)
   try {
     const { width, height } = computePhotoDownscaledSize(srcWidth, srcHeight, maxDim)
