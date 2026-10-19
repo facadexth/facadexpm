@@ -529,7 +529,7 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
     .eq('phase_tasks.tenant_id', tenantId)
     .neq('phase_tasks.status', 'done')
     .order('sort_order', { referencedTable: 'phase_tasks' })
-  return (data ?? []).map((row: any) => ({ id: row.phase_tasks.id as string, name: row.phase_tasks.name as string, progress_mode: row.phase_tasks.progress_mode ?? null }))
+  return (data ?? []).map((row: any) => ({ id: row.phase_tasks.id as string, name: row.phase_tasks.name as string, progress_mode: row.phase_tasks.progress_mode ?? null, site_id: (row.phase_tasks.site_id ?? null) as string | null }))
 }
 
 // All open Kanban cards for the SITE, not just this worker's own --
@@ -1143,10 +1143,14 @@ async function handleSitePhotoFinish(
 // team." Shared by handleJobDoneStart and handleJobDonePick so the
 // prompt and its re-resolved candidate list never disagree.
 async function resolveJobDoneCandidates(workerId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
-  const site = await resolveTodaysSite(workerId, tenantId)
-  const tasks = site && await isTeamLeaderToday(workerId, site.id, tenantId)
-    ? await resolveOpenTasksForSite(site.id, tenantId)
-    : await resolveOpenTasksForWorker(workerId, tenantId)
+  // Only cards at the site the worker is at now: the open check-in, else the first site still
+  // to check in (หมู, 2026-10-19: not checked in yet at AVAIN and งานเสร็จ listed his cards at
+  // KPS-ดินแดง and another site).
+  const cur = currentSite(await loadTodaysSitesWithCheckins(workerId, tenantId))
+  if (!cur) return []
+  const tasks = await isTeamLeaderToday(workerId, cur.siteId, tenantId)
+    ? await resolveOpenTasksForSite(cur.siteId, tenantId)
+    : (await resolveOpenTasksForWorker(workerId, tenantId)).filter((t) => t.site_id === cur.siteId)
   // Quantity cards and parent cards are not closed by a worker (PM records the quantity;
   // a parent's status comes from its children), so they are not offered here.
   const parentIds = await findParentIds(tasks.map((t) => t.id))
@@ -1177,7 +1181,10 @@ async function handleJobDoneStart(
 ) {
   const tasks = await resolveJobDoneCandidates(worker.id, settings.tenant_id)
   if (tasks.length === 0) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายให้คุณตอนนี้ กรุณาติดต่อแอดมิน')
+    const cur = currentSite(await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id))
+    await sendLineReply(settings.channel_access_token, replyToken, cur
+      ? `⚠️ ไม่มีงานของคุณที่ ${cur.siteName} วันนี้ กรุณาติดต่อแอดมิน`
+      : '⚠️ ไม่พบงานที่มอบหมายให้คุณตอนนี้ กรุณาติดต่อแอดมิน')
     return
   }
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
