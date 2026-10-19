@@ -15,7 +15,7 @@ import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { summarizeQuotationBilling } from '../lib/quotationBilling.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
-import { retentionStatusFor } from '../lib/retentionStatus.js'
+import { retentionStatusFor, retentionDueText } from '../lib/retentionStatus.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canSeeMoney, canManageSites } from '../lib/roles.js'
 import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
@@ -148,7 +148,7 @@ export default function SiteOverviewContent({ siteId }) {
       </div>
       <div>
         <div style={{ fontSize: 11, color: 'var(--text3)' }}>วันครบกำหนด</div>
-        <div style={{ fontSize: 12 }}>{!site.retention.end_date ? 'รอจบงาน' : (site.retention.due_date ? fmtDate(site.retention.due_date) : '—')}</div>
+        <div style={{ fontSize: 12 }}>{retentionDueText(site.retention, fmtDate)}</div>
       </div>
       <div>
         <div style={{ fontSize: 11, color: 'var(--text3)' }}>สถานะ</div>

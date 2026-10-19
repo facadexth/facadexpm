@@ -112,22 +112,32 @@ export function useCheckinLocations() {
 }
 
 /**
- * site_retention_summary: one row per site with end_date/
- * default_retention_period_days/retention_released state and the summed
- * retention amount held. Sorted unreleased-first (retention_released
+ * site_retention_summary: one row per site with end_date, due_date (warranty
+ * end = handover_date + warranty_months), retention_released state and the
+ * summed retention amount held, plus status/handover_date merged from sites. Sorted unreleased-first (retention_released
  * ascending puts false before true), then soonest due date first within
  * each group (nulls last, since a site with no period set has nothing
  * useful to sort by).
  */
 export function useSiteRetentionSummary() {
   return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('site_retention_summary')
-      .select('*')
-      .order('retention_released', { ascending: true })
-      .order('due_date', { ascending: true, nullsFirst: false })
+    // The view has no status/handover columns; merge them from sites so retentionStatusFor can tell
+    // "รอจบงาน" from "ไม่มีระยะประกัน" (handed over with warranty 0).
+    const [{ data, error }, sites] = await Promise.all([
+      supabase
+        .from('site_retention_summary')
+        .select('*')
+        .order('retention_released', { ascending: true })
+        .order('due_date', { ascending: true, nullsFirst: false }),
+      fetchAllRows(() => supabase.from('sites').select('id, status, handover_date').order('id')),
+    ])
     if (error) throw error
-    return data
+    const byId = new Map(sites.map(s => [s.id, s]))
+    return (data || []).map(r => ({
+      ...r,
+      status: byId.get(r.site_id)?.status ?? null,
+      handover_date: byId.get(r.site_id)?.handover_date ?? null,
+    }))
   })
 }
 
@@ -169,15 +179,18 @@ export function useSiteOverview(siteId) {
       if (error) throw error
       return { ...data, deposit: null, retention: null }
     }
-    const [siteRes, depositRes, retentionRes] = await Promise.all([
+    const [siteRes, depositRes, retentionRes, handoverRes] = await Promise.all([
       supabase.from('site_financial_summary').select('*').eq('id', siteId).single(),
       supabase.from('site_deposit_summary').select('*').eq('site_id', siteId).single(),
       supabase.from('site_retention_summary').select('*').eq('site_id', siteId).single(),
+      supabase.from('sites').select('status, handover_date').eq('id', siteId).single(),
     ])
     if (siteRes.error) throw siteRes.error
     if (depositRes.error) throw depositRes.error
     if (retentionRes.error) throw retentionRes.error
-    return { ...siteRes.data, deposit: depositRes.data, retention: retentionRes.data }
+    if (handoverRes.error) throw handoverRes.error
+    // status/handover_date let retentionStatusFor tell "รอจบงาน" from "ไม่มีระยะประกัน"
+    return { ...siteRes.data, deposit: depositRes.data, retention: { ...retentionRes.data, ...handoverRes.data } }
   }, [siteId])
 }
 
