@@ -12,6 +12,9 @@ export const PENDING_ITEMS = [
   { key: 'cheques_due',         icon: '🏦', label: 'เช็คใกล้ครบกำหนด',                    tab: 'cheques' },
   // OWNER only in practice: the Communication Center is owner-only and there is no fallback page.
   { key: 'offboarded_in_group', icon: '⚠️', label: 'ช่างพ้นสภาพ รอลบออกจากกลุ่ม LINE', tab: 'communication_center' },
+  // Customers who messaged the tenant's own LINE OA asking for a quote or a repair (owner only in practice,
+  // like offboarded_in_group: the Communication Center is owner-only).
+  { key: 'customer_requests_open', icon: '💬', label: 'ลูกค้าทักทาง LINE', tab: 'communication_center' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา',          tab: 'quotations' },
 ]
 

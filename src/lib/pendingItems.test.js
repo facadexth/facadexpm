@@ -69,3 +69,9 @@ describe('formatBadge', () => {
     expect(formatBadge(100)).toBe('99+')
   })
 })
+
+describe('customer LINE requests', () => {
+  it('has a bell entry for customer LINE requests', () => {
+    expect(PENDING_ITEMS.find(i => i.key === 'customer_requests_open')).toMatchObject({ label: 'ลูกค้าทักทาง LINE' })
+  })
+})
