@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { todaysSites, shiftLabel, pickSiteForNow, sitesNeedingLinks, multiSiteReplyText } from '../../supabase/functions/_shared/todays-sites.ts'
+import { todaysSites, shiftLabel, pickSiteForNow, sitesNeedingLinks, multiSiteReplyText, currentSite } from '../../supabase/functions/_shared/todays-sites.ts'
 
 const AVAIN = { site_id: 's-avain', site_name: 'The nest - AVAIN บางนา กม.5', shift: 'morning', type: 'site' }
 const BIG = { site_id: 's-big', site_name: 'บ้านคุณบิ๊ก', shift: 'evening', type: 'factory' }
@@ -73,6 +73,17 @@ describe('pickSiteForNow', () => {
   it('falls back to the first site when no site has the wanted shift', () => {
     const morningOnly = todaysSites([AVAIN], [])
     expect(pickSiteForNow(morningOnly, 18).siteId).toBe('s-avain')
+  })
+})
+
+describe('currentSite (งานวันนี้ chips)', () => {
+  it('open check-in wins, else first to check in, else the last site', () => {
+    expect(currentSite(todaysSites([AVAIN, BIG], [{ site_id: 's-big', checkin_at: 'a', checkout_at: null }])).siteId).toBe('s-big')
+    expect(currentSite(todaysSites([AVAIN, BIG], [{ site_id: 's-avain', checkin_at: 'a', checkout_at: 'b' }])).siteId).toBe('s-big')
+    expect(currentSite(todaysSites([AVAIN, BIG], [
+      { site_id: 's-avain', checkin_at: 'a', checkout_at: 'b' }, { site_id: 's-big', checkin_at: 'c', checkout_at: 'd' },
+    ])).siteId).toBe('s-big')
+    expect(currentSite([])).toBeNull()
   })
 })
 

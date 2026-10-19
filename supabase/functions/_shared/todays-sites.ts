@@ -55,7 +55,7 @@ export function shiftLabel(shifts: Shift[]): 'เช้า' | 'บ่าย' | '
   return 'ทั้งวัน'
 }
 
-function shiftEmoji(shifts: Shift[]): string {
+export function shiftEmoji(shifts: Shift[]): string {
   const label = shiftLabel(shifts)
   return label === 'เช้า' ? '🌅' : label === 'บ่าย' ? '🌇' : '📍'
 }
@@ -67,6 +67,15 @@ export function pickSiteForNow<T extends { shifts: Shift[] }>(sites: T[], bangko
   if (!sites.length) return null
   const want: Shift = bangkokHour < 12 ? 'morning' : 'evening'
   return sites.find((s) => s.shifts.includes(want)) ?? sites[0]
+}
+
+// The site the worker is "at" for the งานวันนี้ chips: the open check-in, else the first
+// site still to check in, else the last site of the day.
+export function currentSite<T extends { nextAction: NextAction }>(sites: T[]): T | null {
+  if (!sites.length) return null
+  return sites.find((s) => s.nextAction === 'check_out')
+    ?? sites.find((s) => s.nextAction === 'check_in')
+    ?? sites[sites.length - 1]
 }
 
 // Which sites get a link in a multi-site reply.

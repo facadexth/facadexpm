@@ -113,7 +113,7 @@ import { linkRequestsThrottled, THROTTLED_LINK_MESSAGE } from '../_shared/form-t
 import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-message.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { isWorkerDoneable, doneErrorReply } from '../_shared/lineTaskRules.ts'
-import { todaysSites, pickSiteForNow, sitesNeedingLinks, multiSiteReplyText, type TodaysSite } from '../_shared/todays-sites.ts'
+import { todaysSites, pickSiteForNow, sitesNeedingLinks, multiSiteReplyText, currentSite, shiftEmoji, shiftLabel, type TodaysSite, type Shift } from '../_shared/todays-sites.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
@@ -474,22 +474,32 @@ function bangkokWeekDates(weekOffset: number): string[] {
 // same "real site work" filter as resolveTodaysSite, just batched
 // across a date range instead of pinned to today. A date with more
 // than one site assignment just takes the first.
-async function resolveSitesForDates(workerId: string, tenantId: string, dates: string[]): Promise<Map<string, SiteWithMap>> {
+// Every DISTINCT site per date (a day can have a morning site and an afternoon site),
+// ordered morning first, each with its shift label.
+type DaySite = SiteWithMap & { shifts: Shift[] }
+async function resolveSitesForDates(workerId: string, tenantId: string, dates: string[]): Promise<Map<string, DaySite[]>> {
   const { data } = await admin
     .from('worker_assignments')
-    .select('date, site_id, sites(id, name, map_url, lat, lng)')
+    .select('date, site_id, shift, sites(id, name, map_url, lat, lng)')
     .eq('worker_id', workerId)
     .eq('tenant_id', tenantId)
     .in('date', dates)
     .in('type', ['site', 'factory', 'subcontract'])
     .not('site_id', 'is', null)
-  const bySite = new Map<string, SiteWithMap>()
-  for (const r of data ?? []) {
-    const date = r.date as string
-    const site = r.sites as SiteWithMap | null
-    if (site && !bySite.has(date)) bySite.set(date, site)
+  const rowsByDate = new Map<string, Array<{ site_id: string; shift: string | null; sites: SiteWithMap | null }>>()
+  for (const r of (data ?? []) as Array<{ date: string; site_id: string; shift: string | null; sites: SiteWithMap | null }>) {
+    if (!rowsByDate.has(r.date)) rowsByDate.set(r.date, [])
+    rowsByDate.get(r.date)!.push(r)
   }
-  return bySite
+  const out = new Map<string, DaySite[]>()
+  for (const [date, rows] of rowsByDate) {
+    const ordered = todaysSites(rows.map((r) => ({ site_id: r.site_id, site_name: r.sites?.name ?? null, shift: r.shift })), [])
+    const list = ordered
+      .map((s) => { const site = rows.find((r) => r.site_id === s.siteId)?.sites; return site ? { ...site, shifts: s.shifts } : null })
+      .filter((x): x is DaySite => !!x)
+    if (list.length) out.set(date, list)
+  }
+  return out
 }
 
 type OpenTask = { id: string; name: string; progress_mode: string | null }
@@ -824,6 +834,43 @@ async function handleTodaysJobMenu(
   // or null if that command is off in direct chat -- decides the last chip.
   tomorrowPhrase: string | null,
 ) {
+  // 2+ different sites today (e.g. AVAIN in the morning, บ้านคุณบิ๊ก in the afternoon):
+  // list every site, each with its own map, team leaders and open tasks.
+  const todays = await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id)
+  if (todays.length >= 2) {
+    const rows = await loadTodaysAssignmentRows(worker.id, settings.tenant_id)
+    const [blocks, myTasks] = await Promise.all([
+      Promise.all(todays.map(async (s) => {
+        const [tasks, leaders] = await Promise.all([
+          resolveOpenTasksForSite(s.siteId, settings.tenant_id),
+          resolveTeamLeadersForSite(s.siteId, settings.tenant_id, bangkokToday()),
+        ])
+        const out = ['', `${shiftEmoji(s.shifts)} ${shiftLabel(s.shifts)}: ${s.siteName}${s.nextAction === 'done' ? ' ✅' : ''}`]
+        const map = siteMapLink(rows.find((r) => r.site_id === s.siteId)?.sites)
+        if (map) out.push(`🗺️ ${map}`)
+        if (leaders.morning || leaders.evening) {
+          const parts: string[] = []
+          if (leaders.morning) parts.push(`เช้า ${leaders.morning}`)
+          if (leaders.evening) parts.push(`บ่าย ${leaders.evening}`)
+          out.push(`⛑️ หัวหน้าทีม: ${parts.join(' · ')}`)
+        }
+        if (tasks.length) out.push('🔧 งานที่ต้องทำ (ทั้งทีม):', ...tasks.map((t) => `• ${t.name}`))
+        return out
+      })),
+      resolveOpenTasksForWorker(worker.id, settings.tenant_id),
+    ])
+    const cur = currentSite(todays)!
+    const options = todayMenuOptions({
+      hasCheckedIn: cur.nextAction !== 'check_in',
+      hasCheckedOut: todays.every((s) => s.nextAction === 'done'),
+      hasOpenTasks: myTasks.length > 0,
+      tomorrowPhrase,
+    })
+    const text = [`📍 วันนี้คุณมี ${todays.length} ไซท์`, ...blocks.flat()].join('\n')
+    await sendLineReply(settings.channel_access_token, replyToken, text, options.map((o) => ({ label: truncateLabel(o), text: o })))
+    return
+  }
+
   const site = await resolveTodaysSite(worker.id, settings.tenant_id)
   if (!site) {
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
@@ -873,20 +920,33 @@ async function handleSingleDayQuery(
   dayLabel: string,
 ) {
   const sites = await resolveSitesForDates(worker.id, settings.tenant_id, [dateISO])
-  const site = sites.get(dateISO)
-  if (!site) {
+  const daySites = sites.get(dateISO) ?? []
+  if (!daySites.length) {
     await sendLineReply(settings.channel_access_token, replyToken, `📅 ${dayLabel}: ไม่มีงานที่มอบหมาย`)
     return
   }
-  const tasks = await resolveOpenTasksForSite(site.id, settings.tenant_id)
-  const lines = [`📅 ${dayLabel}: ${site.name}`]
-  const dayMap = siteMapLink(site)
-  if (dayMap) lines.push(`🗺️ ${dayMap}`)
-  if (tasks.length) {
-    lines.push('', '🔧 งานที่ต้องทำ (ทั้งทีม):')
-    lines.push(...tasks.map((t) => `• ${t.name}`))
+  if (daySites.length === 1) {
+    const site = daySites[0]
+    const tasks = await resolveOpenTasksForSite(site.id, settings.tenant_id)
+    const lines = [`📅 ${dayLabel}: ${site.name}`]
+    const dayMap = siteMapLink(site)
+    if (dayMap) lines.push(`🗺️ ${dayMap}`)
+    if (tasks.length) {
+      lines.push('', '🔧 งานที่ต้องทำ (ทั้งทีม):')
+      lines.push(...tasks.map((t) => `• ${t.name}`))
+    }
+    await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
+    return
   }
-  await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
+  const blocks = await Promise.all(daySites.map(async (site) => {
+    const tasks = await resolveOpenTasksForSite(site.id, settings.tenant_id)
+    const out = ['', `${shiftEmoji(site.shifts)} ${shiftLabel(site.shifts)}: ${site.name}`]
+    const dayMap = siteMapLink(site)
+    if (dayMap) out.push(`🗺️ ${dayMap}`)
+    if (tasks.length) out.push('🔧 งานที่ต้องทำ (ทั้งทีม):', ...tasks.map((t) => `• ${t.name}`))
+    return out
+  }))
+  await sendLineReply(settings.channel_access_token, replyToken, [`📅 ${dayLabel}: ${daySites.length} ไซท์`, ...blocks.flat()].join('\n'))
 }
 
 // งานอาทิตย์นี้/งานอาทิตย์หน้า -- one line per day, no task detail (7 days
@@ -902,8 +962,11 @@ async function handleWeekQuery(
 ) {
   const sites = await resolveSitesForDates(worker.id, settings.tenant_id, dates)
   const days: WeekDay[] = dates.map((dateISO) => {
-    const site = sites.get(dateISO)
-    return { dateLabel: formatDateTH(dateISO), sites: site ? [{ siteName: site.name, mapUrl: siteMapLink(site), morning: [], evening: [] }] : [] }
+    const daySites = sites.get(dateISO) ?? []
+    return {
+      dateLabel: formatDateTH(dateISO),
+      sites: daySites.map((site) => ({ siteName: daySites.length > 1 ? `${shiftLabel(site.shifts)} · ${site.name}` : site.name, mapUrl: siteMapLink(site), morning: [], evening: [] })),
+    }
   })
   await sendLineReply(settings.channel_access_token, replyToken, formatWeekMessage(weekLabel, days, false))
 }
