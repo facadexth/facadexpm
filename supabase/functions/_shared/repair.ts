@@ -353,15 +353,30 @@ export function repairMediaExt(mime: string | null | undefined, fileName?: strin
   return MIME_EXT[base] ?? 'bin'
 }
 
-// repair-media/{tenant}/{ticket}/{ts}-{messageId}.{ext}. The first folder must be the tenant id
-// (storage policy). The message id is reduced to safe characters so it can never add a folder.
-export function repairMediaPath(tenantId: string, ticketId: string, ts: number, messageId: string, ext: string): string {
-  const id = String(messageId).replace(/[^A-Za-z0-9_-]/g, '')
-  return `${tenantId}/${ticketId}/${ts}-${id}.${ext}`
+// repair-media/{tenant}/{ticket}/{messageId}.{ext}. Deterministic, so a redelivered LINE event hits the
+// same object (upload conflict) instead of making a duplicate. The first folder must be the tenant id
+// (storage policy). The message id is reduced to letters/digits so it can never add a folder or a LIKE wildcard.
+export function repairMediaPath(tenantId: string, ticketId: string, messageId: string, ext: string): string {
+  const id = String(messageId).replace(/[^A-Za-z0-9]/g, '')
+  return `${tenantId}/${ticketId}/${id}.${ext}`
 }
 
-// LINE quick-reply labels allow at most 20 characters.
+// Content-type stored on the object: only image/*, video/* and PDF are trusted; anything else
+// (text/html, svg, ...) is stored as a plain download.
+export function repairUploadMime(mime: string | null | undefined): string {
+  const base = String(mime ?? '').split(';')[0].trim().toLowerCase()
+  if (base === 'image/svg+xml') return 'application/octet-stream'
+  if (/^(image|video)\/[a-z0-9.+-]+$/.test(base) || base === 'application/pdf') return base
+  return 'application/octet-stream'
+}
+
+// LINE quick-reply labels allow at most 20 characters (counted as UTF-16 units to be safe).
+// Cuts on code-point boundaries so a surrogate pair is never split.
 export function quickReplyLabel(s: string): string {
-  const cut = [...String(s ?? '')].slice(0, 20).join('').trim()
-  return cut || '-'
+  let out = ''
+  for (const ch of String(s ?? '')) {
+    if (out.length + ch.length > 20) break
+    out += ch
+  }
+  return out.trim() || '-'
 }

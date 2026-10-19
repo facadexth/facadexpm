@@ -30,14 +30,17 @@ export type CustomerDeps = {
   getRepairSession: (lineUserId: string) => Promise<RepairSession | null>
   // The client's non-Cancelled sites, most recent first.
   listClientSites: (clientId: string) => Promise<{ id: string; name: string }[]>
-  // New pending_review ticket (source line) + a session expiring in 30 minutes (replaces any old session).
+  // New pending_review ticket (source line) + a session expiring in 30 minutes. If another active
+  // session already exists (double tap), returns that session's ticket instead of a new one.
   startRepair: (clientId: string, siteId: string, lineUserId: string, displayName: string | null) => Promise<{ ticketId: string; siteName: string }>
   appendRepairText: (ticketId: string, text: string) => Promise<void>
   storeRepairMedia: (ticketId: string, messageId: string, mediaType: RepairMediaType, fileName?: string) => Promise<'ok' | 'too_big' | 'error'>
   // Deletes the session (even an expired one); null when there was none.
   finishRepair: (lineUserId: string) => Promise<{ ticketNumber: string; siteName: string; counts: MediaCounts } | null>
-  // Deletes the session's ticket, its media rows and storage objects, and the session.
-  cancelRepair: (lineUserId: string) => Promise<void>
+  // Deletes the session's ticket (only while still pending_review), its media rows, storage objects
+  // and the session -> 'cancelled'. 'kept' = staff already picked it up; nothing deleted, session left
+  // for finishRepair.
+  cancelRepair: (lineUserId: string) => Promise<'cancelled' | 'kept'>
   listRepairTickets: (clientId: string) => Promise<RepairTicket[]>
 }
 
@@ -45,6 +48,7 @@ const FINISH_TEXT = 'ส่งครบแล้ว'
 const CANCEL_TEXT = 'ยกเลิก'
 const PICK_PREFIX = 'แจ้งซ่อม:'
 const MAX_QUICK_REPLIES = 13
+const MAX_ACTION_TEXT = 300
 const MEDIA_TYPES: RepairMediaType[] = ['image', 'video', 'file']
 
 const qrItem = (label: string, text: string): QuickReplyItem => ({ type: 'action', action: { type: 'message', label: quickReplyLabel(label), text } })
@@ -56,7 +60,12 @@ function startReply(siteName: string): LineMessage {
 function pickSiteReply(sites: { name: string }[]): LineMessage {
   return {
     type: 'text', text: repairPickSiteText(),
-    quickReply: { items: sites.slice(0, MAX_QUICK_REPLIES).map((s) => qrItem(s.name, `${PICK_PREFIX}${s.name}`)) },
+    quickReply: {
+      items: sites
+        .filter((s) => `${PICK_PREFIX}${s.name}`.length <= MAX_ACTION_TEXT)
+        .slice(0, MAX_QUICK_REPLIES)
+        .map((s) => qrItem(s.name, `${PICK_PREFIX}${s.name}`)),
+    },
   }
 }
 
@@ -104,6 +113,8 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
   }
   if (msgType !== 'text') return []
   const text: string = event.message.text ?? ''
+  // LINE redelivers events our earlier attempt may already have handled: skip non-idempotent writes.
+  const redelivery = event.deliveryContext?.isRedelivery === true
 
   const account = await deps.getAccount(userId)
   if (account) await deps.touchAccount(userId)
@@ -122,14 +133,16 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
     }
     if (active) {
       if (trimmed === CANCEL_TEXT) {
-        await deps.cancelRepair(userId)
-        return txt(repairCancelledText())
+        if ((await deps.cancelRepair(userId)) === 'cancelled') return txt(repairCancelledText())
+        // Staff already took the ticket: confirm it as received instead (R12).
+        const done = await deps.finishRepair(userId)
+        return done ? txt(repairReceivedText(done.ticketNumber, done.siteName, done.counts)) : []
       }
       // Pressing แจ้งซ่อม again keeps the open report instead of starting a second ticket.
       if (cmd === 'repair' || pick !== null) return [startReply(active.siteName)]
       // Other menu commands are answered below; the session stays open.
       if (!cmd) {
-        if (trimmed) await deps.appendRepairText(active.ticketId, trimmed)
+        if (trimmed && !redelivery) await deps.appendRepairText(active.ticketId, trimmed)
         return []
       }
     }
@@ -146,7 +159,7 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
 
   if (pick !== null) {
     if (!account) return txt(notLinkedText((await deps.getContact()).brandName))
-    return await startOrPick(account.clientId, userId, pick, deps)
+    return redelivery ? [] : await startOrPick(account.clientId, userId, pick, deps)
   }
 
   if (!cmd) {
@@ -164,7 +177,7 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
 
   if (!account) return txt(notLinkedText((await deps.getContact()).brandName))
 
-  if (cmd === 'repair') return await startOrPick(account.clientId, userId, null, deps)
+  if (cmd === 'repair') return redelivery ? [] : await startOrPick(account.clientId, userId, null, deps)
   if (cmd === 'repair_status') {
     const tickets = await deps.listRepairTickets(account.clientId)
     return tickets.length === 0 ? txt(repairNoTicketsText()) : [repairStatusFlex(tickets, ctx.today)]

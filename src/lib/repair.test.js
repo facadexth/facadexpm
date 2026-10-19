@@ -3,7 +3,7 @@ import {
   REPAIR_STATUS, REPAIR_STEPS, canMove, stepIndex, mediaTooBig, thaiWeekday, endTime,
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, scheduleText, reminderText, repairStatusFlex, repairReportFlex,
-  repairMediaExt, repairMediaPath, quickReplyLabel,
+  repairMediaExt, repairMediaPath, quickReplyLabel, repairUploadMime,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const sched = {
@@ -277,13 +277,23 @@ describe('repair media helpers', () => {
     expect(repairMediaExt('application/octet-stream', 'x.../../etc')).toBe('bin')
     expect(repairMediaExt('application/pdf', 'a.thisistoolongext')).toBe('pdf')
   })
-  it('storage path: tenant first, then ticket, ts-messageId.ext', () => {
-    expect(repairMediaPath('t1', 'k1', 1700000000000, '5551234', 'jpg')).toBe('t1/k1/1700000000000-5551234.jpg')
-    expect(repairMediaPath('t1', 'k1', 1, '../x/9', 'jpg')).toBe('t1/k1/1-x9.jpg')
+  it('storage path is deterministic: tenant/ticket/messageId.ext', () => {
+    expect(repairMediaPath('t1', 'k1', '5551234', 'jpg')).toBe('t1/k1/5551234.jpg')
+    expect(repairMediaPath('t1', 'k1', '../x/9_%', 'jpg')).toBe('t1/k1/x9.jpg')
+  })
+  it('upload content-type: only image/*, video/* and pdf are kept', () => {
+    expect(repairUploadMime('image/jpeg')).toBe('image/jpeg')
+    expect(repairUploadMime('video/mp4')).toBe('video/mp4')
+    expect(repairUploadMime('application/pdf')).toBe('application/pdf')
+    expect(repairUploadMime('text/html')).toBe('application/octet-stream')
+    expect(repairUploadMime('image/svg+xml')).toBe('application/octet-stream')
+    expect(repairUploadMime('')).toBe('application/octet-stream')
   })
   it('quick-reply label keeps at most 20 characters', () => {
     expect(quickReplyLabel('งาน A')).toBe('งาน A')
     expect([...quickReplyLabel('โครงการบ้านพักอาศัยสองชั้นหลังที่ 0')].length).toBe(20)
     expect(quickReplyLabel('')).toBe('-')
+    expect(quickReplyLabel('😀'.repeat(15)).length).toBeLessThanOrEqual(20)
+    expect(quickReplyLabel('ก' + '😀'.repeat(15)).length).toBeLessThanOrEqual(20)
   })
 })

@@ -31,7 +31,7 @@ function deps(over = {}) {
     appendRepairText: vi.fn().mockResolvedValue(undefined),
     storeRepairMedia: vi.fn().mockResolvedValue('ok'),
     finishRepair: vi.fn().mockResolvedValue(null),
-    cancelRepair: vi.fn().mockResolvedValue(undefined),
+    cancelRepair: vi.fn().mockResolvedValue('cancelled'),
     listRepairTickets: vi.fn().mockResolvedValue([]),
     ...over,
   }
@@ -163,6 +163,7 @@ const rctx = { tenantId: 't1', today: '2026-10-20', now: NOW }
 const active = { ticketId: 'k1', siteName: 'งาน A', expiresAt: '2026-10-20T03:20:00Z' }
 const expired = { ticketId: 'k1', siteName: 'งาน A', expiresAt: '2026-10-20T02:59:59Z' }
 const media = (type, extra = {}) => ({ type: 'message', replyToken: 'rt', source: { type: 'user', userId: 'U1' }, message: { type, id: 'M1', ...extra } })
+const redeliver = (ev) => ({ ...ev, deliveryContext: { isRedelivery: true } })
 const qr = (label, text) => ({ type: 'action', action: { type: 'message', label, text } })
 const startMsg = (name) => ({ type: 'text', text: repairStartText(name), quickReply: { items: [qr('ส่งครบแล้ว', 'ส่งครบแล้ว'), qr('ยกเลิก', 'ยกเลิก')] } })
 const L = (over = {}) => deps({ getAccount: vi.fn().mockResolvedValue(linked), ...over })
@@ -306,6 +307,42 @@ describe('repair intake', () => {
     expect(await handleCustomerEvent(txt('ยกเลิก'), rctx, d)).toEqual([T(repairCancelledText())])
     expect(d.cancelRepair).toHaveBeenCalledWith('U1')
     expect(d.appendRepairText).not.toHaveBeenCalled()
+  })
+  it('ยกเลิก after staff picked the ticket up -> received summary, not cancelled', async () => {
+    const d = L({
+      getRepairSession: vi.fn().mockResolvedValue(active),
+      cancelRepair: vi.fn().mockResolvedValue('kept'),
+      finishRepair: vi.fn().mockResolvedValue({ ticketNumber: 'RP2610-002', siteName: 'งาน A', counts: { image: 1 } }),
+    })
+    expect(await handleCustomerEvent(txt('ยกเลิก'), rctx, d)).toEqual([T(repairReceivedText('RP2610-002', 'งาน A', { image: 1 }))])
+    expect(d.finishRepair).toHaveBeenCalledWith('U1')
+  })
+  it('redelivered text in a session: no append', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    expect(await handleCustomerEvent(redeliver(txt('กระจกร้าว')), rctx, d)).toEqual([])
+    expect(d.appendRepairText).not.toHaveBeenCalled()
+  })
+  it('redelivered แจ้งซ่อม: no new ticket', async () => {
+    const d = L()
+    expect(await handleCustomerEvent(redeliver(txt('แจ้งซ่อม')), rctx, d)).toEqual([])
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it('redelivered แจ้งซ่อม:<name>: no new ticket', async () => {
+    const d = L({ listClientSites: vi.fn().mockResolvedValue(two) })
+    expect(await handleCustomerEvent(redeliver(txt('แจ้งซ่อม:คอนโดริมน้ำ')), rctx, d)).toEqual([])
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it('redelivered media is still stored (idempotent by path)', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    expect(await handleCustomerEvent(redeliver(media('image')), rctx, d)).toEqual([])
+    expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', 'image', undefined)
+  })
+  it('pick-site skips a site whose action text would pass 300 chars', async () => {
+    const long = { id: 'x', name: 'ก'.repeat(300) }
+    const d = L({ listClientSites: vi.fn().mockResolvedValue([long, ...two]) })
+    const [m] = await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    expect(m.quickReply.items.map((i) => i.action.text)).toEqual(['แจ้งซ่อม:บ้านคุณสมชาย', 'แจ้งซ่อม:คอนโดริมน้ำ'])
+    for (const i of m.quickReply.items) expect(i.action.text.length).toBeLessThanOrEqual(300)
   })
   it('ยกเลิก with no session is ordinary chat', async () => {
     const d = L()
