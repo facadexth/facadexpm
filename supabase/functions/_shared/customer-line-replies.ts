@@ -2,6 +2,7 @@
 // this file is also imported by vitest from src/lib.
 
 import { warrantyStatus } from './warranty.ts'
+import { formatThaiDate } from './thai-date.ts'
 
 export type SiteStatus = {
   name: string
@@ -13,15 +14,11 @@ export type SiteStatus = {
   warrantyMonths: number
 }
 
+// Shared by statusText and warrantyText.
 const STATUS_MAX_SITES = 10
 // LINE's text message limit is 5,000 characters; keep a margin.
 const STATUS_MAX_CHARS = 4900
 const CONTACT_FOOTER = 'หรือพิมพ์ในแชทนี้ได้เลย เจ้าหน้าที่จะตอบในเวลาทำการ'
-
-// 'YYYY-MM-DD' -> 'DD/MM/YYYY', by slicing so no timezone shift can happen.
-function formatDate(iso: string): string {
-  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
-}
 
 export function inviteOkText(clientName: string): string {
   return `เชื่อมกับ ${clientName} เรียบร้อยครับ\nกดเมนู "สถานะงาน" เพื่อดูความคืบหน้าได้ตลอด`
@@ -50,17 +47,22 @@ export function repairStatusTempText(): string {
 export function warrantyText(sites: SiteStatus[], today: string): string {
   const lines = sites
     .filter((s) => s.status !== 'Cancelled')
+    .slice(0, STATUS_MAX_SITES)
     .map((s) => {
       const months = Number(s.warrantyMonths)
       // 0 months wins over a missing handover date.
       if (!(months > 0)) return `${s.name}: ไม่มีระยะประกัน`
+      // A site that is not Completed has not been handed over (or was reopened), even if a
+      // handover date is still stored.
+      if (s.status !== 'Completed') return `${s.name}: ยังไม่ส่งมอบงาน ประกันเริ่มนับจากวันส่งมอบ`
       const w = warrantyStatus(s.handoverDate, months, today)
-      if (w.kind === 'none') return `${s.name}: ไม่มีระยะประกัน`
       if (w.kind === 'not_handed_over') return `${s.name}: ยังไม่ส่งมอบงาน ประกันเริ่มนับจากวันส่งมอบ`
-      if (w.kind === 'active') return `${s.name}: ในประกัน ถึง ${formatDate(w.end as string)}`
-      return `${s.name}: หมดประกันแล้ว (${formatDate(w.end as string)})`
+      if (w.kind === 'active') return `${s.name}: ในประกัน ถึง ${formatThaiDate(w.end)}`
+      return `${s.name}: หมดประกันแล้ว (${formatThaiDate(w.end)})`
     })
-  return lines.length === 0 ? 'ยังไม่มีงานในระบบ' : lines.join('\n')
+  if (lines.length === 0) return 'ยังไม่มีงานในระบบ'
+  const text = lines.join('\n')
+  return text.length > STATUS_MAX_CHARS ? text.slice(0, STATUS_MAX_CHARS) : text
 }
 
 export function contactText(opts: { companyName: string; phone: string | null; hours: string | null }): string {
@@ -79,7 +81,7 @@ function siteBlock(s: SiteStatus): string {
     lines.push('ยังไม่มีข้อมูลความคืบหน้า')
   }
   if (s.phases.length > 0) lines.push(`กำลังทำ: ${s.phases.join(', ')}`)
-  if (s.endDate) lines.push(`กำหนดเสร็จ: ${formatDate(s.endDate)}`)
+  if (s.endDate) lines.push(`กำหนดเสร็จ: ${formatThaiDate(s.endDate)}`)
   return lines.join('\n')
 }
 
@@ -88,7 +90,7 @@ export function statusText(sites: SiteStatus[], today: string): string {
     .filter((s) => s.status === 'Ongoing' || s.status === 'On Hold')
     .slice(0, STATUS_MAX_SITES)
   if (active.length === 0) return 'ยังไม่มีงานที่กำลังดำเนินการ'
-  const header = `สถานะงาน · อัปเดต ${formatDate(today)}`
+  const header = `สถานะงาน · อัปเดต ${formatThaiDate(today)}`
   const text = [header, ...active.map(siteBlock)].join('\n\n')
   return text.length > STATUS_MAX_CHARS ? text.slice(0, STATUS_MAX_CHARS) : text
 }
