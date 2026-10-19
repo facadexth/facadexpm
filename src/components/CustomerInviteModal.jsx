@@ -50,9 +50,18 @@ export default function CustomerInviteModal({ siteId, siteName, canUnlink, onClo
   async function copyLink() {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { /* ignore */ }
   }
-  function share() {
+  // line.me/R/share only works on a phone with LINE installed, and window.open with 'noopener'
+  // is swallowed by installed PWAs. So: the phone's share sheet first (LINE is in it), then
+  // LINE's web share page (works on desktop), and the clipboard if a popup blocker stops that.
+  async function share() {
     const text = `สแกนหรือกดลิงก์นี้เพื่อติดตามงาน ${siteName}: ${link}`
-    window.open('https://line.me/R/share?text=' + encodeURIComponent(text), '_blank', 'noopener')
+    if (navigator.share) {
+      try { await navigator.share({ text }); return } catch (e) { if (e?.name === 'AbortError') return }
+    }
+    const win = window.open('https://social-plugins.line.me/lineit/share?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text), '_blank')
+    if (!win) {
+      try { await navigator.clipboard.writeText(text); alert('คัดลอกข้อความเชิญแล้ว — วางในแชทไลน์ของลูกค้าได้เลย') } catch { alert(text) }
+    }
   }
   async function unlink() {
     if (!account || !confirm('ยกเลิกการเชื่อมไลน์ของ client นี้?')) return
