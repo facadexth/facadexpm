@@ -12,6 +12,7 @@ export default function CustomerInviteModal({ siteId, siteName, canUnlink, onClo
   const [state, setState] = useState({ loading: true, error: null, invite: null, qr: null })
   const [account, setAccount] = useState(null)
   const [siteCount, setSiteCount] = useState(null)
+  const [accountError, setAccountError] = useState(false)
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -35,8 +36,9 @@ export default function CustomerInviteModal({ siteId, siteName, canUnlink, onClo
           supabase.from('sites').select('id', { count: 'exact', head: true }).eq('client_id', invite.client_id).neq('status', 'Cancelled'),
         ])
         if (!alive) return
-        setAccount(acc.data || null)
-        setSiteCount(cnt.count ?? null)
+        setAccountError(!!acc.error)
+        setAccount(acc.error ? null : (acc.data || null))
+        setSiteCount(cnt.error ? null : (cnt.count ?? null))
       }
     })()
     return () => { alive = false }
@@ -109,9 +111,11 @@ export default function CustomerInviteModal({ siteId, siteName, canUnlink, onClo
         {invite && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>
-              บัญชีไลน์ของ client: {invite.client_name}{siteCount != null ? ` (เห็น ${siteCount} ไซท์)` : ''}
+              บัญชีไลน์ของ client: {invite.client_name}{siteCount > 0 ? ` (เห็น ${siteCount} ไซท์)` : ''}
             </div>
-            {account ? (
+            {accountError ? (
+              <div style={{ color: 'var(--red)', fontSize: 13 }}>โหลดข้อมูลบัญชีไลน์ไม่สำเร็จ</div>
+            ) : account ? (
               <>
                 <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
                   <div style={{ flex: 1 }}>
