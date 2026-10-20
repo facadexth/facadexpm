@@ -35,8 +35,8 @@ export type CustomerDeps = {
   // The client's non-Cancelled sites, most recent first.
   listClientSites: (clientId: string) => Promise<{ id: string; name: string }[]>
   // New pending_review ticket (source line) + a session expiring in 30 minutes. If another active
-  // session already exists (double tap), returns that session's ticket instead of a new one.
-  startRepair: (clientId: string, siteId: string, lineUserId: string, displayName: string | null) => Promise<{ ticketId: string; siteName: string }>
+  // session already exists (double tap), returns that session's ticket (and its mode) instead of a new one.
+  startRepair: (clientId: string, siteId: string, lineUserId: string, displayName: string | null) => Promise<{ ticketId: string; siteName: string; mode?: 'new' | 'add'; ticketNumber?: string }>
   appendRepairText: (ticketId: string, text: string) => Promise<void>
   // Sets repair_tickets.customer_update_at = now() (staff badge + bell). Add sessions only.
   markCustomerUpdate: (ticketId: string) => Promise<void>
@@ -46,7 +46,9 @@ export type CustomerDeps = {
   // Same rules as startRepair: only an expired session is cleared; if an active one already exists
   // (concurrent start) that session is returned instead, whatever its mode.
   startAddSession: (clientId: string, ticketNumber: string, lineUserId: string) => Promise<RepairSessionStart | null>
-  storeRepairMedia: (ticketId: string, messageId: string, mediaType: RepairMediaType, fileName?: string) => Promise<'ok' | 'too_big' | 'error'>
+  // sentAt = LINE event.timestamp (ms, when the customer sent it); stored as the media row's created_at so the
+  // add-session window compares send times. undefined = unknown -> now().
+  storeRepairMedia: (ticketId: string, messageId: string, mediaType: RepairMediaType, fileName?: string, sentAt?: number) => Promise<'ok' | 'too_big' | 'error'>
   // Deletes the session (even an expired one); null when there was none. In an add session the counts
   // cover only what this session added.
   finishRepair: (lineUserId: string) => Promise<{ ticketNumber: string; siteName: string; counts: MediaCounts; mode?: 'new' | 'add' } | null>
@@ -162,7 +164,9 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
       return [sessionReply(repairTooBigText())]
     }
     const fileName = msgType === 'file' && typeof event.message.fileName === 'string' ? event.message.fileName : undefined
-    const r = await deps.storeRepairMedia(session.ticketId, messageId, msgType, fileName)
+    const ts = Number(event.timestamp)
+    const sentAt = event.timestamp != null && Number.isFinite(ts) && ts > 0 ? ts : undefined
+    const r = await deps.storeRepairMedia(session.ticketId, messageId, msgType, fileName, sentAt)
     if (r === 'too_big') return [sessionReply(repairTooBigText())]
     if (r !== 'ok' || event.deliveryContext?.isRedelivery === true) return []
     if (session.mode === 'add') await deps.markCustomerUpdate(session.ticketId)
@@ -284,5 +288,6 @@ async function startOrPick(clientId: string, userId: string, pick: string | null
     if (open.length > 0) return [chooserReply(chosen.name, open)]
   }
   const started = await deps.startRepair(clientId, chosen.id, userId, await deps.getDisplayName(userId))
-  return [startReply(started.siteName)]
+  // A racing session (double tap) may be an add session: answer with its own start text.
+  return [sessionStartReply(started)]
 }

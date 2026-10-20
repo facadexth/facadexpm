@@ -3,7 +3,8 @@
 -- customer_update_seen_at (set when staff open the ticket) drive the board badge and the new
 -- 'repair_customer_update' bell key. customer_line_repair_sessions gets mode ('new' = the session's own
 -- new ticket, 'add' = adding to an existing one), started_at (this session's media are created at/after it)
--- and description_before (restored on ยกเลิก in an add session).
+-- and description_before / update_before (the ticket's description and customer_update_at, put back on ยกเลิก
+-- in an add session).
 -- pending_counts(): copied from 2026-10-20-11 (the LIVE definition), one new key only.
 -- No view selects repair_tickets.* (checked 2026-10-20), so no view needs recreating for the new columns.
 -- Apply BEFORE deploying customer-line-webhook with the add-session code (it falls back on 42703 anyway).
@@ -15,7 +16,8 @@ ALTER TABLE public.repair_tickets
 ALTER TABLE public.customer_line_repair_sessions
   ADD COLUMN mode               text NOT NULL DEFAULT 'new' CHECK (mode IN ('new','add')),
   ADD COLUMN started_at         timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN description_before text;
+  ADD COLUMN description_before text,
+  ADD COLUMN update_before      timestamptz;
 
 CREATE OR REPLACE FUNCTION public.pending_counts()
  RETURNS jsonb

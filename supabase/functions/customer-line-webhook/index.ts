@@ -252,11 +252,14 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         await admin.from('repair_tickets').delete().eq('tenant_id', tenantId).eq('id', ticket.id)
         throw e
       }
-      if (!cur) return { ticketId: ticket.id as string, siteName: (site.name as string) ?? '' }
+      if (!cur) return { ticketId: ticket.id as string, siteName: (site.name as string) ?? '', mode: 'new' }
       await admin.from('repair_tickets').delete().eq('tenant_id', tenantId).eq('id', ticket.id)
+      // The winning session may be an add session: hand back its mode so the reply matches it.
+      const won = await deps.getRepairSession(lineUserId)
+      if (won) return { ticketId: won.ticketId, siteName: won.siteName, mode: won.mode ?? 'new', ticketNumber: won.ticketNumber }
       const { data: curT } = await admin.from('repair_tickets').select('site_id')
         .eq('tenant_id', tenantId).eq('id', cur.ticketId).maybeSingle()
-      return { ticketId: cur.ticketId, siteName: await siteNameOf(curT?.site_id as string | undefined) }
+      return { ticketId: cur.ticketId, siteName: await siteNameOf(curT?.site_id as string | undefined), mode: 'new' }
     },
     async listOpenTickets(clientId, siteId) {
       const { data, error } = await admin.from('repair_tickets').select('ticket_number, status, scheduled_date, scheduled_start')
@@ -277,7 +280,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
     },
     async startAddSession(clientId, ticketNumber, lineUserId) {
       // Only this client's own OPEN ticket in this tenant.
-      const { data: t, error } = await admin.from('repair_tickets').select('id, ticket_number, site_id, description')
+      const { data: t, error } = await admin.from('repair_tickets').select('id, ticket_number, site_id, description, customer_update_at')
         .eq('tenant_id', tenantId).eq('client_id', clientId).eq('ticket_number', ticketNumber)
         .in('status', OPEN_REPAIR_STATUSES).maybeSingle()
       if (error) {
@@ -285,10 +288,13 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         throw error
       }
       if (!t) return null
-      // started_at keeps its DB default now(): media rows are stamped by the same clock, which the
-      // finish counts and the cancel compare against.
+      // started_at keeps its DB default now(); media rows carry the customer's send time (storeRepairMedia),
+      // which the finish counts and the cancel compare against it. description_before / update_before are what
+      // ยกเลิก puts back.
       const cur = await claimSession(lineUserId, {
-        ticket_id: t.id, mode: 'add', description_before: (t.description as string | null) ?? null,
+        ticket_id: t.id, mode: 'add',
+        description_before: (t.description as string | null) ?? null,
+        update_before: (t.customer_update_at as string | null) ?? null,
       })
       if (!cur) return { mode: 'add', ticketNumber: t.ticket_number as string, siteName: await siteNameOf(t.site_id as string) }
       // An active session won the race: answer with that one.
@@ -317,7 +323,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       }
       throw new Error('repair description busy')
     },
-    async storeRepairMedia(ticketId, messageId, mediaType, fileName) {
+    async storeRepairMedia(ticketId, messageId, mediaType, fileName, sentAt) {
       // Redelivery: the path is {tenant}/{ticket}/{messageId}.{ext}; a row already there means done.
       const safeId = String(messageId).replace(/[^A-Za-z0-9]/g, '')
       if (!safeId) return 'error'
@@ -367,9 +373,12 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         if (await hasRow(path)) return 'ok'
         uploadedNow = false
       }
+      // created_at = when the customer sent it (LINE event.timestamp, never in the future), so a slow
+      // download cannot drift into a later add session's window; unknown -> the DB default now().
+      const sent = sentAt !== undefined && Number.isFinite(sentAt) && sentAt > 0 ? new Date(Math.min(sentAt, Date.now())).toISOString() : null
       const { error: insErr } = await admin.from('repair_ticket_media').insert({
         tenant_id: tenantId, ticket_id: ticketId, role: 'customer', media_type: mediaType, storage_path: path,
-        file_name: fileName ?? null, mime, size_bytes: bytes.byteLength,
+        file_name: fileName ?? null, mime, size_bytes: bytes.byteLength, ...(sent ? { created_at: sent } : {}),
       })
       // 23505 = a concurrent delivery of the same message already recorded this path: its row owns the file.
       if (insErr?.code === '23505') return 'ok'
@@ -416,7 +425,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
     async cancelRepair(lineUserId) {
       const sel = (cols: string) => admin.from('customer_line_repair_sessions').select(cols)
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
-      const first = await sel('ticket_id, mode, started_at, description_before')
+      const first = await sel('ticket_id, mode, started_at, description_before, update_before')
       const { data: sessRow, error } = first.error && missingColumn(first.error) ? await sel('ticket_id') : first
       if (error) throw error
       if (!sessRow) return 'cancelled'
@@ -424,7 +433,8 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       const sess = sessRow as any
       const ticketId = sess.ticket_id as string
       if (sess.mode === 'add') {
-        // Undo only this session: its customer media (rows, then objects; best effort) and the description.
+        // Undo only this session: its customer media (sent at/after started_at; rows, then objects, best effort),
+        // customer_update_at and the description.
         // The ticket itself is never deleted.
         const { data: gone, error: dmErr } = await admin.from('repair_ticket_media').delete()
           .eq('tenant_id', tenantId).eq('ticket_id', ticketId).eq('role', 'customer').gte('created_at', sess.started_at)
@@ -435,9 +445,25 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
           const { error: rmErr } = await admin.storage.from(REPAIR_BUCKET).remove(paths)
           if (rmErr) console.error('customer-line repair media remove failed', rmErr.message)
         }
-        const { error: uErr } = await admin.from('repair_tickets').update({ description: (sess.description_before as string | null) ?? null })
+        // The badge goes back to where it was before this session.
+        const { error: cuErr } = await admin.from('repair_tickets').update({ customer_update_at: (sess.update_before as string | null) ?? null })
           .eq('tenant_id', tenantId).eq('id', ticketId)
-        if (uErr) throw uErr
+        if (cuErr) throw cuErr
+        // Description: put back the text from before this session, but only while the current text still starts
+        // with it (otherwise staff changed it: leave it alone). Compare-and-set on updated_at, one retry.
+        const before = (sess.description_before as string | null) ?? ''
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const { data: cur, error: rErr } = await admin.from('repair_tickets').select('description, updated_at')
+            .eq('tenant_id', tenantId).eq('id', ticketId).maybeSingle()
+          if (rErr) throw rErr
+          const now = (cur?.description as string | null) ?? ''
+          if (!cur || now === before || !now.startsWith(before)) break
+          const { data: upd, error: uErr } = await admin.from('repair_tickets').update({ description: before || null })
+            .eq('tenant_id', tenantId).eq('id', ticketId).eq('updated_at', cur.updated_at).select('id')
+          if (uErr) throw uErr
+          if ((upd ?? []).length > 0) break
+          if (attempt === 1) console.error('customer-line repair add cancel: description busy, left as is')
+        }
         const { error: sErr } = await admin.from('customer_line_repair_sessions').delete()
           .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).eq('ticket_id', ticketId)
         if (sErr) throw sErr

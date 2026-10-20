@@ -166,7 +166,9 @@ const NOW = Date.parse('2026-10-20T03:00:00Z')
 const rctx = { tenantId: 't1', today: '2026-10-20', now: NOW }
 const active = { ticketId: 'k1', siteName: 'งาน A', expiresAt: '2026-10-20T03:20:00Z' }
 const expired = { ticketId: 'k1', siteName: 'งาน A', expiresAt: '2026-10-20T02:59:59Z' }
-const media = (type, extra = {}) => ({ type: 'message', replyToken: 'rt', source: { type: 'user', userId: 'U1' }, message: { type, id: 'M1', ...extra } })
+// LINE's event.timestamp = when the customer sent it (ms); passed on as the media's created_at.
+const SENT = NOW - 5000
+const media = (type, extra = {}) => ({ type: 'message', replyToken: 'rt', timestamp: SENT, source: { type: 'user', userId: 'U1' }, message: { type, id: 'M1', ...extra } })
 const redeliver = (ev) => ({ ...ev, deliveryContext: { isRedelivery: true } })
 const qr = (label, text) => ({ type: 'action', action: { type: 'message', label, text } })
 const startMsg = (name) => ({ type: 'text', text: repairStartText(name), quickReply: { items: [qr('ส่งครบแล้ว', 'ส่งครบแล้ว'), qr('ยกเลิก', 'ยกเลิก')] } })
@@ -239,12 +241,12 @@ describe('repair intake', () => {
   it.each(['image', 'video'])('%s during a session is stored, ack keeps the buttons', async (type) => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
     expect(await handleCustomerEvent(media(type), rctx, d)).toEqual([ack])
-    expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', type, undefined)
+    expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', type, undefined, SENT)
   })
   it('file during a session is stored with its name', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
     expect(await handleCustomerEvent(media('file', { fileName: 'แบบ.pdf', fileSize: 1000 }), rctx, d)).toEqual([ack])
-    expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', 'file', 'แบบ.pdf')
+    expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', 'file', 'แบบ.pdf', SENT)
   })
   it('too big from the store -> one too-big reply', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active), storeRepairMedia: vi.fn().mockResolvedValue('too_big') })
@@ -352,7 +354,7 @@ describe('repair intake', () => {
   it('redelivered media is still stored (idempotent by path)', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
     expect(await handleCustomerEvent(redeliver(media('image')), rctx, d)).toEqual([])
-    expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', 'image', undefined)
+    expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', 'image', undefined, SENT)
   })
   it('pick-site skips a site whose action text would pass 300 chars', async () => {
     const long = { id: 'x', name: 'ก'.repeat(300) }
@@ -523,7 +525,7 @@ describe('repair intake: add mode', () => {
   it('media in an add session is stored as today and flags the ticket', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(addActive) })
     expect(await handleCustomerEvent(media('image'), rctx, d)).toEqual([ack])
-    expect(d.storeRepairMedia).toHaveBeenCalledWith('k7', 'M1', 'image', undefined)
+    expect(d.storeRepairMedia).toHaveBeenCalledWith('k7', 'M1', 'image', undefined, SENT)
     expect(d.markCustomerUpdate).toHaveBeenCalledWith('k7')
   })
   it('media in a new session does not flag; a failed store never flags', async () => {
@@ -569,5 +571,26 @@ describe('repair intake: add mode', () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
     expect(await handleCustomerEvent(txt('เพิ่มเรื่อง:RP2610-001'), rctx, d)).toEqual([startMsg('งาน A')])
     expect(d.appendRepairText).not.toHaveBeenCalled()
+  })
+})
+
+describe('fix round 1', () => {
+  it.each([[undefined], [null], ['abc'], [0], [-5], [Number.NaN]])('media with timestamp %s: no send time passed', async (ts) => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    await handleCustomerEvent({ ...media('image'), timestamp: ts }, rctx, d)
+    expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', 'image', undefined, undefined)
+  })
+  it('a numeric-string timestamp is accepted', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(addActive) })
+    await handleCustomerEvent({ ...media('video'), timestamp: String(SENT) }, rctx, d)
+    expect(d.storeRepairMedia).toHaveBeenCalledWith('k7', 'M1', 'video', undefined, SENT)
+  })
+  it('startRepair losing the race to an add session replies with the add start text', async () => {
+    const d = L({ startRepair: vi.fn().mockResolvedValue({ ticketId: 'k7', siteName: 'งาน A', mode: 'add', ticketNumber: 'RP2610-002' }) })
+    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([addMsg('RP2610-002', 'งาน A')])
+  })
+  it('startRepair with no mode (own new ticket) keeps the new start text', async () => {
+    const d = L({ startRepair: vi.fn().mockResolvedValue({ ticketId: 'k1', siteName: 'งาน A', mode: 'new', ticketNumber: 'RP2610-009' }) })
+    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([startMsg('งาน A')])
   })
 })

@@ -8,7 +8,8 @@ BEGIN;
 -- customer_update_seen_at (set when staff open the ticket) drive the board badge and the new
 -- 'repair_customer_update' bell key. customer_line_repair_sessions gets mode ('new' = the session's own
 -- new ticket, 'add' = adding to an existing one), started_at (this session's media are created at/after it)
--- and description_before (restored on ยกเลิก in an add session).
+-- and description_before / update_before (the ticket's description and customer_update_at, put back on ยกเลิก
+-- in an add session).
 -- pending_counts(): copied from 2026-10-20-11 (the LIVE definition), one new key only.
 -- No view selects repair_tickets.* (checked 2026-10-20), so no view needs recreating for the new columns.
 -- Apply BEFORE deploying customer-line-webhook with the add-session code (it falls back on 42703 anyway).
@@ -20,7 +21,8 @@ ALTER TABLE public.repair_tickets
 ALTER TABLE public.customer_line_repair_sessions
   ADD COLUMN mode               text NOT NULL DEFAULT 'new' CHECK (mode IN ('new','add')),
   ADD COLUMN started_at         timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN description_before text;
+  ADD COLUMN description_before text,
+  ADD COLUMN update_before      timestamptz;
 
 CREATE OR REPLACE FUNCTION public.pending_counts()
  RETURNS jsonb
@@ -113,8 +115,9 @@ BEGIN
    WHERE table_schema = 'public' AND table_name = 'customer_line_repair_sessions'
      AND ((column_name = 'mode' AND data_type = 'text' AND is_nullable = 'NO')
        OR (column_name = 'started_at' AND data_type = 'timestamp with time zone' AND is_nullable = 'NO')
-       OR (column_name = 'description_before' AND data_type = 'text' AND is_nullable = 'YES'));
-  IF n <> 3 THEN RAISE EXCEPTION 'FAIL (a): session new columns %', n; END IF;
+       OR (column_name = 'description_before' AND data_type = 'text' AND is_nullable = 'YES')
+       OR (column_name = 'update_before' AND data_type = 'timestamp with time zone' AND is_nullable = 'YES'));
+  IF n <> 4 THEN RAISE EXCEPTION 'FAIL (a): session new columns %', n; END IF;
   RAISE NOTICE 'PASS (a)';
 
   SELECT t.id INTO v_other FROM tenants t JOIN user_roles ur ON ur.tenant_id = t.id AND ur.role = 'OWNER'
@@ -138,11 +141,11 @@ BEGIN
   INSERT INTO customer_line_repair_sessions (tenant_id, line_user_id, ticket_id, expires_at)
     VALUES (v_tenant, 'ZZ-dryrun-13-new', v_tx, now() + interval '30 minutes');
   SELECT * INTO sess FROM customer_line_repair_sessions WHERE tenant_id = v_tenant AND line_user_id = 'ZZ-dryrun-13-new';
-  IF sess.mode <> 'new' OR sess.started_at IS NULL OR sess.description_before IS NOT NULL THEN
+  IF sess.mode <> 'new' OR sess.started_at IS NULL OR sess.description_before IS NOT NULL OR sess.update_before IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL (b): defaults mode=% started_at=% before=%', sess.mode, sess.started_at, sess.description_before;
   END IF;
-  INSERT INTO customer_line_repair_sessions (tenant_id, line_user_id, ticket_id, expires_at, mode, description_before)
-    VALUES (v_tenant, 'ZZ-dryrun-13-add', v_tx, now() + interval '30 minutes', 'add', 'old text');
+  INSERT INTO customer_line_repair_sessions (tenant_id, line_user_id, ticket_id, expires_at, mode, description_before, update_before)
+    VALUES (v_tenant, 'ZZ-dryrun-13-add', v_tx, now() + interval '30 minutes', 'add', 'old text', now() - interval '1 day');
   BEGIN
     INSERT INTO customer_line_repair_sessions (tenant_id, line_user_id, ticket_id, expires_at, mode)
       VALUES (v_tenant, 'ZZ-dryrun-13-bad', v_tx, now() + interval '30 minutes', 'x');
