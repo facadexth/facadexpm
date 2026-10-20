@@ -245,7 +245,7 @@ export default function PayrollMonth({ canEdit }) {
                 {items.map(i => <td key={i.id} style={{ textAlign: 'right' }}>{fmt(total(i))}</td>)}
                 <td style={{ textAlign: 'right' }}>{fmt(totalOther)}</td>
                 <td style={{ textAlign: 'right' }}>{fmt(totalNet)}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(records.reduce((s, r) => s + (contribBal[r.worker_id] || 0), 0))}</td><td></td>
+                <td style={{ textAlign: 'right' }}>{Object.keys(contribBal).length ? fmt(records.reduce((s, r) => s + (contribBal[r.worker_id] || 0), 0)) : '–'}</td><td></td>
               </tr>
             </tfoot>
           )}

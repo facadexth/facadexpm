@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { openingSave, balanceMap } from './contribution.js'
+import { openingSave, balanceMap, OPENING_DEFAULT_AS_OF } from './contribution.js'
 
 describe('openingSave (worker form → contribution_openings upsert)', () => {
   const base = { tenantId: 't1', workerId: 'w1' }
@@ -28,9 +28,21 @@ describe('openingSave (worker form → contribution_openings upsert)', () => {
       .toEqual({ row: { tenant_id: 't1', worker_id: 'w1', amount: 0, as_of: '2026-09-30' } })
   })
 
-  it('a date alone (no amount, no saved row) saves 0 as of that date', () => {
-    expect(openingSave({ ...base, amount: '', asOf: '2026-09-30', hadRow: false }))
-      .toEqual({ row: { tenant_id: 't1', worker_id: 'w1', amount: 0, as_of: '2026-09-30' } })
+  it('empty amount with no saved row writes nothing, even with the default date', () => {
+    expect(openingSave({ ...base, amount: '', asOf: '2026-09-30', hadRow: false })).toEqual({ skip: true })
+    expect(openingSave({ ...base, amount: '   ', asOf: '2026-09-30', hadRow: false })).toEqual({ skip: true })
+  })
+
+  it('accepts thousands separators and spaces: "4,400.38" → 4400.38', () => {
+    expect(openingSave({ ...base, amount: '4,400.38', asOf: '2026-09-30', hadRow: false }))
+      .toEqual({ row: { tenant_id: 't1', worker_id: 'w1', amount: 4400.38, as_of: '2026-09-30' } })
+    expect(openingSave({ ...base, amount: ' 12 345 ', asOf: '2026-09-30', hadRow: true }).row.amount).toBe(12345)
+  })
+
+  it('"abc" is an error, never 0, with or without a saved row', () => {
+    expect(openingSave({ ...base, amount: 'abc', asOf: '2026-09-30', hadRow: false })).toEqual({ error: expect.any(String) })
+    expect(openingSave({ ...base, amount: 'abc', asOf: '2026-09-30', hadRow: true })).toEqual({ error: expect.any(String) })
+    expect(openingSave({ ...base, amount: '1,2a', asOf: '2026-09-30', hadRow: true }).row).toBeUndefined()
   })
 })
 
@@ -41,5 +53,11 @@ describe('balanceMap (contribution_balances rows → worker_id → balance)', ()
   })
   it('is empty for null / error results', () => {
     expect(balanceMap(null)).toEqual({})
+  })
+})
+
+describe('OPENING_DEFAULT_AS_OF', () => {
+  it('is end of September 2026 (FacadeX opening date)', () => {
+    expect(OPENING_DEFAULT_AS_OF).toBe('2026-09-30')
   })
 })

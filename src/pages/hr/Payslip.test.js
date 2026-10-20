@@ -56,6 +56,9 @@ describe('PayslipSheetView (pure, data by props)', () => {
     // not a table row: the money tables end before the summary line
     expect(html.indexOf('เงินสมทบสะสม')).toBeGreaterThan(html.lastIndexOf('</table>'))
   })
+  it('the เงินสมทบสะสม line never wraps inside itself', () => {
+    expect(render({ period: { status: 'closed' }, contribBalance: 1 })).toMatch(/\.cbal\{[^}]*white-space:nowrap/)
+  })
   it('shows a zero balance (worker with no opening and no contribution yet)', () => {
     expect(render({ period: { status: 'closed' }, contribBalance: 0 })).toContain('เงินสมทบสะสม <b>0</b>')
   })

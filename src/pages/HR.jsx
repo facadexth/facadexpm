@@ -28,7 +28,7 @@ import AdvancesPanel from './hr/AdvancesPanel.jsx'
 import PayItemsEditor from './hr/PayItemsEditor.jsx'
 import BankExportSettings from './hr/BankExportSettings.jsx'
 import { usePayItems, useWorkerPayAmounts, useContributionOpening } from '../hooks/usePayroll.js'
-import { openingSave } from '../lib/payroll/contribution.js'
+import { openingSave, OPENING_DEFAULT_AS_OF } from '../lib/payroll/contribution.js'
 import { validateAccount } from '../lib/bankExport/banks.js'
 import CardTable from '../components/CardTable.jsx'
 const HR_AUDIT_MAP = { title: 'ผู้ใช้', sub: ['เวลา'] }
@@ -46,7 +46,7 @@ const EMPTY_WORKER = {
   employee_code: '', pay_type: 'monthly', daily_wage: '', bank_code: '', bank_account_no: '', bank_account_name: '', bank_branch_code: '',
 }
 
-function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [], seat, showMoney = true }) {
+function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [], seat, showMoney = true, showOpening = false }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('worker-form', { ...EMPTY_WORKER, ...initial, bank_branch_touched: !!initial?.bank_branch_code }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -59,8 +59,9 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
   const [amounts, setAmounts] = useState({})
   useEffect(() => { if (savedAmounts) setAmounts(a => ({ ...savedAmounts, ...a })) }, [savedAmounts])
   // เงินสมทบยกมา: money roles only; kept out of the draft like amounts
-  const { data: savedOpening } = useContributionOpening(showMoney ? initial?.id : null)
-  const [opening, setOpening] = useState({ amount: '', as_of: '', touched: false })
+  // section only for money roles in a tenant with the payroll module (showOpening)
+  const { data: savedOpening } = useContributionOpening(showOpening ? initial?.id : null)
+  const [opening, setOpening] = useState({ amount: '', as_of: OPENING_DEFAULT_AS_OF, touched: false })
   useEffect(() => {
     if (savedOpening) setOpening(o => (o.touched ? o : { amount: String(Number(savedOpening.amount)), as_of: savedOpening.as_of, touched: false }))
   }, [savedOpening])
@@ -90,7 +91,7 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
       const acctErr = showMoney && form.bank_code && form.bank_account_no ? validateAccount(form.bank_code, form.bank_account_no) : null
       if (acctErr) { alert(acctErr); return }
       if (showMoney && form.bank_branch_code && !/^\d{4}$/.test(form.bank_branch_code)) { alert('รหัสสาขาต้องมี 4 หลัก'); return }
-      const openingInput = showMoney && opening.touched ? { amount: opening.amount, asOf: opening.as_of, hadRow: !!savedOpening } : null
+      const openingInput = showOpening && opening.touched ? { amount: opening.amount, asOf: opening.as_of, hadRow: !!savedOpening } : null
       const openingErr = openingInput && openingSave({ tenantId: '-', workerId: '-', ...openingInput }).error
       if (openingErr) { alert(openingErr); return }
       clearFormDraft(); onSave(form, idCardFile, showMoney ? amounts : {}, openingInput)
@@ -161,12 +162,12 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
           <input type="number" className="input" min="0" step="0.01" value={form.monthly_contribution}
             onChange={e => set('monthly_contribution', e.target.value)} placeholder="บาท" />
         </div>}
-        {showMoney && <div style={{ display: 'grid', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}>
+        {showOpening && <div style={{ display: 'grid', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}>
           <div style={{ fontWeight: 700, fontSize: 13 }}>เงินสมทบยกมา</div>
           <div className="form-grid-2">
             <div>
               <label className="label">ยอดยกมา (บาท)</label>
-              <input type="number" className="input" min="0" step="0.01" value={opening.amount}
+              <input type="text" inputMode="decimal" className="input" value={opening.amount}
                 onChange={e => setOpen('amount', e.target.value)} placeholder="0.00" />
             </div>
             <div>
@@ -495,13 +496,13 @@ export default function HR({ navState }) {
         const { error: amtErr } = await supabase.from('worker_pay_item_amounts').upsert(amountRows, { onConflict: 'worker_id,pay_item_id' })
         if (amtErr) throw amtErr
       }
-      if (canSeeMoney(role) && openingInput) {
+      if (canSeeMoney(role) && hasModuleAccess('payroll') && openingInput) {
+        // the worker itself is already saved: report this failure on its own, keep the form open
         const op = openingSave({ tenantId: tenant.id, workerId: savedId, ...openingInput })
-        if (op.error) throw new Error(op.error)
-        if (op.row) {
-          const { error: opErr } = await supabase.from('contribution_openings').upsert(op.row, { onConflict: 'tenant_id,worker_id' })
-          if (opErr) throw opErr
-        }
+        const opErr = op.error || (op.row
+          ? (await supabase.from('contribution_openings').upsert(op.row, { onConflict: 'tenant_id,worker_id' })).error?.message
+          : null)
+        if (opErr) { refetchWorkers(); alert('บันทึกเงินสมทบยกมาไม่สำเร็จ: ' + opErr); return }
       }
       setShowWorkerForm(false); setEditWorker(null); refetchWorkers(); refetchSeat()
     } catch (e) {
@@ -940,7 +941,8 @@ export default function HR({ navState }) {
           onClose={() => { setShowWorkerForm(false); setEditWorker(null) }} maxWidth={560}>
           <WorkerForm initial={editWorker||EMPTY_WORKER} onSave={handleSaveWorker}
             onCancel={() => { setShowWorkerForm(false); setEditWorker(null) }} loading={savingWorker}
-            workerUsers={workerUsers} seat={seat} showMoney={showSalary} />
+            workerUsers={workerUsers} seat={seat} showMoney={showSalary}
+            showOpening={canSeeMoney(role) && hasModuleAccess('payroll')} />
         </Modal>
       )}
 
