@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { payslipWindow, inPayslipWindow, pickYtd } from '../../supabase/functions/_shared/payslip-data.ts'
+import { payslipWindow, inPayslipWindow, pickYtd, pickContribBalance } from '../../supabase/functions/_shared/payslip-data.ts'
 
 describe('payslipWindow', () => {
   it('is the current month and the 11 before it', () => {
@@ -30,5 +30,17 @@ describe('pickYtd', () => {
   })
   it('is zero for no lines', () => {
     expect(pickYtd([])).toEqual({ earnings: 0, sso: 0, contrib: 0 })
+  })
+})
+
+describe('pickContribBalance', () => {
+  it('turns the contribution_balance rpc result into a number', () => {
+    expect(pickContribBalance({ data: '1140.00', error: null })).toBe(1140)
+    expect(pickContribBalance({ data: 0, error: null })).toBe(0)
+  })
+  it('is null when the rpc failed or found nothing (the slip just leaves the line out)', () => {
+    expect(pickContribBalance({ data: null, error: null })).toBeNull()
+    expect(pickContribBalance({ data: '5', error: { message: 'function does not exist' } })).toBeNull()
+    expect(pickContribBalance({ data: 'x', error: null })).toBeNull()
   })
 })

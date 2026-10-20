@@ -48,4 +48,15 @@ describe('PayslipSheetView (pure, data by props)', () => {
     expect(render({ period: { status: 'closed' } })).not.toContain('สะสมปี')
     expect(render({ period: { status: 'closed' }, ytd: { earnings: 5, sso: 1, contrib: 2 } })).toContain('สะสมปี 2569')
   })
+  it('shows เงินสมทบสะสม only when contribBalance is a number, outside the earning/deduction tables', () => {
+    expect(render({ period: { status: 'closed' } })).not.toContain('เงินสมทบสะสม')
+    expect(render({ period: { status: 'closed' }, contribBalance: null })).not.toContain('เงินสมทบสะสม')
+    const html = render({ period: { status: 'closed' }, contribBalance: 1140 })
+    expect(html).toContain('เงินสมทบสะสม <b>1140</b>')
+    // not a table row: the money tables end before the summary line
+    expect(html.indexOf('เงินสมทบสะสม')).toBeGreaterThan(html.lastIndexOf('</table>'))
+  })
+  it('shows a zero balance (worker with no opening and no contribution yet)', () => {
+    expect(render({ period: { status: 'closed' }, contribBalance: 0 })).toContain('เงินสมทบสะสม <b>0</b>')
+  })
 })

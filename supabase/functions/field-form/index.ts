@@ -42,7 +42,7 @@ import { dailySubmitLimitReached, DAILY_LIMIT_MESSAGE } from '../_shared/form-th
 import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
 import { parseAdvanceAmount, defaultStartMonth } from '../_shared/advance-logic.ts'
 import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
-import { payslipWindow, inPayslipWindow, pickYtd } from '../_shared/payslip-data.ts'
+import { payslipWindow, inPayslipWindow, pickYtd, pickContribBalance } from '../_shared/payslip-data.ts'
 import { todaysSites, pickSiteForNow } from '../_shared/todays-sites.ts'
 import { resolveFactoryLocation } from '../_shared/factory-location.ts'
 import { mergeSiteLists, repairSiteOptions, repairTicketOnSiteToday, REPAIR_ACTIVE_STATUSES } from '../_shared/material-sites.ts'
@@ -335,7 +335,7 @@ Deno.serve(async (req) => {
       if (yrErr) return json({ error: PAYSLIP_ERR }, 500)
       const ytdRecIds = (ytdRecs ?? []).map((r: any) => r.id)
 
-      const [tenantRes, workerRes, linesRes, otRes, itemsRes, ytdLinesRes] = await Promise.all([
+      const [tenantRes, workerRes, linesRes, otRes, itemsRes, ytdLinesRes, contribRes] = await Promise.all([
         admin.from('tenants').select('company_name, tax_id').eq('id', tenantId).maybeSingle(),
         admin.from('workers').select('name, nickname, employee_code, position, bank_account_name').eq('id', worker.id).eq('tenant_id', tenantId).maybeSingle(),
         admin.from('salary_record_lines').select('id, pay_item_id, name, side, sort_order, amount, quantity, rate, note')
@@ -345,6 +345,9 @@ Deno.serve(async (req) => {
         ytdRecIds.length
           ? admin.from('salary_record_lines').select('side, amount, pay_item_id').eq('tenant_id', tenantId).in('salary_record_id', ytdRecIds)
           : Promise.resolve({ data: [], error: null }),
+        // เงินสมทบสะสม; a failure only drops the line from the slip (never errors the slip)
+        admin.rpc('contribution_balance', { p_worker: worker.id, p_year: year, p_month: month })
+          .then((r: any) => r, (e: unknown) => ({ data: null, error: e })),
       ])
       if (tenantRes.error || workerRes.error || linesRes.error || otRes.error || itemsRes.error || ytdLinesRes.error) return json({ error: PAYSLIP_ERR }, 500)
       const itemById = new Map((itemsRes.data ?? []).map((i: any) => [i.id, i]))
@@ -364,6 +367,7 @@ Deno.serve(async (req) => {
         period: { status: per.status, paid_date: per.paid_date },
         otItem: otRes.data?.[0] ?? null,
         ytd,
+        contribBalance: pickContribBalance(contribRes),
       })
     }
 

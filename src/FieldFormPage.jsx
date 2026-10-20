@@ -221,7 +221,7 @@ function PayslipFlow({ token, workerName, months }) {
         <div ref={boxRef} style={{ width: '100%', overflow: fit ? 'hidden' : 'visible' }}>
           <div style={{ height: SHEET_H * s }}>
             <div style={{ width: SHEET_W, transform: `scale(${s})`, transformOrigin: 'top left' }}>
-              <PayslipSheetView record={{ ...d.record, workers: d.worker }} year={slip.year} month={slip.month} period={d.period} tenant={d.tenant} otItem={d.otItem} ytd={d.ytd} />
+              <PayslipSheetView record={{ ...d.record, workers: d.worker }} year={slip.year} month={slip.month} period={d.period} tenant={d.tenant} otItem={d.otItem} ytd={d.ytd} contribBalance={d.contribBalance ?? null} />
             </div>
           </div>
         </div>

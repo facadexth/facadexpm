@@ -27,3 +27,12 @@ export function pickYtd(lines: Array<{ side: string; amount: number | string; pa
     contrib: sum(lines.filter(l => l.pay_items?.system_key === 'contribution_deduct')),
   }
 }
+
+// เงินสมทบสะสม from the contribution_balance rpc (migration 2026-10-20-14).
+// Any failure (e.g. migration not applied yet) or no row = null, and the slip
+// leaves the line out instead of failing.
+export function pickContribBalance(res: { data: unknown; error: unknown }): number | null {
+  if (res.error || res.data == null) return null
+  const n = Number(res.data)
+  return Number.isFinite(n) ? n : null
+}

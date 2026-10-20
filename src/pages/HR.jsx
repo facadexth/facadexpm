@@ -27,7 +27,8 @@ import PayrollMonth from './hr/PayrollMonth.jsx'
 import AdvancesPanel from './hr/AdvancesPanel.jsx'
 import PayItemsEditor from './hr/PayItemsEditor.jsx'
 import BankExportSettings from './hr/BankExportSettings.jsx'
-import { usePayItems, useWorkerPayAmounts } from '../hooks/usePayroll.js'
+import { usePayItems, useWorkerPayAmounts, useContributionOpening } from '../hooks/usePayroll.js'
+import { openingSave } from '../lib/payroll/contribution.js'
 import { validateAccount } from '../lib/bankExport/banks.js'
 import CardTable from '../components/CardTable.jsx'
 const HR_AUDIT_MAP = { title: 'ผู้ใช้', sub: ['เวลา'] }
@@ -57,6 +58,13 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
   const { data: savedAmounts } = useWorkerPayAmounts(showMoney ? initial?.id : null)
   const [amounts, setAmounts] = useState({})
   useEffect(() => { if (savedAmounts) setAmounts(a => ({ ...savedAmounts, ...a })) }, [savedAmounts])
+  // เงินสมทบยกมา: money roles only; kept out of the draft like amounts
+  const { data: savedOpening } = useContributionOpening(showMoney ? initial?.id : null)
+  const [opening, setOpening] = useState({ amount: '', as_of: '', touched: false })
+  useEffect(() => {
+    if (savedOpening) setOpening(o => (o.touched ? o : { amount: String(Number(savedOpening.amount)), as_of: savedOpening.as_of, touched: false }))
+  }, [savedOpening])
+  const setOpen = (k, v) => setOpening(o => ({ ...o, [k]: v, touched: true }))
   const workersFull = isAdd && seat?.workers?.max != null && seat.workers.used >= seat.workers.max
 
   // Raw File, deliberately NOT part of `form` (see handleSaveWorker's own
@@ -82,7 +90,10 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
       const acctErr = showMoney && form.bank_code && form.bank_account_no ? validateAccount(form.bank_code, form.bank_account_no) : null
       if (acctErr) { alert(acctErr); return }
       if (showMoney && form.bank_branch_code && !/^\d{4}$/.test(form.bank_branch_code)) { alert('รหัสสาขาต้องมี 4 หลัก'); return }
-      clearFormDraft(); onSave(form, idCardFile, showMoney ? amounts : {})
+      const openingInput = showMoney && opening.touched ? { amount: opening.amount, asOf: opening.as_of, hadRow: !!savedOpening } : null
+      const openingErr = openingInput && openingSave({ tenantId: '-', workerId: '-', ...openingInput }).error
+      if (openingErr) { alert(openingErr); return }
+      clearFormDraft(); onSave(form, idCardFile, showMoney ? amounts : {}, openingInput)
     }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         {workersFull && (
@@ -149,6 +160,23 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
           <label className="label">เงินสมทบ/เดือน</label>
           <input type="number" className="input" min="0" step="0.01" value={form.monthly_contribution}
             onChange={e => set('monthly_contribution', e.target.value)} placeholder="บาท" />
+        </div>}
+        {showMoney && <div style={{ display: 'grid', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>เงินสมทบยกมา</div>
+          <div className="form-grid-2">
+            <div>
+              <label className="label">ยอดยกมา (บาท)</label>
+              <input type="number" className="input" min="0" step="0.01" value={opening.amount}
+                onChange={e => setOpen('amount', e.target.value)} placeholder="0.00" />
+            </div>
+            <div>
+              <label className="label">ณ วันที่</label>
+              <input type="date" className="input" value={opening.as_of || ''} onChange={e => setOpen('as_of', e.target.value)} />
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+            เงินสมทบสะสม = ยอดยกมา + เงินสมทบของงวดหลังเดือนนี้ (เช่น ณ 30/09/2569 → นับตั้งแต่งวด ต.ค. 2569)
+          </div>
         </div>}
         <div>
           <label className="label">ผูกกับ User Account (Login)</label>
@@ -407,7 +435,7 @@ export default function HR({ navState }) {
   // photo can be uploaded under it (path is {tenant}/{worker_id}/...), so
   // for a brand-new worker this uploads AFTER the insert, in a follow-up
   // update -- editing an existing worker already has that id up front.
-  const handleSaveWorker = async (form, idCardFile, amounts = {}) => {
+  const handleSaveWorker = async (form, idCardFile, amounts = {}, openingInput = null) => {
     setSavingWorker(true)
     try {
       const payload = {
@@ -466,6 +494,14 @@ export default function HR({ navState }) {
       if (amountRows.length) {
         const { error: amtErr } = await supabase.from('worker_pay_item_amounts').upsert(amountRows, { onConflict: 'worker_id,pay_item_id' })
         if (amtErr) throw amtErr
+      }
+      if (canSeeMoney(role) && openingInput) {
+        const op = openingSave({ tenantId: tenant.id, workerId: savedId, ...openingInput })
+        if (op.error) throw new Error(op.error)
+        if (op.row) {
+          const { error: opErr } = await supabase.from('contribution_openings').upsert(op.row, { onConflict: 'tenant_id,worker_id' })
+          if (opErr) throw opErr
+        }
       }
       setShowWorkerForm(false); setEditWorker(null); refetchWorkers(); refetchSeat()
     } catch (e) {

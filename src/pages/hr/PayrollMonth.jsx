@@ -12,6 +12,7 @@ import { dailyRate } from '../../lib/payroll/calc.js'
 import { Modal } from '../../components/Modal.jsx'
 import PayslipModal from './Payslip.jsx'
 import BankExportModal from './BankExportModal.jsx'
+import { balanceMap } from '../../lib/payroll/contribution.js'
 
 const STATUS = {
   draft: { label: 'ร่าง', color: '#9a5b00' },
@@ -51,6 +52,18 @@ export default function PayrollMonth({ canEdit }) {
     return () => { off = true }
   }, [canEdit])
   const [advEdit, setAdvEdit] = useState(null) // { lineId, value }
+
+  // เงินสมทบสะสม per worker for this month (DB rule, RLS: a worker gets only their own).
+  // Re-read whenever the month's data reloads (a recalculation changes this month's line).
+  const [contribBal, setContribBal] = useState({})
+  useEffect(() => {
+    let off = false
+    setContribBal({})
+    supabase.rpc('contribution_balances', { p_year: year, p_month: month })
+      .then(({ data: rows, error: e }) => { if (!off && !e) setContribBal(balanceMap(rows)) })
+      .catch(() => {})
+    return () => { off = true }
+  }, [year, month, data])
 
   const status = data?.period?.status || 'draft'
   const items = useMemo(() => (data?.items || []).filter(i => i.active), [data])
@@ -188,13 +201,14 @@ export default function PayrollMonth({ canEdit }) {
       )}
 
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
-        <table style={{ minWidth: 380 + items.length * 110 }}>
+        <table style={{ minWidth: 490 + items.length * 110 }}>
           <thead>
             <tr>
               <th>ชื่อ</th><th style={{ textAlign: 'right' }}>วันออฟฟิศ</th>
               {items.map(i => <th key={i.id} style={{ textAlign: 'right' }}>{i.name}</th>)}
               <th style={{ textAlign: 'right' }}>อื่นๆ</th>
-              <th style={{ textAlign: 'right' }}>จ่ายสุทธิ</th><th></th>
+              <th style={{ textAlign: 'right' }}>จ่ายสุทธิ</th>
+              <th style={{ textAlign: 'right' }} title="เงินสมทบยกมา + เงินสมทบถึงเดือนนี้">เงินสมทบสะสม</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -214,11 +228,12 @@ export default function PayrollMonth({ canEdit }) {
                 ))}
                 <td style={{ textAlign: 'right' }}>{otherAmt(r) ? fmt(otherAmt(r)) : '–'}</td>
                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(r.net_pay)}</td>
+                <td style={{ textAlign: 'right' }}>{contribBal[r.worker_id] != null ? fmt(contribBal[r.worker_id]) : '–'}</td>
                 <td><button className="btn btn-ghost btn-sm" onClick={() => setSlip(r)} aria-label="สลิป">📄</button></td>
               </tr>
             ))}
             {!records.length && (
-              <tr><td colSpan={items.length + 5} style={{ textAlign: 'center', color: 'var(--text3)' }}>
+              <tr><td colSpan={items.length + 6} style={{ textAlign: 'center', color: 'var(--text3)' }}>
                 {canEdit ? 'ยังไม่ได้คำนวณเดือนนี้ กด “คำนวณ”' : 'ยังไม่มีสลิปของเดือนนี้'}
               </td></tr>
             )}
@@ -229,7 +244,8 @@ export default function PayrollMonth({ canEdit }) {
                 <td>ยอดรวม</td><td></td>
                 {items.map(i => <td key={i.id} style={{ textAlign: 'right' }}>{fmt(total(i))}</td>)}
                 <td style={{ textAlign: 'right' }}>{fmt(totalOther)}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(totalNet)}</td><td></td>
+                <td style={{ textAlign: 'right' }}>{fmt(totalNet)}</td>
+                <td style={{ textAlign: 'right' }}>{fmt(records.reduce((s, r) => s + (contribBal[r.worker_id] || 0), 0))}</td><td></td>
               </tr>
             </tfoot>
           )}

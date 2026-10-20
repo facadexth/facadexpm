@@ -44,6 +44,20 @@ function useYearToDate(workerId, year, month) {
   return ytd
 }
 
+// เงินสมทบสะสม as of this slip's month (DB function, RLS applies). null = unknown / not visible.
+function useContributionBalance(workerId, year, month) {
+  const [bal, setBal] = useState(null)
+  useEffect(() => {
+    let off = false
+    setBal(null)
+    supabase.rpc('contribution_balance', { p_worker: workerId, p_year: year, p_month: month })
+      .then(({ data, error }) => { if (!off && !error && data != null) setBal(Number(data)) })
+      .catch(() => {})
+    return () => { off = true }
+  }, [workerId, year, month])
+  return bal
+}
+
 const CSS = `
 .payslip-a5{position:relative;width:794px;height:559px;box-sizing:border-box;overflow:hidden;padding:26px 30px 20px;background:#fff;color:#1b1f1d;font-family:Sarabun,sans-serif;font-size:12.5px;line-height:1.45;display:grid;grid-template-rows:auto auto 1fr auto auto;gap:10px}
 .payslip-a5 .hd{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #1b1f1d;padding-bottom:8px}
@@ -58,6 +72,7 @@ const CSS = `
 .payslip-a5 .ft{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:16px;align-items:end}
 .payslip-a5 .neg{color:#b42318}
 .payslip-a5 .ytd{flex-basis:100%}
+.payslip-a5 .cbal{margin-left:auto;color:#1b1f1d}
 .payslip-a5 .net{background:#fff;color:#1b1f1d;border:1.5px solid #1b1f1d;padding:6px 12px;border-radius:3px}.payslip-a5 .net .v{font-size:19px;font-weight:700}
 .payslip-a5 .sg{text-align:center;font-size:11px;color:#444}.payslip-a5 .sg b{display:block;font-size:12.5px;color:#1b1f1d;margin-bottom:2px}
 .payslip-a5 .wm{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:90px;font-weight:700;color:rgba(154,91,0,.14);transform:rotate(-12deg);pointer-events:none}
@@ -70,11 +85,13 @@ export function PayslipSheet({ record, year, month, period }) {
   // the OT row always shows (owner's choice), as 0.00 in a month without OT
   const otItem = (payItems || []).find(i => i.method === 'ot' && i.active)
   const ytd = useYearToDate(record.worker_id, year, month)
-  return <PayslipSheetView record={record} year={year} month={month} period={period} tenant={tenant} otItem={otItem} ytd={ytd} />
+  const contribBalance = useContributionBalance(record.worker_id, year, month)
+  return <PayslipSheetView record={record} year={year} month={month} period={period} tenant={tenant} otItem={otItem} ytd={ytd} contribBalance={contribBalance} />
 }
 
 // Pure: all data via props, no supabase calls (also used by the public LINE payslip page).
-export function PayslipSheetView({ record, year, month, period, tenant, otItem, ytd }) {
+// contribBalance: เงินสมทบสะสม (opening + contributions to this month), a summary line only.
+export function PayslipSheetView({ record, year, month, period, tenant, otItem, ytd, contribBalance }) {
   const w = record.workers || {}
   const saved = record.salary_record_lines || []
   const otRow = otItem && !saved.some(l => l.pay_item_id === otItem.id)
@@ -122,6 +139,7 @@ export function PayslipSheetView({ record, year, month, period, tenant, otItem, 
         <span>ลาป่วย <b>{fv(f.leaveSickDays)}</b> วัน</span>
         <span>OT <b>{fv(f.otHours)}</b> ชม.</span>
         {f.holidayShifts ? <span>กะวันหยุด <b>{f.holidayShifts}</b></span> : null}
+        {typeof contribBalance === 'number' && Number.isFinite(contribBalance) && <span className="cbal">เงินสมทบสะสม <b>{fmt(contribBalance)}</b></span>}
         {ytd && <span className="ytd">สะสมปี {year + 543}: เงินได้ <b>{fmt(ytd.earnings)}</b> · ประกันสังคม <b>{fmt(ytd.sso)}</b> · เงินสมทบ <b>{fmt(ytd.contrib)}</b></span>}
       </div>
       <div className="ft">

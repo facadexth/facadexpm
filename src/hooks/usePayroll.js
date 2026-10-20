@@ -54,3 +54,13 @@ export function usePayrollPeriodStatuses() {
     return Object.fromEntries(rows.map(r => [`${r.year}-${r.month}`, r.status]))
   }, [])
 }
+
+// เงินสมทบยกมา row for one worker (admin/owner only; null when none or not loaded).
+export function useContributionOpening(workerId) {
+  return useQuery(async () => {
+    if (!workerId) return null
+    const { data, error } = await supabase.from('contribution_openings').select('amount, as_of').eq('worker_id', workerId).maybeSingle()
+    if (error) return null // e.g. migration not applied yet: the section stays empty
+    return data
+  }, [workerId])
+}
