@@ -5,18 +5,29 @@ import { warrantyStatus } from './warranty.ts'
 import { formatThaiDate } from './thai-date.ts'
 import type { LineMessage } from './line-reply.ts'
 
+// One non-issue phase (VO phases included), in sort_order. Dates are YYYY-MM-DD or null.
+export type SitePhase = {
+  name: string
+  start_date: string | null
+  end_date: string | null
+  status: 'not_started' | 'in_progress' | 'done' | string
+}
+
 export type SiteStatus = {
   name: string
   status: 'Ongoing' | 'On Hold' | 'Completed' | 'Cancelled'
   pct: number | null
-  phases: string[]
+  // Loaded for Ongoing / On Hold sites only; [] for the rest.
+  phases: SitePhase[]
   endDate: string | null // YYYY-MM-DD
   handoverDate: string | null // YYYY-MM-DD
   warrantyMonths: number
+  // true = the "ดูรูปหน้างาน" button is shown (set by the handler from loadPhotos).
+  hasPhotos?: boolean
 }
 
 // Shared by statusText and warrantyText.
-const STATUS_MAX_SITES = 10
+export const STATUS_MAX_SITES = 10
 // LINE's text message limit is 5,000 characters; keep a margin.
 const STATUS_MAX_CHARS = 4900
 const CONTACT_FOOTER = 'หรือพิมพ์ในแชทนี้ได้เลย เจ้าหน้าที่จะตอบในเวลาทำการ'
@@ -74,7 +85,8 @@ function siteBlock(s: SiteStatus): string {
   } else {
     lines.push('ยังไม่มีข้อมูลความคืบหน้า')
   }
-  if (s.phases.length > 0) lines.push(`กำลังทำ: ${s.phases.join(', ')}`)
+  const doing = s.phases.filter((p) => p.status === 'in_progress').map((p) => p.name)
+  if (doing.length > 0) lines.push(`กำลังทำ: ${doing.join(', ')}`)
   if (s.endDate) lines.push(`กำหนดเสร็จ: ${formatThaiDate(s.endDate)}`)
   return lines.join('\n')
 }

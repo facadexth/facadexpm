@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { handleCustomerEvent } from '../../supabase/functions/_shared/customer-line-handler.ts'
 import {
-  inviteOkText, inviteInvalidText, notLinkedText, quoteText, warrantyFlex, contactText, statusText,
+  inviteOkText, inviteInvalidText, notLinkedText, quoteText, warrantyFlex, contactText,
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
+import { statusFlex, noPhotosText } from '../../supabase/functions/_shared/status-card.ts'
 import {
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, repairStatusFlex, repairGotItText, repairReceivedFlex,
@@ -12,7 +13,7 @@ import {
 const ctx = { tenantId: 't1', today: '2026-10-19' }
 const txt = (text) => ({ type: 'message', replyToken: 'rt', source: { type: 'user', userId: 'U1' }, message: { type: 'text', text } })
 const T = (text) => ({ type: 'text', text })
-const site = { name: 'งาน A', status: 'Ongoing', pct: 40, phases: ['ติดตั้ง'], endDate: '2026-12-01', handoverDate: null, warrantyMonths: 12 }
+const site = { name: 'งาน A', status: 'Ongoing', pct: 40, phases: [{ name: 'ติดตั้ง', start_date: null, end_date: null, status: 'in_progress' }], endDate: '2026-12-01', handoverDate: null, warrantyMonths: 12 }
 const contact = { companyName: 'บจก.', phone: '02', hours: '8-17', brandName: 'แชงค์' }
 
 function deps(over = {}) {
@@ -84,17 +85,37 @@ describe('handleCustomerEvent', () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
     expect(await handleCustomerEvent(txt('ประกันของฉัน'), ctx, d)).toEqual([warrantyFlex([site], ctx.today, 'แชงค์')])
   })
-  it('linked status with photos', async () => {
+  it('linked status replies with the status card only; a photo check enables its button', async () => {
     const d = deps({
       getAccount: vi.fn().mockResolvedValue(linked),
-      loadPhotos: vi.fn().mockResolvedValue([{ url: 'https://x/1.jpg' }, { url: 'https://x/2.jpg' }]),
+      loadPhotos: vi.fn().mockResolvedValue([{ url: 'https://x/1.jpg' }]),
     })
     const r = await handleCustomerEvent(txt('สถานะงาน'), ctx, d)
-    expect(r).toEqual([
-      T(statusText([site], '2026-10-19', 'แชงค์')),
-      { type: 'image', originalContentUrl: 'https://x/1.jpg', previewImageUrl: 'https://x/1.jpg' },
-      { type: 'image', originalContentUrl: 'https://x/2.jpg', previewImageUrl: 'https://x/2.jpg' },
-    ])
+    expect(r).toEqual([statusFlex([{ ...site, hasPhotos: true }], '2026-10-19', 'แชงค์')])
+    expect(r.some((m) => m.type === 'image')).toBe(false)
+    expect(d.loadPhotos).toHaveBeenCalledWith('c1', 1)
+  })
+  it('linked status without photos: card has no photo button', async () => {
+    const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
+    const r = await handleCustomerEvent(txt('สถานะงาน'), ctx, d)
+    expect(r).toEqual([statusFlex([{ ...site, hasPhotos: false }], '2026-10-19', 'แชงค์')])
+    expect(JSON.stringify(r)).not.toContain('ดูรูปหน้างาน')
+  })
+  it('linked รูปหน้างาน replies with up to 5 photos', async () => {
+    const urls = Array.from({ length: 7 }, (_, i) => ({ url: `https://x/${i}.jpg` }))
+    const d = deps({ getAccount: vi.fn().mockResolvedValue(linked), loadPhotos: vi.fn().mockResolvedValue(urls) })
+    const r = await handleCustomerEvent(txt('รูปหน้างาน'), ctx, d)
+    expect(d.loadPhotos).toHaveBeenCalledWith('c1', 5)
+    expect(r).toEqual(urls.slice(0, 5).map((p) => ({ type: 'image', originalContentUrl: p.url, previewImageUrl: p.url })))
+  })
+  it('linked รูปหน้างาน with no photos says so', async () => {
+    const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
+    expect(await handleCustomerEvent(txt('รูปหน้างาน'), ctx, d)).toEqual([T(noPhotosText())])
+  })
+  it('unlinked รูปหน้างาน -> notLinked, photos never loaded', async () => {
+    const d = deps()
+    expect(await handleCustomerEvent(txt('รูปหน้างาน'), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
+    expect(d.loadPhotos).not.toHaveBeenCalled()
   })
   it('contact for anyone', async () => {
     expect(await handleCustomerEvent(txt('ติดต่อเรา'), ctx, deps())).toEqual([T(contactText(contact))])

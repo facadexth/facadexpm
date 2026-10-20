@@ -9,6 +9,8 @@ describe('matchCustomerCommand', () => {
     expect(matchCustomerCommand('สถานะแจ้งซ่อม')).toBe('repair_status')
     expect(matchCustomerCommand('ประกันของฉัน')).toBe('warranty')
     expect(matchCustomerCommand('ติดต่อเรา')).toBe('contact')
+    expect(matchCustomerCommand('รูปหน้างาน')).toBe('photos')
+    expect(matchCustomerCommand(' รูป หน้างาน ')).toBe('photos')
   })
   it.each(['ประกันของฉัน', 'ประกัน', 'รับประกัน', 'ระยะเวลารับประกัน', 'เช็คประกัน', 'ตรวจสอบประกัน'])('warranty synonym %s', (w) => {
     expect(matchCustomerCommand(w)).toBe('warranty')

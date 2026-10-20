@@ -9,7 +9,7 @@ import { timingSafeEqual } from '../_shared/timing-safe.ts'
 import { sendLineReplyMessages } from '../_shared/line-reply.ts'
 import { replyWithFallback } from '../_shared/reply-fallback.ts'
 import { handleCustomerEvent, type CustomerDeps } from '../_shared/customer-line-handler.ts'
-import type { SiteStatus } from '../_shared/customer-line-replies.ts'
+import type { SiteStatus, SitePhase } from '../_shared/customer-line-replies.ts'
 import {
   contentRetryDelay, mediaTooBig, repairMediaExt, repairMediaPath, repairUploadMime, OPEN_REPAIR_STATUSES, MAX_CHOOSER_TICKETS,
   type RepairTicket, type MediaCounts,
@@ -132,18 +132,36 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       const { data: sites, error } = await admin.from('sites').select('id, name, status, end_date, handover_date, warranty_months')
         .eq('tenant_id', tenantId).eq('client_id', clientId).neq('status', 'Cancelled')
       if (error) throw error
+      // Phases for the status card (and its กำลังทำ text): ONE query for every ongoing / paused site.
+      // Issue phases are internal; VO phases are real work and stay.
+      const activeIds = (sites ?? []).filter((s) => s.status === 'Ongoing' || s.status === 'On Hold').map((s) => s.id as string)
+      const phasesBySite = new Map<string, SitePhase[]>()
+      if (activeIds.length > 0) {
+        const { data: phases, error: pErr } = await admin.from('site_phases').select('site_id, name, start_date, end_date, status, sort_order')
+          .eq('tenant_id', tenantId).in('site_id', activeIds).eq('is_issue_phase', false)
+          .order('site_id').order('sort_order')
+        if (pErr) throw pErr
+        for (const p of phases ?? []) {
+          const list = phasesBySite.get(p.site_id as string) ?? []
+          list.push({
+            name: (p.name as string) ?? '',
+            start_date: (p.start_date as string | null) ?? null,
+            end_date: (p.end_date as string | null) ?? null,
+            status: (p.status as string) ?? 'not_started',
+          })
+          phasesBySite.set(p.site_id as string, list)
+        }
+      }
       const out: SiteStatus[] = []
       for (const s of sites ?? []) {
         const { data: pct } = await admin.rpc('site_progress_pct', { p_site_id: s.id })
         const prow = Array.isArray(pct) ? pct[0] : pct
-        const { data: phases } = await admin.from('site_phases').select('name')
-          .eq('tenant_id', tenantId).eq('site_id', s.id).eq('status', 'in_progress').eq('is_issue_phase', false).order('sort_order')
         const cp = prow?.contract_pct
         out.push({
           name: s.name as string,
           status: s.status as SiteStatus['status'],
           pct: cp === null || cp === undefined ? null : Number(cp),
-          phases: (phases ?? []).map((p) => p.name as string),
+          phases: phasesBySite.get(s.id as string) ?? [],
           endDate: (s.end_date as string | null) ?? null,
           handoverDate: (s.handover_date as string | null) ?? null,
           warrantyMonths: Number(s.warranty_months ?? 0),
@@ -151,14 +169,14 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       }
       return out
     },
-    async loadPhotos(clientId) {
+    async loadPhotos(clientId, limit) {
       const { data: active } = await admin.from('sites').select('id')
         .eq('tenant_id', tenantId).eq('client_id', clientId).in('status', ['Ongoing', 'On Hold'])
       if (!active || active.length !== 1) return []
       const siteId = active[0].id as string
       const { data: a } = await admin.from('line_site_photos').select('photo_path, created_at')
         .eq('tenant_id', tenantId).eq('site_id', siteId).eq('customer_visible', true)
-        .order('created_at', { ascending: false }).limit(3)
+        .order('created_at', { ascending: false }).limit(limit)
       const { data: b } = await admin.from('site_attachments').select('file_path, file_name, uploaded_at')
         .eq('tenant_id', tenantId).eq('site_id', siteId).eq('customer_visible', true)
         .order('uploaded_at', { ascending: false }).limit(10)
@@ -166,7 +184,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         ...(a ?? []).map((r) => ({ bucket: 'line-site-photos', path: r.photo_path as string, at: r.created_at as string })),
         ...(b ?? []).filter((r) => /\.(jpe?g|png)$/i.test(r.file_name as string))
           .map((r) => ({ bucket: 'site-attachments', path: r.file_path as string, at: r.uploaded_at as string })),
-      ].sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 3)
+      ].sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, limit)
       const urls: { url: string }[] = []
       for (const c of cands) {
         const { data } = await admin.storage.from(c.bucket).createSignedUrl(c.path, SIGNED_URL_SECONDS)

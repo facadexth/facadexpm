@@ -4,7 +4,7 @@ import {
   warrantyText, warrantyFlex, contactText, statusText,
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
 
-const big = { name: 'บ้านคุณบิ๊ก', status: 'Ongoing', pct: 62, phases: ['ติดตั้งกระจก ชั้น 2'], endDate: '2026-11-15', handoverDate: null, warrantyMonths: 12 }
+const big = { name: 'บ้านคุณบิ๊ก', status: 'Ongoing', pct: 62, phases: [{ name: 'ติดตั้งกระจก ชั้น 2', start_date: null, end_date: null, status: 'in_progress' }], endDate: '2026-11-15', handoverDate: null, warrantyMonths: 12 }
 
 describe('static reply texts', () => {
   it('invite replies', () => {
@@ -61,6 +61,11 @@ describe('warrantyText', () => {
     expect(warrantyText([mk({ name: 'บ้าน F', status: 'On Hold', handoverDate: '2026-05-01', warrantyMonths: 0 })], today))
       .toBe('บ้าน F: ไม่มีระยะประกัน')
   })
+  it('lists only in-progress phases as กำลังทำ', () => {
+    const ph = (name, status) => ({ name, start_date: null, end_date: null, status })
+    const s = { ...big, phases: [ph('วัด', 'done'), ph('ผลิต', 'in_progress'), ph('ติดตั้ง', 'not_started'), ph('VO ประตู', 'in_progress')] }
+    expect(statusText([s], '2026-10-19', 'แชงค์')).toContain('กำลังทำ: ผลิต, VO ประตู\n')
+  })
   it('lists at most 10 sites', () => {
     const sites = Array.from({ length: 12 }, (_, i) => mk({ name: `S${i + 1}`, handoverDate: '2026-10-19', warrantyMonths: 12 }))
     const lines = warrantyText(sites, today).split('\n')
@@ -102,7 +107,7 @@ describe('statusText', () => {
     expect(blocks[10]).toBe('S10\nความคืบหน้ารวม 1%')
   })
   it('cuts the text at 4,900 characters', () => {
-    const sites = Array.from({ length: 10 }, (_, i) => ({ ...big, name: `ไซต์ ${i}`, phases: ['ก'.repeat(1000)] }))
+    const sites = Array.from({ length: 10 }, (_, i) => ({ ...big, name: `ไซต์ ${i}`, phases: [{ name: 'ก'.repeat(1000), start_date: null, end_date: null, status: 'in_progress' }] }))
     const text = statusText(sites, '2026-10-19', 'แชงค์')
     expect(text.length).toBe(4900)
     expect(text.startsWith('สถานะงาน · อัปเดต 19/10/2569\n\nไซต์ 0\n')).toBe(true)

@@ -3,9 +3,10 @@
 // the only place that catches.
 import { matchCustomerCommand, looksLikeInviteCode } from './customer-line-commands.ts'
 import {
-  inviteOkText, inviteInvalidText, notLinkedText, quoteText, warrantyFlex, contactText, statusText,
+  inviteOkText, inviteInvalidText, notLinkedText, quoteText, warrantyFlex, contactText,
   type SiteStatus,
 } from './customer-line-replies.ts'
+import { statusFlex, noPhotosText } from './status-card.ts'
 import {
   repairStartText, repairPickSiteText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, repairStatusFlex, mediaTooBig, repairGotItText, repairReceivedFlex, quickReplyLabel, type RepairTicket, type MediaCounts,
@@ -24,7 +25,8 @@ export type CustomerDeps = {
   claimInvite: (code: string, lineUserId: string, displayName: string | null) => Promise<{ status: 'ok' | 'invalid'; clientName: string | null }>
   getDisplayName: (lineUserId: string) => Promise<string | null>
   loadSites: (clientId: string) => Promise<SiteStatus[]>
-  loadPhotos: (clientId: string) => Promise<{ url: string }[]>
+  // Newest customer-visible photos (signed https urls), at most `limit`; [] unless the client has exactly one active site.
+  loadPhotos: (clientId: string, limit: number) => Promise<{ url: string }[]>
   getContact: () => Promise<{ companyName: string; phone: string | null; hours: string | null; brandName: string }>
   openRequest: (kind: 'quote', lineUserId: string, clientId: string | null, displayName: string | null) => Promise<void>
   touchAccount: (lineUserId: string) => Promise<void>
@@ -68,6 +70,7 @@ const ADD_PREFIX = 'เพิ่มเรื่อง:'
 const TICKET_NUMBER = /^[A-Za-z0-9-]{1,40}$/
 const MAX_QUICK_REPLIES = 13
 const MAX_ACTION_TEXT = 300
+const MAX_PHOTOS = 5
 const MEDIA_TYPES: RepairMediaType[] = ['image', 'video', 'file']
 
 const qrItem = (label: string, text: string): QuickReplyItem => ({ type: 'action', action: { type: 'message', label: quickReplyLabel(label), text } })
@@ -260,16 +263,21 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
     return tickets.length === 0 ? txt(repairNoTicketsText()) : [repairStatusFlex(tickets, ctx.today)]
   }
 
+  if (cmd === 'photos') {
+    // A LINE reply carries at most 5 messages.
+    const photos = (await deps.loadPhotos(account.clientId, MAX_PHOTOS)).slice(0, MAX_PHOTOS)
+    if (photos.length === 0) return txt(noPhotosText())
+    return photos.map((p): LineMessage => ({ type: 'image', originalContentUrl: p.url, previewImageUrl: p.url }))
+  }
+
   const sites = await deps.loadSites(account.clientId)
   if (cmd === 'warranty') return [warrantyFlex(sites, ctx.today, (await deps.getContact()).brandName)]
 
-  // status
-  const photos = await deps.loadPhotos(account.clientId)
+  // status: one card per ongoing site; photos come from the card's "ดูรูปหน้างาน" button.
+  // loadPhotos only returns photos when the client has exactly one active site, so one check is enough.
+  const hasPhotos = (await deps.loadPhotos(account.clientId, 1)).length > 0
   const { brandName } = await deps.getContact()
-  return [
-    { type: 'text', text: statusText(sites, ctx.today, brandName) },
-    ...photos.map((p): LineMessage => ({ type: 'image', originalContentUrl: p.url, previewImageUrl: p.url })),
-  ]
+  return [statusFlex(sites.map((s) => ({ ...s, hasPhotos })), ctx.today, brandName)]
 }
 
 // One site: start at once. Several: the picked name must be one of the client's own sites

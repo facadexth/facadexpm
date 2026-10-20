@@ -1,7 +1,7 @@
 // Pure command matching for the customer LINE bot. No Deno or supabase imports:
 // this file is also imported by vitest from src/lib.
 
-export type CustomerCommand = 'quote' | 'status' | 'repair' | 'repair_status' | 'warranty' | 'contact'
+export type CustomerCommand = 'quote' | 'status' | 'repair' | 'repair_status' | 'warranty' | 'contact' | 'photos'
 
 const COMMANDS: Record<string, CustomerCommand> = {
   'ขอใบเสนอราคา': 'quote',
@@ -15,6 +15,8 @@ const COMMANDS: Record<string, CustomerCommand> = {
   'เช็คประกัน': 'warranty',
   'ตรวจสอบประกัน': 'warranty',
   'ติดต่อเรา': 'contact',
+  // Sent by the status card's "ดูรูปหน้างาน" button.
+  'รูปหน้างาน': 'photos',
 }
 
 // Trims and removes every whitespace character, so "สถานะ งาน" matches "สถานะงาน".
