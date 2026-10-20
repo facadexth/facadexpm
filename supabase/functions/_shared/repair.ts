@@ -20,6 +20,10 @@ export const REPAIR_STATUS: Record<RepairStatus, string> = {
 
 export const REPAIR_STEPS = ['received', 'scheduled', 'in_progress', 'done'] as const
 
+// Not done and not declined: the customer can still add to these.
+export const OPEN_REPAIR_STATUSES = ['pending_review', 'received', 'scheduled', 'in_progress']
+const OPEN = OPEN_REPAIR_STATUSES
+
 const MOVES: Record<RepairStatus, RepairStatus[]> = {
   pending_review: ['received', 'declined'],
   received: ['scheduled', 'declined'],
@@ -112,13 +116,55 @@ export function repairPickSiteText(): string {
   return 'แจ้งซ่อมงานไหนครับ?'
 }
 
-export function repairReceivedText(ticketNumber: string, siteName: string, counts: MediaCounts): string {
+function countParts(siteName: string, counts: MediaCounts): string {
   const parts = [siteName]
   if (counts.text) parts.push(`ข้อความ ${counts.text}`)
   if (counts.image) parts.push(`รูป ${counts.image}`)
   if (counts.video) parts.push(`วิดีโอ ${counts.video}`)
   if (counts.file) parts.push(`PDF ${counts.file}`)
-  return `รับเรื่องแล้วครับ เลขที่ ${ticketNumber}\n${parts.join(' · ')}\nเจ้าหน้าที่จะตรวจสอบและแจ้งนัดหมายกลับในแชทนี้\nติดตามได้ที่ "สถานะแจ้งซ่อม"`
+  return parts.join(' · ')
+}
+
+export function repairReceivedText(ticketNumber: string, siteName: string, counts: MediaCounts): string {
+  return `รับเรื่องแล้วครับ เลขที่ ${ticketNumber}\n${countParts(siteName, counts)}\nเจ้าหน้าที่จะตรวจสอบและแจ้งนัดหมายกลับในแชทนี้\nติดตามได้ที่ "สถานะแจ้งซ่อม"`
+}
+
+// ---- Adding to an existing open ticket (เพิ่มในเรื่องเดิม) ----
+
+const ADDED_TITLE = 'เพิ่มข้อมูลในเรื่องเดิมแล้ว ✓'
+const ADDED_NOTE = 'เจ้าหน้าที่จะเห็นข้อมูลที่เพิ่มในเรื่องนี้'
+export const MAX_CHOOSER_TICKETS = 3
+
+// Asked when the customer starts แจ้งซ่อม on a site that still has open tickets (newest first, max 3).
+export function repairChooserText(siteName: string, tickets: RepairTicket[]): string {
+  const lines = tickets.slice(0, MAX_CHOOSER_TICKETS).map((t) => {
+    const d = t.status === 'scheduled' && t.scheduled_date ? ` · นัด ${thaiWeekday(t.scheduled_date)} ${formatThaiDate(t.scheduled_date)}` : ''
+    return `${t.ticket_number} · ${statusLabel(String(t.status))}${d}`
+  })
+  return `งาน ${siteName} มีเรื่องแจ้งซ่อมที่ยังไม่เสร็จ\n${lines.join('\n')}\nเพิ่มรูปหรือรายละเอียดในเรื่องเดิม หรือแจ้งเรื่องใหม่ได้ครับ`
+}
+
+export function repairAddStartText(ticketNumber: string, siteName: string): string {
+  return `เพิ่มรูป วิดีโอ PDF หรือรายละเอียดในเรื่อง ${ticketNumber} (${siteName}) ได้เลยครับ 🙏\nส่งครบแล้วกด "ส่งครบแล้ว"`
+}
+
+export function repairAddNotFoundText(): string {
+  return 'ไม่พบเรื่องนี้ หรือเรื่องนี้ปิดไปแล้วครับ'
+}
+
+export function repairAddCancelledText(): string {
+  return 'ยกเลิกข้อมูลที่เพิ่มแล้วครับ (เรื่องเดิมยังอยู่)'
+}
+
+// Plain-text version of the "added" card (its altText).
+export function repairAddedText(ticketNumber: string, siteName: string, counts: MediaCounts): string {
+  return `${ADDED_TITLE} เลขที่ ${ticketNumber}\n${countParts(siteName, counts)}\n${ADDED_NOTE}`
+}
+
+// One line appended to the ticket description in an add session: 'เพิ่มเติม dd/mm/yyyy(พ.ศ.) HH:MM: text', Bangkok time.
+export function repairAddedLine(text: string, nowMs: number): string {
+  const bkk = new Date(nowMs + 7 * 3600 * 1000).toISOString()
+  return `เพิ่มเติม ${formatThaiDate(bkk.slice(0, 10))} ${bkk.slice(11, 16)}: ${text}`
 }
 
 // Ack while a report is open: LINE hides quick replies once the customer sends anything, so this carries them again.
@@ -217,7 +263,7 @@ function stepper(idx: number): Flex {
   }
 }
 
-function statusLabel(status: string): string {
+export function statusLabel(status: string): string {
   return status === 'pending_review' ? 'รอเจ้าหน้าที่ตรวจสอบ' : (REPAIR_STATUS as Record<string, string>)[status] ?? status
 }
 
@@ -262,6 +308,10 @@ function statusBubble(t: RepairTicket, today: string): Flex {
       type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px',
       contents: [
         { type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'ติดต่อ / ขอเลื่อนนัด', text: 'ติดต่อเรา' } },
+        // Open tickets only: opens an add session on this ticket (customer-line-handler, เพิ่มเรื่อง:<RP>).
+        ...(OPEN.includes(String(t.status)) && t.ticket_number
+          ? [{ type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'เพิ่มรูป/รายละเอียด', text: `เพิ่มเรื่อง:${t.ticket_number}` } }]
+          : []),
       ],
     },
   }
@@ -279,7 +329,9 @@ function countChip(icon: string, label: string): Flex {
 }
 
 // "ส่งครบแล้ว" confirmation card. altText is the plain-text version, which is also the reply fallback.
-export function repairReceivedFlex(ticketNumber: string, siteName: string, counts: MediaCounts): LineMessage {
+// opts.added = the end of an add session on an existing ticket: own title, counts of this session only, no stepper.
+export function repairReceivedFlex(ticketNumber: string, siteName: string, counts: MediaCounts, opts: { added?: boolean } = {}): LineMessage {
+  const added = opts.added === true
   const chips: Flex[] = []
   if (counts.text) chips.push(countChip('📝', `ข้อความ ${counts.text}`))
   if (counts.image) chips.push(countChip('🖼️', `รูป ${counts.image}`))
@@ -287,14 +339,14 @@ export function repairReceivedFlex(ticketNumber: string, siteName: string, count
   if (counts.file) chips.push(countChip('📄', `ไฟล์ ${counts.file}`))
   return {
     type: 'flex',
-    altText: altOf(repairReceivedText(ticketNumber, siteName, counts)),
+    altText: altOf(added ? repairAddedText(ticketNumber, siteName, counts) : repairReceivedText(ticketNumber, siteName, counts)),
     contents: {
       type: 'bubble', size: 'mega',
       header: {
         type: 'box', layout: 'vertical', backgroundColor: COLOR_GREEN, paddingAll: '16px', spacing: 'xs',
         contents: [
           { type: 'text', text: ticketNumber || '-', size: 'xs', color: '#FFFFFFCC' },
-          { type: 'text', text: 'ได้รับแจ้งซ่อมแล้ว ✓', size: 'lg', weight: 'bold', color: '#FFFFFF' },
+          { type: 'text', text: added ? ADDED_TITLE : 'ได้รับแจ้งซ่อมแล้ว ✓', size: 'lg', weight: 'bold', color: '#FFFFFF', wrap: true },
         ],
       },
       body: {
@@ -303,15 +355,19 @@ export function repairReceivedFlex(ticketNumber: string, siteName: string, count
           { type: 'text', text: siteName || '-', size: 'md', weight: 'bold', wrap: true },
           chips.length > 0
             ? { type: 'box', layout: 'horizontal', spacing: 'sm', contents: chips }
-            : { type: 'text', text: 'ไม่มีไฟล์แนบ', size: 'sm', color: '#8A847C' },
-          stepper(-1),
-          {
-            type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '10px', backgroundColor: '#FFF7E6', cornerRadius: '8px',
-            contents: [
-              { type: 'text', text: 'รอเจ้าหน้าที่ตรวจสอบ', size: 'sm', weight: 'bold', color: COLOR_AMBER },
-              { type: 'text', text: 'เจ้าหน้าที่จะแจ้งนัดหมายกลับในแชทนี้', size: 'xs', color: '#5C554D', wrap: true },
-            ],
-          },
+            : { type: 'text', text: added ? 'ไม่มีข้อมูลที่เพิ่ม' : 'ไม่มีไฟล์แนบ', size: 'sm', color: '#8A847C' },
+          ...(added
+            ? [{ type: 'text', text: ADDED_NOTE, size: 'sm', color: '#5C554D', wrap: true }]
+            : [
+              stepper(-1),
+              {
+                type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '10px', backgroundColor: '#FFF7E6', cornerRadius: '8px',
+                contents: [
+                  { type: 'text', text: 'รอเจ้าหน้าที่ตรวจสอบ', size: 'sm', weight: 'bold', color: COLOR_AMBER },
+                  { type: 'text', text: 'เจ้าหน้าที่จะแจ้งนัดหมายกลับในแชทนี้', size: 'xs', color: '#5C554D', wrap: true },
+                ],
+              },
+            ]),
         ],
       },
       footer: {
@@ -379,7 +435,6 @@ export function repairReminderFlex(t: RepairTicket): LineMessage {
   ])
 }
 
-const OPEN = ['pending_review', 'received', 'scheduled', 'in_progress']
 
 export function repairStatusFlex(tickets: RepairTicket[], today: string): LineMessage {
   const key = (t: RepairTicket) => String(t.scheduled_date ?? t.created_at ?? '')

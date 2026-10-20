@@ -6,6 +6,7 @@ import {
 import {
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, repairStatusFlex, repairGotItText, repairReceivedFlex,
+  repairChooserText, repairAddStartText, repairAddNotFoundText, repairAddCancelledText, repairAddedLine,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const ctx = { tenantId: 't1', today: '2026-10-19' }
@@ -33,6 +34,9 @@ function deps(over = {}) {
     finishRepair: vi.fn().mockResolvedValue(null),
     cancelRepair: vi.fn().mockResolvedValue('cancelled'),
     listRepairTickets: vi.fn().mockResolvedValue([]),
+    listOpenTickets: vi.fn().mockResolvedValue([]),
+    startAddSession: vi.fn().mockResolvedValue(null),
+    markCustomerUpdate: vi.fn().mockResolvedValue(undefined),
     ...over,
   }
 }
@@ -393,5 +397,177 @@ describe('repair intake', () => {
   })
   it('สถานะแจ้งซ่อม with none -> text', async () => {
     expect(await handleCustomerEvent(txt('สถานะแจ้งซ่อม'), rctx, L())).toEqual([T(repairNoTicketsText())])
+  })
+})
+
+// ---- Adding to an existing ticket (addinfo) ----
+const openT = [
+  { ticket_number: 'RP2610-003', site_name: 'งาน A', status: 'scheduled', scheduled_date: '2026-10-21' },
+  { ticket_number: 'RP2610-002', site_name: 'งาน A', status: 'received' },
+  { ticket_number: 'RP2610-001', site_name: 'งาน A', status: 'pending_review' },
+  { ticket_number: 'RP2609-009', site_name: 'งาน A', status: 'in_progress' },
+]
+const addActive = { ticketId: 'k7', siteName: 'งาน A', expiresAt: '2026-10-20T03:20:00Z', mode: 'add', startedAt: '2026-10-20T02:50:00Z', ticketNumber: 'RP2610-002' }
+const addMsg = (n, site) => withQR(repairAddStartText(n, site))
+
+describe('repair intake: existing open tickets', () => {
+  it('single site with open tickets: asks first, no new ticket', async () => {
+    const d = L({ listOpenTickets: vi.fn().mockResolvedValue(openT) })
+    const [m] = await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    expect(m.text).toBe(repairChooserText('งาน A', openT))
+    expect(m.quickReply.items).toEqual([
+      qr('เพิ่มใน RP2610-003', 'เพิ่มเรื่อง:RP2610-003'),
+      qr('เพิ่มใน RP2610-002', 'เพิ่มเรื่อง:RP2610-002'),
+      qr('เพิ่มใน RP2610-001', 'เพิ่มเรื่อง:RP2610-001'),
+      qr('แจ้งเรื่องใหม่', 'แจ้งเรื่องใหม่:งาน A'),
+    ])
+    expect(d.listOpenTickets).toHaveBeenCalledWith('c1', 's1')
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it('picked site with open tickets: asks first', async () => {
+    const d = L({ listClientSites: vi.fn().mockResolvedValue(two), listOpenTickets: vi.fn().mockResolvedValue(openT.slice(0, 1)) })
+    const [m] = await handleCustomerEvent(txt('แจ้งซ่อม:คอนโดริมน้ำ'), rctx, d)
+    expect(m.text).toBe(repairChooserText('คอนโดริมน้ำ', openT.slice(0, 1)))
+    expect(m.quickReply.items.map((i) => i.action.text)).toEqual(['เพิ่มเรื่อง:RP2610-003', 'แจ้งเรื่องใหม่:คอนโดริมน้ำ'])
+    expect(d.listOpenTickets).toHaveBeenCalledWith('c1', 's2')
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it('no open tickets: starts a new ticket at once', async () => {
+    const d = L()
+    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([startMsg('งาน A')])
+    expect(d.listOpenTickets).toHaveBeenCalledWith('c1', 's1')
+    expect(d.startRepair).toHaveBeenCalledWith('c1', 's1', 'U1', 'คุณบิ๊ก')
+  })
+  it('chooser labels and texts fit LINE limits', async () => {
+    const longSite = { id: 's1', name: 'โครงการบ้านพักอาศัยสองชั้นหลังใหญ่มาก' }
+    const d = L({ listClientSites: vi.fn().mockResolvedValue([longSite]), listOpenTickets: vi.fn().mockResolvedValue(openT) })
+    const [m] = await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    expect(m.quickReply.items).toHaveLength(4)
+    for (const i of m.quickReply.items) {
+      expect(i.action.label.length).toBeLessThanOrEqual(20)
+      expect(i.action.text.length).toBeLessThanOrEqual(300)
+    }
+  })
+  it('a site whose new-ticket text would pass 300 chars skips the chooser and starts new', async () => {
+    const huge = { id: 's1', name: 'ก'.repeat(300) }
+    const d = L({ listClientSites: vi.fn().mockResolvedValue([huge]), listOpenTickets: vi.fn().mockResolvedValue(openT) })
+    await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    expect(d.startRepair).toHaveBeenCalledWith('c1', 's1', 'U1', 'คุณบิ๊ก')
+  })
+  it('แจ้งเรื่องใหม่:<site> starts a new ticket even with open tickets', async () => {
+    const d = L({ listClientSites: vi.fn().mockResolvedValue(two), listOpenTickets: vi.fn().mockResolvedValue(openT), startRepair: vi.fn().mockResolvedValue({ ticketId: 'k9', siteName: 'คอนโดริมน้ำ' }) })
+    expect(await handleCustomerEvent(txt('แจ้งเรื่องใหม่:คอนโดริมน้ำ'), rctx, d)).toEqual([startMsg('คอนโดริมน้ำ')])
+    expect(d.startRepair).toHaveBeenCalledWith('c1', 's2', 'U1', 'คุณบิ๊ก')
+    expect(d.listOpenTickets).not.toHaveBeenCalled()
+  })
+  it('แจ้งเรื่องใหม่:<not my site> re-asks with the picker', async () => {
+    const d = L({ listClientSites: vi.fn().mockResolvedValue(two) })
+    const [m] = await handleCustomerEvent(txt('แจ้งเรื่องใหม่:บ้านคนอื่น'), rctx, d)
+    expect(m.text).toBe(repairPickSiteText())
+    expect(m.quickReply.items).toHaveLength(2)
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it('unlinked แจ้งเรื่องใหม่ / เพิ่มเรื่อง -> notLinked', async () => {
+    for (const t of ['แจ้งเรื่องใหม่:งาน A', 'เพิ่มเรื่อง:RP2610-001']) {
+      const d = deps()
+      expect(await handleCustomerEvent(txt(t), rctx, d)).toEqual([T(notLinkedText('แชงค์'))])
+      expect(d.startRepair).not.toHaveBeenCalled()
+      expect(d.startAddSession).not.toHaveBeenCalled()
+    }
+  })
+  it('redelivered แจ้งซ่อม with open tickets / แจ้งเรื่องใหม่ / เพิ่มเรื่อง: nothing written', async () => {
+    const d = L({ listOpenTickets: vi.fn().mockResolvedValue(openT) })
+    for (const t of ['แจ้งซ่อม', 'แจ้งเรื่องใหม่:งาน A', 'เพิ่มเรื่อง:RP2610-001']) {
+      expect(await handleCustomerEvent(redeliver(txt(t)), rctx, d)).toEqual([])
+    }
+    expect(d.startRepair).not.toHaveBeenCalled()
+    expect(d.startAddSession).not.toHaveBeenCalled()
+  })
+})
+
+describe('repair intake: add mode', () => {
+  it('เพิ่มเรื่อง:<RP> opens an add session', async () => {
+    const d = L({ startAddSession: vi.fn().mockResolvedValue({ mode: 'add', ticketNumber: 'RP2610-002', siteName: 'งาน A' }) })
+    expect(await handleCustomerEvent(txt('เพิ่มเรื่อง:RP2610-002'), rctx, d)).toEqual([addMsg('RP2610-002', 'งาน A')])
+    expect(d.startAddSession).toHaveBeenCalledWith('c1', 'RP2610-002', 'U1')
+  })
+  it('เพิ่มเรื่อง: not own / closed ticket -> not-found text', async () => {
+    const d = L()
+    expect(await handleCustomerEvent(txt('เพิ่มเรื่อง:RP2610-099'), rctx, d)).toEqual([T(repairAddNotFoundText())])
+    expect(d.startAddSession).toHaveBeenCalledWith('c1', 'RP2610-099', 'U1')
+  })
+  it('เพิ่มเรื่อง: junk ticket number -> not-found, no lookup', async () => {
+    const d = L()
+    for (const t of ['เพิ่มเรื่อง:', 'เพิ่มเรื่อง:RP 1;drop', `เพิ่มเรื่อง:${'R'.repeat(41)}`]) {
+      expect(await handleCustomerEvent(txt(t), rctx, d)).toEqual([T(repairAddNotFoundText())])
+    }
+    expect(d.startAddSession).not.toHaveBeenCalled()
+  })
+  it('เพิ่มเรื่อง: a racing new-mode session wins, its own start reply is shown', async () => {
+    const d = L({ startAddSession: vi.fn().mockResolvedValue({ mode: 'new', ticketNumber: 'RP2610-005', siteName: 'งาน A' }) })
+    expect(await handleCustomerEvent(txt('เพิ่มเรื่อง:RP2610-002'), rctx, d)).toEqual([startMsg('งาน A')])
+  })
+  it('text in an add session is appended with the dated prefix and flags the ticket', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(addActive) })
+    expect(await handleCustomerEvent(txt(' รั่วอีกจุด '), rctx, d)).toEqual([ack])
+    expect(d.appendRepairText).toHaveBeenCalledWith('k7', repairAddedLine('รั่วอีกจุด', NOW))
+    expect(repairAddedLine('รั่วอีกจุด', NOW)).toBe('เพิ่มเติม 20/10/2569 10:00: รั่วอีกจุด')
+    expect(d.markCustomerUpdate).toHaveBeenCalledWith('k7')
+  })
+  it('text in a new session does not flag the ticket', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    await handleCustomerEvent(txt('กระจกร้าว'), rctx, d)
+    expect(d.appendRepairText).toHaveBeenCalledWith('k1', 'กระจกร้าว')
+    expect(d.markCustomerUpdate).not.toHaveBeenCalled()
+  })
+  it('media in an add session is stored as today and flags the ticket', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(addActive) })
+    expect(await handleCustomerEvent(media('image'), rctx, d)).toEqual([ack])
+    expect(d.storeRepairMedia).toHaveBeenCalledWith('k7', 'M1', 'image', undefined)
+    expect(d.markCustomerUpdate).toHaveBeenCalledWith('k7')
+  })
+  it('media in a new session does not flag; a failed store never flags', async () => {
+    const d1 = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    await handleCustomerEvent(media('image'), rctx, d1)
+    expect(d1.markCustomerUpdate).not.toHaveBeenCalled()
+    const d2 = L({ getRepairSession: vi.fn().mockResolvedValue(addActive), storeRepairMedia: vi.fn().mockResolvedValue('error') })
+    await handleCustomerEvent(media('image'), rctx, d2)
+    expect(d2.markCustomerUpdate).not.toHaveBeenCalled()
+  })
+  it('redelivered text / media in an add session: no append, no flag', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(addActive) })
+    expect(await handleCustomerEvent(redeliver(txt('รั่ว')), rctx, d)).toEqual([])
+    expect(await handleCustomerEvent(redeliver(media('image')), rctx, d)).toEqual([])
+    expect(d.appendRepairText).not.toHaveBeenCalled()
+    expect(d.storeRepairMedia).toHaveBeenCalledTimes(1)
+    expect(d.markCustomerUpdate).not.toHaveBeenCalled()
+  })
+  it('ส่งครบแล้ว in an add session -> the added card', async () => {
+    const counts = { text: 1, image: 2 }
+    const d = L({
+      getRepairSession: vi.fn().mockResolvedValue(addActive),
+      finishRepair: vi.fn().mockResolvedValue({ ticketNumber: 'RP2610-002', siteName: 'งาน A', counts, mode: 'add' }),
+    })
+    expect(await handleCustomerEvent(txt('ส่งครบแล้ว'), rctx, d)).toEqual([repairReceivedFlex('RP2610-002', 'งาน A', counts, { added: true })])
+  })
+  it('ยกเลิก in an add session -> reverted text', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(addActive), cancelRepair: vi.fn().mockResolvedValue('reverted') })
+    expect(await handleCustomerEvent(txt('ยกเลิก'), rctx, d)).toEqual([T(repairAddCancelledText())])
+    expect(d.cancelRepair).toHaveBeenCalledWith('U1')
+    expect(d.finishRepair).not.toHaveBeenCalled()
+  })
+  it('แจ้งซ่อม / เพิ่มเรื่อง / แจ้งเรื่องใหม่ during an add session repeat the add reply', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(addActive) })
+    for (const t of ['แจ้งซ่อม', 'เพิ่มเรื่อง:RP2610-001', 'แจ้งเรื่องใหม่:งาน A', 'แจ้งซ่อม:งาน A']) {
+      expect(await handleCustomerEvent(txt(t), rctx, d)).toEqual([addMsg('RP2610-002', 'งาน A')])
+    }
+    expect(d.startRepair).not.toHaveBeenCalled()
+    expect(d.startAddSession).not.toHaveBeenCalled()
+    expect(d.appendRepairText).not.toHaveBeenCalled()
+  })
+  it('เพิ่มเรื่อง during a new session repeats the new start reply', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    expect(await handleCustomerEvent(txt('เพิ่มเรื่อง:RP2610-001'), rctx, d)).toEqual([startMsg('งาน A')])
+    expect(d.appendRepairText).not.toHaveBeenCalled()
   })
 })

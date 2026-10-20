@@ -4,6 +4,7 @@ import {
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, scheduleText, reminderText, repairStatusFlex, repairReportFlex,
   repairMediaExt, repairMediaPath, quickReplyLabel, repairUploadMime, repairReceivedFlex, repairGotItText, repairScheduleFlex, repairReminderFlex,
+  statusLabel, repairChooserText, repairAddStartText, repairAddNotFoundText, repairAddCancelledText, repairAddedText, repairAddedLine,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const sched = {
@@ -346,5 +347,75 @@ describe('appointment and reminder cards', () => {
       checkFlex(m)
       expect(JSON.stringify(m.contents)).not.toMatch(/–|ประมาณ/)
     }
+  })
+})
+
+describe('adding to an existing ticket', () => {
+  const open = [
+    { ticket_number: 'RP2610-003', site_name: 'บ้านคุณสมชาย', status: 'scheduled', scheduled_date: '2026-10-21' },
+    { ticket_number: 'RP2610-002', site_name: 'บ้านคุณสมชาย', status: 'pending_review' },
+    { ticket_number: 'RP2610-001', site_name: 'บ้านคุณสมชาย', status: 'in_progress' },
+    { ticket_number: 'RP2609-009', site_name: 'บ้านคุณสมชาย', status: 'received' },
+  ]
+  it('chooser text: up to 3 tickets with status label and appointment date', () => {
+    expect(repairChooserText('บ้านคุณสมชาย', open)).toBe(
+      'งาน บ้านคุณสมชาย มีเรื่องแจ้งซ่อมที่ยังไม่เสร็จ\n'
+      + 'RP2610-003 · นัดเข้า · นัด พ. 21/10/2569\n'
+      + 'RP2610-002 · รอเจ้าหน้าที่ตรวจสอบ\n'
+      + 'RP2610-001 · กำลังซ่อม\n'
+      + 'เพิ่มรูปหรือรายละเอียดในเรื่องเดิม หรือแจ้งเรื่องใหม่ได้ครับ',
+    )
+  })
+  it('chooser text: a scheduled ticket without a date shows no นัด part', () => {
+    expect(repairChooserText('X', [{ ticket_number: 'RP1', status: 'scheduled', scheduled_date: null }])).toContain('RP1 · นัดเข้า\n')
+  })
+  it('statusLabel is exported and names pending_review for the customer', () => {
+    expect(statusLabel('pending_review')).toBe('รอเจ้าหน้าที่ตรวจสอบ')
+    expect(statusLabel('received')).toBe('รับเรื่อง')
+  })
+  it('fixed texts', () => {
+    expect(repairAddStartText('RP2610-001', 'บ้าน A')).toBe('เพิ่มรูป วิดีโอ PDF หรือรายละเอียดในเรื่อง RP2610-001 (บ้าน A) ได้เลยครับ 🙏\nส่งครบแล้วกด "ส่งครบแล้ว"')
+    expect(repairAddNotFoundText()).toBe('ไม่พบเรื่องนี้ หรือเรื่องนี้ปิดไปแล้วครับ')
+    expect(repairAddCancelledText()).toBe('ยกเลิกข้อมูลที่เพิ่มแล้วครับ (เรื่องเดิมยังอยู่)')
+  })
+  it('added line carries the Bangkok date (พ.ศ.) and time', () => {
+    // 2026-10-20 17:05 UTC = 21/10/2569 00:05 Bangkok
+    expect(repairAddedLine('กระจกร้าวเพิ่ม', Date.parse('2026-10-20T17:05:00Z'))).toBe('เพิ่มเติม 21/10/2569 00:05: กระจกร้าวเพิ่ม')
+  })
+  it('added card: valid, own title, no stepper, plain-text altText', () => {
+    const counts = { text: 1, image: 2 }
+    const m = repairReceivedFlex('RP2610-001', 'บ้านคุณสมชาย', counts, { added: true })
+    checkFlex(m)
+    expect(m.altText).toBe(repairAddedText('RP2610-001', 'บ้านคุณสมชาย', counts))
+    expect(m.altText).toBe('เพิ่มข้อมูลในเรื่องเดิมแล้ว ✓ เลขที่ RP2610-001\nบ้านคุณสมชาย · ข้อความ 1 · รูป 2\nเจ้าหน้าที่จะเห็นข้อมูลที่เพิ่มในเรื่องนี้')
+    const all = JSON.stringify(m.contents)
+    for (const x of ['เพิ่มข้อมูลในเรื่องเดิมแล้ว ✓', 'RP2610-001', 'บ้านคุณสมชาย', 'ข้อความ 1', 'รูป 2', 'เจ้าหน้าที่จะเห็นข้อมูลที่เพิ่มในเรื่องนี้']) expect(all).toContain(x)
+    // No stepper: the step labels never appear, nor the new-report wording.
+    for (const x of ['กำลังซ่อม', 'รอเจ้าหน้าที่ตรวจสอบ', 'ได้รับแจ้งซ่อมแล้ว']) expect(all).not.toContain(x)
+  })
+  it('added card with nothing added still renders', () => {
+    const m = repairReceivedFlex('RP2610-001', 'งาน A', {}, { added: true })
+    checkFlex(m)
+  })
+  it('received card without the option is unchanged', () => {
+    expect(repairReceivedFlex('RP2610-001', 'งาน A', { image: 1 }, {})).toEqual(repairReceivedFlex('RP2610-001', 'งาน A', { image: 1 }))
+  })
+  it('status card: open tickets get a second add button, done tickets do not', () => {
+    const tickets = [
+      { ticket_number: 'RP2610-001', site_name: 'A', status: 'received', created_at: '2026-10-19T03:00:00Z' },
+      { ticket_number: 'RP2610-002', site_name: 'A', status: 'done', done_at: '2026-10-19T03:00:00Z' },
+    ]
+    const m = repairStatusFlex(tickets, '2026-10-20')
+    checkFlex(m)
+    const [openB, doneB] = m.contents.contents
+    expect(openB.footer.contents.map((b) => b.action)).toEqual([
+      { type: 'message', label: 'ติดต่อ / ขอเลื่อนนัด', text: 'ติดต่อเรา' },
+      { type: 'message', label: 'เพิ่มรูป/รายละเอียด', text: 'เพิ่มเรื่อง:RP2610-001' },
+    ])
+    expect(doneB.footer.contents.map((b) => b.action.text)).toEqual(['ติดต่อเรา'])
+  })
+  it.each(['pending_review', 'scheduled', 'in_progress'])('status card: %s also gets the add button', (status) => {
+    const m = repairStatusFlex([{ ticket_number: 'RP9', site_name: 'A', status, scheduled_date: '2026-10-22' }], '2026-10-20')
+    expect(m.contents.contents[0].footer.contents.map((b) => b.action.text)).toEqual(['ติดต่อเรา', 'เพิ่มเรื่อง:RP9'])
   })
 })

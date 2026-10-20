@@ -10,7 +10,10 @@ import { sendLineReplyMessages } from '../_shared/line-reply.ts'
 import { replyWithFallback } from '../_shared/reply-fallback.ts'
 import { handleCustomerEvent, type CustomerDeps } from '../_shared/customer-line-handler.ts'
 import type { SiteStatus } from '../_shared/customer-line-replies.ts'
-import { contentRetryDelay, mediaTooBig, repairMediaExt, repairMediaPath, repairUploadMime, type RepairTicket, type MediaCounts } from '../_shared/repair.ts'
+import {
+  contentRetryDelay, mediaTooBig, repairMediaExt, repairMediaPath, repairUploadMime, OPEN_REPAIR_STATUSES, MAX_CHOOSER_TICKETS,
+  type RepairTicket, type MediaCounts,
+} from '../_shared/repair.ts'
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -60,8 +63,40 @@ function missingTable(error: { code?: string } | null): boolean {
   return true
 }
 
+// 42703 = undefined_column: the session columns of migration -13 are not there yet (webhook deployed first).
+let missingColumnLogged = false
+function missingColumn(error: { code?: string } | null): boolean {
+  if (error?.code !== '42703') return false
+  if (!missingColumnLogged) { console.error('customer-line repair session columns missing (42703): apply migration -13'); missingColumnLogged = true }
+  return true
+}
+
 function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
-  return {
+  // Plain INSERT of a session row (PK tenant_id + line_user_id) after clearing only an EXPIRED one. On 23505
+  // (an active session already exists: double tap / concurrent start) returns that session's ticket id
+  // instead; null = inserted. Caller undoes its own side effects when a different ticket comes back.
+  async function claimSession(lineUserId: string, row: Record<string, unknown>): Promise<{ ticketId: string } | null> {
+    const { error: oldErr } = await admin.from('customer_line_repair_sessions').delete()
+      .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).lte('expires_at', new Date().toISOString())
+    if (oldErr) throw oldErr
+    const { error: sessErr } = await admin.from('customer_line_repair_sessions').insert(
+      { tenant_id: tenantId, line_user_id: lineUserId, expires_at: new Date(Date.now() + REPAIR_SESSION_MS).toISOString(), ...row },
+    )
+    if (!sessErr) return null
+    if (sessErr.code !== '23505') throw sessErr
+    const { data: cur, error: curErr } = await admin.from('customer_line_repair_sessions').select('ticket_id')
+      .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
+    if (curErr) throw curErr
+    if (!cur) throw sessErr
+    return { ticketId: cur.ticket_id as string }
+  }
+  async function siteNameOf(siteId: string | null | undefined): Promise<string> {
+    if (!siteId) return ''
+    const { data } = await admin.from('sites').select('name').eq('tenant_id', tenantId).eq('id', siteId).maybeSingle()
+    return (data?.name as string) ?? ''
+  }
+
+  const deps: CustomerDeps = {
     // A DB error must throw (the per-event catch logs it, no reply), never look like "not linked".
     async getAccount(lineUserId) {
       const { data, error } = await admin.from('customer_line_accounts').select('client_id')
@@ -164,21 +199,31 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       return data === true
     },
     async getRepairSession(lineUserId) {
-      const { data, error } = await admin.from('customer_line_repair_sessions').select('ticket_id, expires_at')
+      const sel = (cols: string) => admin.from('customer_line_repair_sessions').select(cols)
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
+      const first = await sel('ticket_id, expires_at, mode, started_at')
+      // 42703 = -13 not applied yet: read the old columns; every session is then a new report.
+      const { data, error } = first.error && missingColumn(first.error) ? await sel('ticket_id, expires_at') : first
       if (error) {
         // 42P01 = table missing (webhook deployed before -11): behave as "no repair session".
         if (missingTable(error)) return null
         throw error
       }
       if (!data) return null
-      const { data: t, error: tErr } = await admin.from('repair_tickets').select('site_id')
-        .eq('tenant_id', tenantId).eq('id', data.ticket_id).maybeSingle()
+      // deno-lint-ignore no-explicit-any
+      const row = data as any
+      const { data: t, error: tErr } = await admin.from('repair_tickets').select('site_id, ticket_number')
+        .eq('tenant_id', tenantId).eq('id', row.ticket_id).maybeSingle()
       if (tErr) throw tErr
       if (!t) return null
-      const { data: site } = await admin.from('sites').select('name')
-        .eq('tenant_id', tenantId).eq('id', t.site_id).maybeSingle()
-      return { ticketId: data.ticket_id as string, siteName: (site?.name as string) ?? '', expiresAt: data.expires_at as string }
+      return {
+        ticketId: row.ticket_id as string,
+        siteName: await siteNameOf(t.site_id as string),
+        expiresAt: row.expires_at as string,
+        mode: row.mode === 'add' ? 'add' : 'new',
+        startedAt: (row.started_at as string | undefined) ?? undefined,
+        ticketNumber: (t.ticket_number as string) ?? '',
+      }
     },
     async listClientSites(clientId) {
       const { data, error } = await admin.from('sites').select('id, name')
@@ -193,35 +238,68 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         .eq('tenant_id', tenantId).eq('id', siteId).eq('client_id', clientId).maybeSingle()
       if (sErr) throw sErr
       if (!site) throw new Error('repair site not found')
-      const nowIso = new Date().toISOString()
-      // Only an EXPIRED session is cleared; an active one (double tap) wins below.
-      const { error: oldErr } = await admin.from('customer_line_repair_sessions').delete()
-        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).lte('expires_at', nowIso)
-      if (oldErr) throw oldErr
       // ticket_number is set by the BEFORE INSERT trigger.
       const { data: ticket, error: tErr } = await admin.from('repair_tickets').insert({
         tenant_id: tenantId, site_id: siteId, client_id: clientId, source: 'line', line_user_id: lineUserId,
         status: 'pending_review', created_by: displayName ? `LINE: ${displayName}` : 'LINE',
       }).select('id').single()
       if (tErr) throw tErr
-      const expiresAt = new Date(Date.now() + REPAIR_SESSION_MS).toISOString()
-      // Plain INSERT (PK tenant_id + line_user_id): a concurrent start loses with 23505.
-      const { error: sessErr } = await admin.from('customer_line_repair_sessions').insert(
-        { tenant_id: tenantId, line_user_id: lineUserId, ticket_id: ticket.id, expires_at: expiresAt },
-      )
-      if (!sessErr) return { ticketId: ticket.id as string, siteName: (site.name as string) ?? '' }
+      // Session mode defaults to 'new'. A concurrent start loses with 23505: drop our ticket, use theirs.
+      let cur: { ticketId: string } | null
+      try {
+        cur = await claimSession(lineUserId, { ticket_id: ticket.id })
+      } catch (e) {
+        await admin.from('repair_tickets').delete().eq('tenant_id', tenantId).eq('id', ticket.id)
+        throw e
+      }
+      if (!cur) return { ticketId: ticket.id as string, siteName: (site.name as string) ?? '' }
       await admin.from('repair_tickets').delete().eq('tenant_id', tenantId).eq('id', ticket.id)
-      if (sessErr.code !== '23505') throw sessErr
-      const { data: cur, error: curErr } = await admin.from('customer_line_repair_sessions').select('ticket_id')
-        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
-      if (curErr) throw curErr
-      if (!cur) throw sessErr
       const { data: curT } = await admin.from('repair_tickets').select('site_id')
-        .eq('tenant_id', tenantId).eq('id', cur.ticket_id).maybeSingle()
-      const { data: curSite } = curT
-        ? await admin.from('sites').select('name').eq('tenant_id', tenantId).eq('id', curT.site_id).maybeSingle()
-        : { data: null }
-      return { ticketId: cur.ticket_id as string, siteName: (curSite?.name as string) ?? '' }
+        .eq('tenant_id', tenantId).eq('id', cur.ticketId).maybeSingle()
+      return { ticketId: cur.ticketId, siteName: await siteNameOf(curT?.site_id as string | undefined) }
+    },
+    async listOpenTickets(clientId, siteId) {
+      const { data, error } = await admin.from('repair_tickets').select('ticket_number, status, scheduled_date, scheduled_start')
+        .eq('tenant_id', tenantId).eq('client_id', clientId).eq('site_id', siteId).in('status', OPEN_REPAIR_STATUSES)
+        .order('created_at', { ascending: false }).limit(MAX_CHOOSER_TICKETS)
+      if (error) {
+        if (missingTable(error)) return []
+        throw error
+      }
+      const siteName = await siteNameOf(siteId)
+      return (data ?? []).map((r): RepairTicket => ({
+        ticket_number: r.ticket_number as string,
+        site_name: siteName,
+        status: r.status as string,
+        scheduled_date: (r.scheduled_date as string | null) ?? null,
+        scheduled_start: (r.scheduled_start as string | null) ?? null,
+      }))
+    },
+    async startAddSession(clientId, ticketNumber, lineUserId) {
+      // Only this client's own OPEN ticket in this tenant.
+      const { data: t, error } = await admin.from('repair_tickets').select('id, ticket_number, site_id, description')
+        .eq('tenant_id', tenantId).eq('client_id', clientId).eq('ticket_number', ticketNumber)
+        .in('status', OPEN_REPAIR_STATUSES).maybeSingle()
+      if (error) {
+        if (missingTable(error)) return null
+        throw error
+      }
+      if (!t) return null
+      // started_at keeps its DB default now(): media rows are stamped by the same clock, which the
+      // finish counts and the cancel compare against.
+      const cur = await claimSession(lineUserId, {
+        ticket_id: t.id, mode: 'add', description_before: (t.description as string | null) ?? null,
+      })
+      if (!cur) return { mode: 'add', ticketNumber: t.ticket_number as string, siteName: await siteNameOf(t.site_id as string) }
+      // An active session won the race: answer with that one.
+      const s = await deps.getRepairSession(lineUserId)
+      if (!s) return null
+      return { mode: s.mode ?? 'new', ticketNumber: s.ticketNumber ?? '', siteName: s.siteName }
+    },
+    async markCustomerUpdate(ticketId) {
+      const { error } = await admin.from('repair_tickets').update({ customer_update_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId).eq('id', ticketId)
+      if (error) throw error
     },
     async appendRepairText(ticketId, newText) {
       // Compare-and-set on updated_at (bumped by trigger on every UPDATE) so two webhook calls cannot drop a line.
@@ -303,10 +381,15 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       return 'ok'
     },
     async finishRepair(lineUserId) {
-      const { data: sess, error } = await admin.from('customer_line_repair_sessions').select('ticket_id')
+      const sel = (cols: string) => admin.from('customer_line_repair_sessions').select(cols)
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
+      const first = await sel('ticket_id, mode, started_at, description_before')
+      const { data: sessRow, error } = first.error && missingColumn(first.error) ? await sel('ticket_id') : first
       if (error) throw error
-      if (!sess) return null
+      if (!sessRow) return null
+      // deno-lint-ignore no-explicit-any
+      const sess = sessRow as any
+      const add = sess.mode === 'add'
       const { error: dErr } = await admin.from('customer_line_repair_sessions').delete()
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId)
       if (dErr) throw dErr
@@ -315,22 +398,51 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       if (tErr) throw tErr
       if (!t) return null
       const { data: site } = await admin.from('sites').select('name').eq('tenant_id', tenantId).eq('id', t.site_id).maybeSingle()
-      const { data: media, error: mErr } = await admin.from('repair_ticket_media').select('media_type')
-        .eq('tenant_id', tenantId).eq('ticket_id', sess.ticket_id)
+      // Add session: only this session's customer media, and text only if the description changed.
+      let mq = admin.from('repair_ticket_media').select('media_type').eq('tenant_id', tenantId).eq('ticket_id', sess.ticket_id)
+      if (add) mq = mq.eq('role', 'customer').gte('created_at', sess.started_at)
+      const { data: media, error: mErr } = await mq
       if (mErr) throw mErr
-      const counts: MediaCounts = { text: String(t.description ?? '').trim() ? 1 : 0, image: 0, video: 0, file: 0 }
+      const hasText = add
+        ? String(t.description ?? '') !== String(sess.description_before ?? '')
+        : String(t.description ?? '').trim() !== ''
+      const counts: MediaCounts = { text: hasText ? 1 : 0, image: 0, video: 0, file: 0 }
       for (const m of media ?? []) {
         const k = m.media_type as 'image' | 'video' | 'file'
         if (k in counts) counts[k] = (counts[k] ?? 0) + 1
       }
-      return { ticketNumber: t.ticket_number as string, siteName: (site?.name as string) ?? '', counts }
+      return { ticketNumber: t.ticket_number as string, siteName: (site?.name as string) ?? '', counts, mode: add ? 'add' : 'new' }
     },
     async cancelRepair(lineUserId) {
-      const { data: sess, error } = await admin.from('customer_line_repair_sessions').select('ticket_id')
+      const sel = (cols: string) => admin.from('customer_line_repair_sessions').select(cols)
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).maybeSingle()
+      const first = await sel('ticket_id, mode, started_at, description_before')
+      const { data: sessRow, error } = first.error && missingColumn(first.error) ? await sel('ticket_id') : first
       if (error) throw error
-      if (!sess) return 'cancelled'
+      if (!sessRow) return 'cancelled'
+      // deno-lint-ignore no-explicit-any
+      const sess = sessRow as any
       const ticketId = sess.ticket_id as string
+      if (sess.mode === 'add') {
+        // Undo only this session: its customer media (rows, then objects; best effort) and the description.
+        // The ticket itself is never deleted.
+        const { data: gone, error: dmErr } = await admin.from('repair_ticket_media').delete()
+          .eq('tenant_id', tenantId).eq('ticket_id', ticketId).eq('role', 'customer').gte('created_at', sess.started_at)
+          .select('storage_path')
+        if (dmErr) throw dmErr
+        const paths = (gone ?? []).map((m) => m.storage_path as string).filter((p) => p.startsWith(`${tenantId}/${ticketId}/`))
+        if (paths.length > 0) {
+          const { error: rmErr } = await admin.storage.from(REPAIR_BUCKET).remove(paths)
+          if (rmErr) console.error('customer-line repair media remove failed', rmErr.message)
+        }
+        const { error: uErr } = await admin.from('repair_tickets').update({ description: (sess.description_before as string | null) ?? null })
+          .eq('tenant_id', tenantId).eq('id', ticketId)
+        if (uErr) throw uErr
+        const { error: sErr } = await admin.from('customer_line_repair_sessions').delete()
+          .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).eq('ticket_id', ticketId)
+        if (sErr) throw sErr
+        return 'reverted'
+      }
       // Media rows cascade with the ticket, so read their paths first.
       const { data: media, error: mErr } = await admin.from('repair_ticket_media').select('storage_path')
         .eq('tenant_id', tenantId).eq('ticket_id', ticketId)
@@ -410,6 +522,7 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         .eq('tenant_id', tenantId).eq('line_user_id', lineUserId)
     },
   }
+  return deps
 }
 
 Deno.serve(async (req) => {
