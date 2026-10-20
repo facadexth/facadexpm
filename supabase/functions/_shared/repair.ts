@@ -121,6 +121,11 @@ export function repairReceivedText(ticketNumber: string, siteName: string, count
   return `รับเรื่องแล้วครับ เลขที่ ${ticketNumber}\n${parts.join(' · ')}\nเจ้าหน้าที่จะตรวจสอบและแจ้งนัดหมายกลับในแชทนี้\nติดตามได้ที่ "สถานะแจ้งซ่อม"`
 }
 
+// Ack while a report is open: LINE hides quick replies once the customer sends anything, so this carries them again.
+export function repairGotItText(): string {
+  return 'ได้รับแล้ว ✓ ส่งเพิ่มได้อีก หรือกด "ส่งครบแล้ว" เมื่อครบ'
+}
+
 export function repairCancelledText(): string {
   return 'ยกเลิกการแจ้งซ่อมแล้วครับ'
 }
@@ -258,6 +263,63 @@ function statusBubble(t: RepairTicket, today: string): Flex {
       contents: [
         { type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'ติดต่อ / ขอเลื่อนนัด', text: 'ติดต่อเรา' } },
       ],
+    },
+  }
+}
+
+function countChip(icon: string, label: string): Flex {
+  return {
+    type: 'box', layout: 'vertical', flex: 1, alignItems: 'center', spacing: 'xs', paddingAll: '8px',
+    backgroundColor: '#F5F2EE', cornerRadius: '8px',
+    contents: [
+      { type: 'text', text: icon, size: 'lg', align: 'center' },
+      { type: 'text', text: label, size: 'xs', color: '#5C554D', align: 'center' },
+    ],
+  }
+}
+
+// "ส่งครบแล้ว" confirmation card. altText is the plain-text version, which is also the reply fallback.
+export function repairReceivedFlex(ticketNumber: string, siteName: string, counts: MediaCounts): LineMessage {
+  const chips: Flex[] = []
+  if (counts.text) chips.push(countChip('📝', `ข้อความ ${counts.text}`))
+  if (counts.image) chips.push(countChip('🖼️', `รูป ${counts.image}`))
+  if (counts.video) chips.push(countChip('🎬', `วิดีโอ ${counts.video}`))
+  if (counts.file) chips.push(countChip('📄', `ไฟล์ ${counts.file}`))
+  return {
+    type: 'flex',
+    altText: altOf(repairReceivedText(ticketNumber, siteName, counts)),
+    contents: {
+      type: 'bubble', size: 'mega',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: COLOR_GREEN, paddingAll: '16px', spacing: 'xs',
+        contents: [
+          { type: 'text', text: ticketNumber || '-', size: 'xs', color: '#FFFFFFCC' },
+          { type: 'text', text: 'ได้รับแจ้งซ่อมแล้ว ✓', size: 'lg', weight: 'bold', color: '#FFFFFF' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: siteName || '-', size: 'md', weight: 'bold', wrap: true },
+          chips.length > 0
+            ? { type: 'box', layout: 'horizontal', spacing: 'sm', contents: chips }
+            : { type: 'text', text: 'ไม่มีไฟล์แนบ', size: 'sm', color: '#8A847C' },
+          stepper(-1),
+          {
+            type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '10px', backgroundColor: '#FFF7E6', cornerRadius: '8px',
+            contents: [
+              { type: 'text', text: 'รอเจ้าหน้าที่ตรวจสอบ', size: 'sm', weight: 'bold', color: COLOR_AMBER },
+              { type: 'text', text: 'เจ้าหน้าที่จะแจ้งนัดหมายกลับในแชทนี้', size: 'xs', color: '#5C554D', wrap: true },
+            ],
+          },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          { type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'ดูสถานะแจ้งซ่อม', text: 'สถานะแจ้งซ่อม' } },
+        ],
+      },
     },
   }
 }

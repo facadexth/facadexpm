@@ -3,7 +3,7 @@ import {
   REPAIR_STATUS, REPAIR_STEPS, canMove, stepIndex, mediaTooBig, thaiWeekday, endTime,
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, scheduleText, reminderText, repairStatusFlex, repairReportFlex,
-  repairMediaExt, repairMediaPath, quickReplyLabel, repairUploadMime,
+  repairMediaExt, repairMediaPath, quickReplyLabel, repairUploadMime, repairReceivedFlex, repairGotItText,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const sched = {
@@ -295,5 +295,31 @@ describe('repair media helpers', () => {
     expect(quickReplyLabel('')).toBe('-')
     expect(quickReplyLabel('😀'.repeat(15)).length).toBeLessThanOrEqual(20)
     expect(quickReplyLabel('ก' + '😀'.repeat(15)).length).toBeLessThanOrEqual(20)
+  })
+})
+
+describe('received card', () => {
+  const counts = { text: 1, image: 2, video: 1, file: 1 }
+  it('is a valid Flex bubble with the plain text as altText', () => {
+    const m = repairReceivedFlex('RP2610-001', 'บ้านคุณสมชาย', counts)
+    checkFlex(m)
+    expect(m.altText).toBe(repairReceivedText('RP2610-001', 'บ้านคุณสมชาย', counts))
+    expect(m.contents.type).toBe('bubble')
+    const all = JSON.stringify(m.contents)
+    for (const s of ['RP2610-001', 'บ้านคุณสมชาย', 'รอเจ้าหน้าที่ตรวจสอบ', 'รูป 2', 'วิดีโอ 1', 'ไฟล์ 1', 'ข้อความ 1']) expect(all).toContain(s)
+  })
+  it('leaves out zero counts and says so when nothing was attached', () => {
+    const all = JSON.stringify(repairReceivedFlex('RP2610-002', 'งาน A', { image: 1 }).contents)
+    expect(all).toContain('รูป 1')
+    expect(all).not.toContain('วิดีโอ')
+    expect(JSON.stringify(repairReceivedFlex('RP2610-003', 'งาน A', {}).contents)).toContain('ไม่มีไฟล์แนบ')
+  })
+  it('footer button opens สถานะแจ้งซ่อม', () => {
+    const m = repairReceivedFlex('RP2610-001', 'งาน A', counts)
+    const btn = m.contents.footer.contents[0]
+    expect(btn.action).toEqual({ type: 'message', label: 'ดูสถานะแจ้งซ่อม', text: 'สถานะแจ้งซ่อม' })
+  })
+  it('got-it text', () => {
+    expect(repairGotItText()).toBe('ได้รับแล้ว ✓ ส่งเพิ่มได้อีก หรือกด "ส่งครบแล้ว" เมื่อครบ')
   })
 })

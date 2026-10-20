@@ -7,8 +7,8 @@ import {
   type SiteStatus,
 } from './customer-line-replies.ts'
 import {
-  repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
-  repairNoTicketsText, repairStatusFlex, mediaTooBig, quickReplyLabel, type RepairTicket, type MediaCounts,
+  repairStartText, repairPickSiteText, repairCancelledText, repairTooBigText,
+  repairNoTicketsText, repairStatusFlex, mediaTooBig, repairGotItText, repairReceivedFlex, quickReplyLabel, type RepairTicket, type MediaCounts,
 } from './repair.ts'
 import type { LineMessage, QuickReplyItem } from './line-reply.ts'
 
@@ -53,8 +53,21 @@ const MEDIA_TYPES: RepairMediaType[] = ['image', 'video', 'file']
 
 const qrItem = (label: string, text: string): QuickReplyItem => ({ type: 'action', action: { type: 'message', label: quickReplyLabel(label), text } })
 
+// LINE hides quick replies as soon as the customer sends anything, so every reply during a report carries them again.
+function sessionReply(text: string): LineMessage {
+  return { type: 'text', text, quickReply: { items: [qrItem(FINISH_TEXT, FINISH_TEXT), qrItem(CANCEL_TEXT, CANCEL_TEXT)] } }
+}
+
 function startReply(siteName: string): LineMessage {
-  return { type: 'text', text: repairStartText(siteName), quickReply: { items: [qrItem(FINISH_TEXT, FINISH_TEXT), qrItem(CANCEL_TEXT, CANCEL_TEXT)] } }
+  return sessionReply(repairStartText(siteName))
+}
+
+// Photos picked together arrive as separate events sharing an imageSet: ack only the last one.
+// deno-lint-ignore no-explicit-any
+function lastOfSet(message: any): boolean {
+  const set = message?.imageSet
+  if (!set || !Number(set.total)) return true
+  return Number(set.index) === Number(set.total)
 }
 
 function pickSiteReply(sites: { name: string }[]): LineMessage {
@@ -105,11 +118,13 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
     const messageId = String(event.message.id ?? '')
     if (!messageId) return []
     if (msgType === 'file' && Number(event.message.fileSize) > 0 && mediaTooBig(Number(event.message.fileSize))) {
-      return txt(repairTooBigText())
+      return [sessionReply(repairTooBigText())]
     }
     const fileName = msgType === 'file' && typeof event.message.fileName === 'string' ? event.message.fileName : undefined
     const r = await deps.storeRepairMedia(session.ticketId, messageId, msgType, fileName)
-    return r === 'too_big' ? txt(repairTooBigText()) : []
+    if (r === 'too_big') return [sessionReply(repairTooBigText())]
+    if (r !== 'ok' || event.deliveryContext?.isRedelivery === true) return []
+    return lastOfSet(event.message) ? [sessionReply(repairGotItText())] : []
   }
   if (msgType !== 'text') return []
   const text: string = event.message.text ?? ''
@@ -129,21 +144,22 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
     // A late "ส่งครบแล้ว" (after expiry) still closes the stale session and confirms.
     if (trimmed === FINISH_TEXT) {
       const done = await deps.finishRepair(userId)
-      return done ? txt(repairReceivedText(done.ticketNumber, done.siteName, done.counts)) : []
+      return done ? [repairReceivedFlex(done.ticketNumber, done.siteName, done.counts)] : []
     }
     if (active) {
       if (trimmed === CANCEL_TEXT) {
         if ((await deps.cancelRepair(userId)) === 'cancelled') return txt(repairCancelledText())
         // Staff already took the ticket: confirm it as received instead (R12).
         const done = await deps.finishRepair(userId)
-        return done ? txt(repairReceivedText(done.ticketNumber, done.siteName, done.counts)) : []
+        return done ? [repairReceivedFlex(done.ticketNumber, done.siteName, done.counts)] : []
       }
       // Pressing แจ้งซ่อม again keeps the open report instead of starting a second ticket.
       if (cmd === 'repair' || pick !== null) return [startReply(active.siteName)]
       // Other menu commands are answered below; the session stays open.
       if (!cmd) {
-        if (trimmed && !redelivery) await deps.appendRepairText(active.ticketId, trimmed)
-        return []
+        if (!trimmed || redelivery) return []
+        await deps.appendRepairText(active.ticketId, trimmed)
+        return [sessionReply(repairGotItText())]
       }
     }
   }

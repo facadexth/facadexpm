@@ -5,7 +5,7 @@ import {
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
 import {
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
-  repairNoTicketsText, repairStatusFlex,
+  repairNoTicketsText, repairStatusFlex, repairGotItText, repairReceivedFlex,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const ctx = { tenantId: 't1', today: '2026-10-19' }
@@ -166,6 +166,9 @@ const media = (type, extra = {}) => ({ type: 'message', replyToken: 'rt', source
 const redeliver = (ev) => ({ ...ev, deliveryContext: { isRedelivery: true } })
 const qr = (label, text) => ({ type: 'action', action: { type: 'message', label, text } })
 const startMsg = (name) => ({ type: 'text', text: repairStartText(name), quickReply: { items: [qr('ส่งครบแล้ว', 'ส่งครบแล้ว'), qr('ยกเลิก', 'ยกเลิก')] } })
+// LINE hides quick replies once the customer sends anything, so every session reply carries them again.
+const withQR = (text) => ({ type: 'text', text, quickReply: startMsg('x').quickReply })
+const ack = withQR(repairGotItText())
 const L = (over = {}) => deps({ getAccount: vi.fn().mockResolvedValue(linked), ...over })
 const two = [{ id: 's1', name: 'บ้านคุณสมชาย' }, { id: 's2', name: 'คอนโดริมน้ำ' }]
 
@@ -218,35 +221,45 @@ describe('repair intake', () => {
   it('start quick-reply labels fit LINE\'s 20-char limit', () => {
     for (const it of startMsg('x').quickReply.items) expect([...it.action.label].length).toBeLessThanOrEqual(20)
   })
-  it('text during a session is appended, no reply', async () => {
+  it('text during a session is appended, ack keeps the buttons', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
-    expect(await handleCustomerEvent(txt('กระจกร้าว'), rctx, d)).toEqual([])
+    expect(await handleCustomerEvent(txt('กระจกร้าว'), rctx, d)).toEqual([ack])
     expect(d.appendRepairText).toHaveBeenCalledWith('k1', 'กระจกร้าว')
   })
   it('code-like text during a session is appended, not claimed', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
-    expect(await handleCustomerEvent(txt('THANKS'), rctx, d)).toEqual([])
+    expect(await handleCustomerEvent(txt('THANKS'), rctx, d)).toEqual([ack])
     expect(d.appendRepairText).toHaveBeenCalledWith('k1', 'THANKS')
     expect(d.claimInvite).not.toHaveBeenCalled()
   })
-  it.each(['image', 'video'])('%s during a session is stored, no reply', async (type) => {
+  it.each(['image', 'video'])('%s during a session is stored, ack keeps the buttons', async (type) => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
-    expect(await handleCustomerEvent(media(type), rctx, d)).toEqual([])
+    expect(await handleCustomerEvent(media(type), rctx, d)).toEqual([ack])
     expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', type, undefined)
   })
   it('file during a session is stored with its name', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
-    expect(await handleCustomerEvent(media('file', { fileName: 'แบบ.pdf', fileSize: 1000 }), rctx, d)).toEqual([])
+    expect(await handleCustomerEvent(media('file', { fileName: 'แบบ.pdf', fileSize: 1000 }), rctx, d)).toEqual([ack])
     expect(d.storeRepairMedia).toHaveBeenCalledWith('k1', 'M1', 'file', 'แบบ.pdf')
   })
   it('too big from the store -> one too-big reply', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active), storeRepairMedia: vi.fn().mockResolvedValue('too_big') })
-    expect(await handleCustomerEvent(media('video'), rctx, d)).toEqual([T(repairTooBigText())])
+    expect(await handleCustomerEvent(media('video'), rctx, d)).toEqual([withQR(repairTooBigText())])
   })
   it('file over 50 MB is refused before any download', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
-    expect(await handleCustomerEvent(media('file', { fileName: 'a.pdf', fileSize: 50 * 1024 * 1024 + 1 }), rctx, d)).toEqual([T(repairTooBigText())])
+    expect(await handleCustomerEvent(media('file', { fileName: 'a.pdf', fileSize: 50 * 1024 * 1024 + 1 }), rctx, d)).toEqual([withQR(repairTooBigText())])
     expect(d.storeRepairMedia).not.toHaveBeenCalled()
+  })
+  it('several photos sent together: one ack, on the last of the set', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    expect(await handleCustomerEvent(media('image', { imageSet: { id: 'S1', index: 1, total: 3 } }), rctx, d)).toEqual([])
+    expect(await handleCustomerEvent(media('image', { imageSet: { id: 'S1', index: 2, total: 3 } }), rctx, d)).toEqual([])
+    expect(await handleCustomerEvent(media('image', { imageSet: { id: 'S1', index: 3, total: 3 } }), rctx, d)).toEqual([ack])
+    expect(d.storeRepairMedia).toHaveBeenCalledTimes(3)
+  })
+  it('ack quick-reply labels fit LINE\'s 20-char limit', () => {
+    for (const i of ack.quickReply.items) expect(i.action.label.length).toBeLessThanOrEqual(20)
   })
   it('store error -> silent', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active), storeRepairMedia: vi.fn().mockResolvedValue('error') })
@@ -286,7 +299,7 @@ describe('repair intake', () => {
       getRepairSession: vi.fn().mockResolvedValue(active),
       finishRepair: vi.fn().mockResolvedValue({ ticketNumber: 'RP2610-001', siteName: 'งาน A', counts }),
     })
-    expect(await handleCustomerEvent(txt('ส่งครบแล้ว'), rctx, d)).toEqual([T(repairReceivedText('RP2610-001', 'งาน A', counts))])
+    expect(await handleCustomerEvent(txt('ส่งครบแล้ว'), rctx, d)).toEqual([(repairReceivedFlex('RP2610-001', 'งาน A', counts))])
     expect(d.finishRepair).toHaveBeenCalledWith('U1')
     expect(d.appendRepairText).not.toHaveBeenCalled()
   })
@@ -295,7 +308,7 @@ describe('repair intake', () => {
       getRepairSession: vi.fn().mockResolvedValue(expired),
       finishRepair: vi.fn().mockResolvedValue({ ticketNumber: 'RP2610-001', siteName: 'งาน A', counts: { image: 1 } }),
     })
-    expect(await handleCustomerEvent(txt('ส่งครบแล้ว'), rctx, d)).toEqual([T(repairReceivedText('RP2610-001', 'งาน A', { image: 1 }))])
+    expect(await handleCustomerEvent(txt('ส่งครบแล้ว'), rctx, d)).toEqual([(repairReceivedFlex('RP2610-001', 'งาน A', { image: 1 }))])
   })
   it('ส่งครบแล้ว with nothing to finish -> silent', async () => {
     const d = L()
@@ -314,7 +327,7 @@ describe('repair intake', () => {
       cancelRepair: vi.fn().mockResolvedValue('kept'),
       finishRepair: vi.fn().mockResolvedValue({ ticketNumber: 'RP2610-002', siteName: 'งาน A', counts: { image: 1 } }),
     })
-    expect(await handleCustomerEvent(txt('ยกเลิก'), rctx, d)).toEqual([T(repairReceivedText('RP2610-002', 'งาน A', { image: 1 }))])
+    expect(await handleCustomerEvent(txt('ยกเลิก'), rctx, d)).toEqual([(repairReceivedFlex('RP2610-002', 'งาน A', { image: 1 }))])
     expect(d.finishRepair).toHaveBeenCalledWith('U1')
   })
   it('redelivered text in a session: no append', async () => {
