@@ -13,6 +13,7 @@ const chain = (table) => {
     q[m] = (...a) => { calls.push([table, m, ...a]); return q }
   })
   q.insert = (...a) => { calls.push([table, 'insert', ...a]); q._insert = true; return q }
+  q.range = async (from, to) => { calls.push([table, 'range', from, to]); return table === 'boq_phase_splits' ? { data: splitRows.slice(from, to + 1), error: null } : { data: [], error: null } }
   q.then = (resolve, reject) => {
     const res = table === 'boq_phase_splits' ? { data: splitRows, error: null }
       : table === 'phase_tasks' && q._insert ? insertResult

@@ -263,6 +263,20 @@ describe('SplitTaskDialog', () => {
   })
 })
 
+describe('PhaseManageModal BOQ mode', () => {
+  const site = { id: 's1', name: 'ไซท์' }
+  const phases = [{ id: 'p1', site_id: 's1', name: 'ผลิต', sort_order: 1, status: 'not_started', billing_weight_pct: 35, start_date: '', end_date: '' }]
+  it('boqMode: the weight is read-only text "คิดจาก BOQ"', () => {
+    render(<PhaseManageModal site={site} phases={phases} onClose={() => {}} onSaved={() => {}} boqMode />)
+    expect(screen.getByTestId('weight-boq-mode').textContent).toBe('35% · คิดจาก BOQ')
+    expect(screen.queryByPlaceholderText('%')).toBeNull()
+  })
+  it('without boqMode the weight input is there', () => {
+    render(<PhaseManageModal site={site} phases={phases} onClose={() => {}} onSaved={() => {}} />)
+    expect(screen.getByPlaceholderText('%').value).toBe('35')
+  })
+})
+
 describe('PhaseManageModal VO fields', () => {
   const site = { id: 's1', name: 'ไซท์ A' }
   const phases = [{ id: 'ph1', site_id: 's1', name: 'ติดตั้ง', sort_order: 1, status: 'not_started', billing_weight_pct: 100, is_vo: false, vo_ref: null }]

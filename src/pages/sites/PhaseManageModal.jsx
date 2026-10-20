@@ -26,7 +26,8 @@ const STATUS_OPTS = [
 let tempIdCounter = 0
 function nextTempId() { tempIdCounter -= 1; return tempIdCounter }
 
-export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
+// boqMode: the site's phase weights are derived from the BOQ split (read-only here).
+export default function PhaseManageModal({ site, phases, onClose, onSaved, boqMode = false }) {
   const { role } = useUserRole()
   const [rows, setRows] = useState(() => phases.map((p) => ({ ...p })))
   const [saving, setSaving] = useState(false)
@@ -112,9 +113,15 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
             <select className="select" value={r.status} onChange={(e) => setRow(r.id, { status: e.target.value })}>
               {STATUS_OPTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
+            {boqMode ? (
+              <span data-testid="weight-boq-mode" title="น้ำหนักเฟสคิดจาก BOQ แก้ที่แท็บ BOQ › แบ่ง % ต่อเฟส" style={{ fontSize: 11.5, color: 'var(--text2)' }}>
+                {r.is_vo ? 0 : (Number(r.billing_weight_pct) || 0)}% · คิดจาก BOQ
+              </span>
+            ) : (
             <input type="number" className="input input-sm" min="0" max="100" value={r.is_vo ? 0 : r.billing_weight_pct}
               disabled={!!r.is_vo} title={r.is_vo ? 'งาน VO ไม่นับ % เบิกเงินตามสัญญา' : undefined}
               onChange={(e) => setRow(r.id, { billing_weight_pct: e.target.value })} placeholder="%" />
+            )}
             <select className="select" value={r.depends_on_phase_id || ''} onChange={(e) => setRow(r.id, { depends_on_phase_id: e.target.value })}>
               <option value="">— ไม่ขึ้นกับขั้นตอนอื่น —</option>
               {rows.filter((other) => other.id !== r.id && !other.isNew).map((other) => (

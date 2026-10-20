@@ -52,10 +52,11 @@ export default function BoqPhaseSplitSection({ siteId, boq, sharesPct, canManage
     if (splits.loading || !boq.length || !phases.length) return
     if (splits.rows.length) setCells(cellsFromRows(boq, phases, splits.rows))
     else if (defaults) setCells(buildDefaultCells(boq, phases, defaults))
+    else if (defaultsFailed) setCells(buildDefaultCells(boq, phases, [])) // template unreachable: empty matrix (all 0)
     else return
     setDirty(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storedKey, splits.loading])
+  }, [storedKey, splits.loading, defaultsFailed])
 
   const defaultByPhase = useMemo(() => Object.fromEntries((defaults || []).map((d) => [d.phase_id, cellNum(d.pct)])), [defaults])
   const shares = useMemo(() => itemShares(boq, sharesPct), [boq, sharesPct])
@@ -144,7 +145,7 @@ export default function BoqPhaseSplitSection({ siteId, boq, sharesPct, canManage
                     return (
                       <td key={p.id} style={tdNum}>
                         <input type="number" min="0" max="100" step="any" className="input" aria-label={`${b.description} ${p.name} %`}
-                          value={v ?? ''} readOnly={!canManage} disabled={!canManage && false}
+                          value={v ?? ''} readOnly={!canManage}
                           data-custom={String(isCustom)}
                           onChange={(e) => setCell(b.id, p.id, e.target.value)}
                           style={{

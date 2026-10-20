@@ -8,7 +8,7 @@ let splitError = null
 vi.mock('../../lib/supabase.js', () => ({
   supabase: {
     rpc: (...a) => rpc(...a),
-    from: () => ({ select: () => ({ in: async () => ({ data: splitRows, error: splitError }) }) }),
+    from: () => { const q = {}; ['select', 'in', 'order'].forEach((m) => { q[m] = () => q }); q.range = async () => ({ data: splitRows, error: splitError }); return q },
   },
 }))
 const refetchPhases = vi.fn(async () => {})
@@ -117,6 +117,16 @@ describe('BoqPhaseSplitSection', () => {
     fireEvent.change(cell('กระจก', 'ติดตั้ง'), { target: { value: '70' } })
     fireEvent.click(screen.getByText('บันทึก'))
     await waitFor(() => expect(onError).toHaveBeenCalledWith('รายการ 1 รวมได้ 110 ต้องได้ 100'))
+  })
+  it('defaults RPC failing -> empty matrix (all 0) with the note โหลดค่าแม่แบบไม่ได้, still editable', async () => {
+    rpc.mockImplementation(async (name) => (name === 'boq_phase_split_defaults' ? { data: null, error: { message: 'boom' } } : { data: null, error: null }))
+    mount()
+    await waitFor(() => expect(screen.getByTestId('split-row-b1')).toBeTruthy())
+    expect(cell('กระจก', 'ผลิต').value).toBe('0')
+    expect(cell('ประตู', 'ติดตั้ง').value).toBe('0')
+    expect(screen.getByText(/โหลดค่าแม่แบบไม่ได้/)).toBeTruthy()
+    expect(screen.getByTestId('split-row-b1').querySelector('[data-col="row-total"]').textContent).toBe('0 ✗')
+    expect(screen.getByTestId('split-row-b1').getAttribute('data-custom')).toBe('false')
   })
   it('read-only without canManage: no save button, inputs read only', async () => {
     rpcDefaults()

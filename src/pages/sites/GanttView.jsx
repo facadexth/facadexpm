@@ -431,11 +431,12 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
         const { error } = await supabase.from('site_phases').update({ billing_weight_pct: u.billing_weight_pct }).eq('id', u.id)
         if (error) throw error
       }
-      await afterWrite()
       setWeightsDialogOpen(false)
     } catch (e) {
       alert('ใช้น้ำหนักจากแม่แบบไม่สำเร็จ: ' + e.message)
     } finally {
+      // some phases may already be written when a later one fails: always show the real state
+      await afterWrite()
       setApplyingWeights(false)
     }
   }
@@ -612,7 +613,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                 ))}
               </div>
             )}
-            {canEdit && !editingId && canManagePlan(role) && !boqMode && phases.length > 0 && (
+            {canEdit && !editingId && role === 'OWNER' && !boqMode && phases.length > 0 && (
               <button type="button" className="btn btn-ghost btn-sm" style={{ marginRight: 6 }} onClick={() => setWeightsDialogOpen(true)}>ใช้น้ำหนักจากแม่แบบ</button>
             )}
             {canEdit && !editingId && (
