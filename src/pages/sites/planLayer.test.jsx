@@ -74,6 +74,7 @@ vi.mock('../../hooks/useSupabase.js', () => ({
   useSitePlans: () => ({ plans: mockPlans, items, loading: false, error: null, reload: () => {} }),
   useSiteProgressDaily: () => q(mockDaily),
   useSiteOverview: () => q({ id: 's1', name: 'ไซท์ A', site_number: 'S-1', contract_value: 1000000 }),
+  useAppSetting: () => q(''),
 }))
 
 import { resetProgressSchemaProbe, probeProgressSchema } from '../../lib/progressSchema.js'

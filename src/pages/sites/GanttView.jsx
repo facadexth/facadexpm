@@ -9,10 +9,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses, useSitePlans } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses, useSitePlans, useAppSetting } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
-import { ConfirmDialog } from '../../components/Modal.jsx'
-import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, computeFocusRange, computeAxisTicks, dateAtPercent, phaseOverlapsRange, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
+import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
+import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, computeFocusRange, computeAxisTicks, dateAtPercent, phaseOverlapsRange, STATUS_COLOR, expandRangeForTransactions } from './ganttTimeline.js'
+import { PHASE_TEMPLATE_KEY, parsePhaseTemplate, templateToPhaseRows, compareWeightsWithTemplate } from './phaseTemplate.js'
 import { groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
 import { summarizeTasks } from './phaseTasksCalc.js'
 import { siteProgress } from './progressCalc.js'
@@ -102,6 +103,12 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const [confirmDeleteId, setConfirmDeleteId] = useState(null) // { kind: 'phase'|'subtask', id }
   const [applyingTemplate, setApplyingTemplate] = useState(false)
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
+  // Company phase template (Settings › แม่แบบเฟสงาน). A role that cannot read
+  // app_settings gets the built-in template through parsePhaseTemplate(null).
+  const { data: templateRaw } = useAppSetting(PHASE_TEMPLATE_KEY, '')
+  const phaseTemplate = useMemo(() => parsePhaseTemplate(templateRaw), [templateRaw])
+  const [weightsDialogOpen, setWeightsDialogOpen] = useState(false)
+  const [applyingWeights, setApplyingWeights] = useState(false)
   // PLAN layer on the single-site Gantt: 'latest' (default), 'off', or a site_plans id.
   // SiteDetail owns it (shared with the S-curve); without the props it is local state.
   const [planChoiceLocal, setPlanChoiceLocal] = useState('latest')
@@ -210,6 +217,19 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const { role } = useUserRole()
   const progressSchemaReady = useProgressSchemaReady()
   const syncSiteDates = canSeeMoney(role)
+
+  // BOQ mode (single site): the site has a saved "% ต่อเฟส" split, so phase
+  // weights are derived by the database -- the weight field is then read-only.
+  // Fails soft to false before migration 2026-10-20-15 is live.
+  const [boqMode, setBoqMode] = useState(false)
+  const boqModeSiteId = sites.length === 1 && progressSchemaReady ? sites[0].id : null
+  useEffect(() => {
+    if (!boqModeSiteId) { setBoqMode(false); return undefined }
+    let cancelled = false
+    supabase.rpc('site_in_boq_mode', { p_site: boqModeSiteId })
+      .then(({ data, error }) => { if (!cancelled) setBoqMode(!error && data === true) }, () => { if (!cancelled) setBoqMode(false) })
+    return () => { cancelled = true }
+  }, [boqModeSiteId])
   useEffect(() => {
     if (sites.length !== 1 || !canEdit || !syncSiteDates || !range) return
     const site = sites[0]
@@ -391,7 +411,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const applyTemplate = async (site) => {
     setApplyingTemplate(true)
     try {
-      const rows = PHASE_TEMPLATE.map((t) => ({ site_id: site.id, ...t }))
+      const rows = templateToPhaseRows(phaseTemplate).map((t) => ({ site_id: site.id, ...t }))
       const { error } = await supabase.from('site_phases').insert(rows)
       if (error) throw error
       await afterWrite()
@@ -399,6 +419,24 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       alert('เพิ่มเทมเพลตไม่สำเร็จ: ' + e.message)
     } finally {
       setApplyingTemplate(false)
+    }
+  }
+
+  // "ใช้น้ำหนักจากแม่แบบ" (non-BOQ-mode sites): write the template weight onto every
+  // contract phase with the same name; other phases keep theirs.
+  const applyTemplateWeights = async (updates) => {
+    setApplyingWeights(true)
+    try {
+      for (const u of updates) {
+        const { error } = await supabase.from('site_phases').update({ billing_weight_pct: u.billing_weight_pct }).eq('id', u.id)
+        if (error) throw error
+      }
+      await afterWrite()
+      setWeightsDialogOpen(false)
+    } catch (e) {
+      alert('ใช้น้ำหนักจากแม่แบบไม่สำเร็จ: ' + e.message)
+    } finally {
+      setApplyingWeights(false)
     }
   }
 
@@ -574,10 +612,17 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                 ))}
               </div>
             )}
+            {canEdit && !editingId && canManagePlan(role) && !boqMode && phases.length > 0 && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginRight: 6 }} onClick={() => setWeightsDialogOpen(true)}>ใช้น้ำหนักจากแม่แบบ</button>
+            )}
             {canEdit && !editingId && (
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอน</button>
             )}
           </div>
+          {weightsDialogOpen && (
+            <TemplateWeightsDialog phases={phases} template={phaseTemplate} busy={applyingWeights}
+              onClose={() => { if (!applyingWeights) setWeightsDialogOpen(false) }} onConfirm={applyTemplateWeights} />
+          )}
           {viewRange && (
             <div data-phone="gantt-ticks" style={{ position: 'relative', height: 40, marginLeft: trackLeft, marginRight: trackRight }}>
               {monthTicks.filter((t) => t.x <= 90).map((t, i) => (
@@ -701,6 +746,11 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                           {ns && ns.stats.source === 'subtasks' ? (
                             <div style={{ marginTop: 2, fontSize: 12, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}>
                               คำนวณอัตโนมัติจากขั้นตอนย่อย ({ns.displayWeight}%)
+                            </div>
+                          ) : parsed.kind === 'phase' && boqMode ? (
+                            <div data-testid="weight-boq-mode" style={{ marginTop: 2, fontSize: 12, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}
+                              title="น้ำหนักเฟสคิดจาก BOQ แก้ที่แท็บ BOQ › แบ่ง % ต่อเฟส">
+                              {draft.is_vo ? 0 : (Number(draft.billing_weight_pct) || 0)}% · คิดจาก BOQ
                             </div>
                           ) : (
                             <input type="number" min="0" max="100" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
@@ -1068,5 +1118,44 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       </div>
       </div>
     </>
+  )
+}
+
+// "ใช้น้ำหนักจากแม่แบบกับไซท์นี้?" -- current vs template weight per contract phase,
+// matched by name (phaseTemplate.js compareWeightsWithTemplate). Confirm writes the
+// matched, changed phases only.
+function TemplateWeightsDialog({ phases, template, busy, onClose, onConfirm }) {
+  const cmp = compareWeightsWithTemplate(phases, template)
+  const cell = { textAlign: 'right', fontSize: 13 }
+  return (
+    <Modal title="ใช้น้ำหนักจากแม่แบบกับไซท์นี้?" onClose={onClose} maxWidth={520}>
+      <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', gap: 6 }} data-testid="template-weights-table">
+          <span style={{ fontWeight: 700, color: 'var(--text3)', fontSize: 12 }}>เฟส (จับคู่ตามชื่อ)</span>
+          <span style={{ ...cell, fontWeight: 700, color: 'var(--text3)', fontSize: 12 }}>ตอนนี้</span>
+          <span style={{ ...cell, fontWeight: 700, color: 'var(--text3)', fontSize: 12 }}>แม่แบบ</span>
+          {cmp.rows.map((r) => (
+            <div key={r.phaseId} style={{ display: 'contents' }} data-testid={`tpl-cmp-${r.phaseId}`}>
+              <span style={{ fontSize: 13, color: r.template == null ? 'var(--text3)' : 'var(--text)' }}>{r.name}</span>
+              <span style={cell}>{r.current}</span>
+              <span style={{ ...cell, fontWeight: r.changed ? 700 : 400, color: r.template == null ? 'var(--text3)' : 'var(--text)' }}>{r.template == null ? '—' : r.template}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+          เฟสที่ชื่อไม่ตรงแม่แบบ ไม่เปลี่ยน · เฟส VO ไม่นับ
+          {cmp.updates.length > 0 && Math.abs(cmp.totalAfter - 100) > 0.001 && (
+            <span style={{ color: 'var(--amber, #8a6100)' }}> · หลังใช้แล้วรวมได้ {cmp.totalAfter}% (ไม่ใช่ 100)</span>
+          )}
+          {cmp.updates.length === 0 && <span> · ไม่มีเฟสที่ต้องเปลี่ยน</span>}
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" disabled={busy} onClick={onClose}>ยกเลิก</button>
+        <button type="button" className="btn btn-primary" disabled={busy || cmp.updates.length === 0} onClick={() => onConfirm(cmp.updates)}>
+          {busy ? '⏳ กำลังบันทึก...' : 'ใช้น้ำหนักนี้'}
+        </button>
+      </div>
+    </Modal>
   )
 }

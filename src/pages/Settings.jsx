@@ -14,6 +14,7 @@ import LinePushSettings from '../components/LinePushSettings.jsx'
 import CustomerLineSettings from '../components/CustomerLineSettings.jsx'
 import WebPushSettings from '../components/WebPushSettings.jsx'
 import TravelOriginSettings from '../components/TravelOriginSettings.jsx'
+import PhaseTemplateSettings from '../components/PhaseTemplateSettings.jsx'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
 import DocumentTemplatePicker from '../components/DocumentTemplatePicker.jsx'
@@ -507,6 +508,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan, navSt
     { id: 'doc_template', label: '🎨 แบบเอกสาร', show: isOwner && hasTemplateChoice },
     { id: 'location', label: '📍 ตำแหน่งและค่าเดินทาง', show: isOwner }, // 🚗 ค่าเดินทาง + 📍 เช็คอิน (both isOwner)
     { id: 'communication', label: '💬 การสื่อสารและแจ้งเตือน', show: showCommCenter || showLinePush || showChequeReminder || showWebPush || showSignMethod },
+    { id: 'phase_template', label: '🧩 แม่แบบเฟสงาน', show: isOwner },
     { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
   ]
   const visibleSections = sections.filter(s => s.show)
@@ -906,6 +908,17 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan, navSt
         ) : (
           <button type="button" className="btn btn-sm btn-ghost" onClick={() => setAddingBank(true)}>+ เพิ่มบัญชี</button>
         )}
+      </div>
+      )}
+
+      {/* ── แม่แบบเฟสงาน ── */}
+      {activeSection === 'phase_template' && isOwner && (
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🧩 แม่แบบเฟสงานของบริษัท</h2>
+        <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+          ใช้ตอนกด "สร้างเฟสจากแม่แบบ" ในไซท์ใหม่ · น้ำหนัก % ใช้คิดความคืบหน้ารวมของไซท์ และเป็นค่าเริ่มต้นของ "แบ่ง % ต่อเฟส" ในแท็บ BOQ (รวมต้องได้ 100)
+        </p>
+        <PhaseTemplateSettings />
       </div>
       )}
 

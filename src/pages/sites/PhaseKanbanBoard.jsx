@@ -31,6 +31,10 @@ import { useUserRole } from '../../hooks/useUserRole.js'
 import { useProgressSchemaReady } from '../../lib/progressSchema.js'
 import { canManagePlan, canManageSites } from '../../lib/roles.js'
 import { auditLog } from '../../lib/audit.js'
+import { useBoqPhaseSplits } from './useBoqPhaseSplits.js'
+import { cellsFromRows } from './boqPhaseSplit.js'
+import { boqRemainingInPhase, boqCardCandidates } from './boqPhaseCards.js'
+import BoqBulkCardsDialog from './BoqBulkCardsDialog.jsx'
 import RecordProgressDialog from './RecordProgressDialog.jsx'
 import SplitTaskDialog from './SplitTaskDialog.jsx'
 
@@ -159,7 +163,7 @@ export function buildTaskSave({ draft, orig, progressReady, childrenByParent = {
       planned = Number(draft.planned_qty)
       if (!(planned > 0)) return { error: 'กรุณาใส่จำนวนในการ์ดนี้ (มากกว่า 0)' }
       const left = boqRemaining(draft.boq_item_id, orig?.id)
-      if (left != null && planned > left) return { error: `จำนวนในการ์ดนี้เกินที่เหลือใน BOQ (${fmtNum(left)})` }
+      if (left != null && planned > left) return { error: `จำนวนในการ์ดนี้เกินที่เหลือใน BOQ ของเฟสนี้ (${fmtNum(left)})` }
     }
     weightFields = {
       progress_mode: draft.progress_mode,
@@ -549,14 +553,14 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const progressReady = useProgressSchemaReady()
   // no PLAN yet: new cards start not_started whatever column they were added in (DB gate)
   const noPlan = progressReady && hasPlan === false
-  // BOQ qty left for a card = BOQ planned_qty − Σ planned_qty of the line's other cards.
-  const boqRemaining = (boqId, exceptTaskId) => {
-    const b = boqById[boqId]
-    if (!b) return null
-    const used = (allTasks || []).filter((t) => t.boq_item_id === boqId && t.id !== exceptTaskId)
-      .reduce((s, t) => s + (Number(t.planned_qty) || 0), 0)
-    return Math.round((Number(b.planned_qty) - used) * 10000) / 10000
-  }
+  // BOQ qty left for a card IN ONE PHASE = BOQ planned_qty − Σ planned_qty of the line's
+  // other cards in that phase (the DB limit is per item x phase; subtask cards carry the phase).
+  const siteTasks = useMemo(() => (allTasks || []).filter((t) => t.site_id === site.id), [allTasks, site.id])
+  const boqRemaining = (boqId, exceptTaskId, phaseId) => boqRemainingInPhase(boqById[boqId], phaseId, siteTasks, exceptTaskId)
+  // the site's saved "% ต่อเฟส" rows (BOQ tab): non-empty = BOQ mode -> "+ การ์ดจาก BOQ (n)" per phase
+  const boqIds = useMemo(() => boqItems.map((b) => b.id), [boqItems])
+  const splits = useBoqPhaseSplits(boqIds, progressReady)
+  const [bulkPhaseId, setBulkPhaseId] = useState(null)
 
   const subtasksByParent = useMemo(() => groupSubtasksByParent((allSubtasks || []).filter((s) => s.site_id === site.id)), [allSubtasks, site.id])
 
@@ -571,6 +575,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     const phaseId = byNodeId[nodeId]?.phase_id || nodeId
     return !!phases.find((p) => p.id === phaseId)?.is_issue_phase
   }
+  // the phase a target node (phase or subtask) belongs to -- the BOQ limit counts per phase
+  const phaseOfNode = (nodeId) => byNodeId[nodeId]?.phase_id || nodeId
+  const splitCells = useMemo(() => (splits.boqMode ? cellsFromRows(boqItems, phases, splits.rows) : null), [splits.boqMode, splits.rows, boqItems, phases])
+  const bulkCandidates = (phaseId) => boqCardCandidates({ phaseId, boqItems, cells: splitCells, tasks: siteTasks })
 
   const workerById = useMemo(() => {
     const m = {}
@@ -641,8 +649,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     if (!draft.name.trim()) { alert('กรุณาตั้งชื่องาน'); return }
     const isNew = String(editingId).startsWith('__new__')
     const orig = isNew ? null : taskById[editingId]
+    const draftPhaseId = phaseOfNode(orig ? (orig.subtask_id || orig.phase_id) : draft.phase_id)
     const built = buildTaskSave({
-      draft, orig, progressReady, childrenByParent, boqRemaining, noPlan,
+      draft, orig, progressReady, childrenByParent, noPlan,
+      boqRemaining: (boqId, exceptId) => boqRemaining(boqId, exceptId, draftPhaseId),
       issuePhase: isIssueNode(orig ? (orig.subtask_id || orig.phase_id) : draft.phase_id),
     })
     if (built.error) { alert(built.error); return }
@@ -786,7 +796,9 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const splittingTask = splittingTaskId ? taskById[splittingTaskId] : null
 
   const formProps = {
-    progressReady, boqItems, boqRemaining, canManageQty: canManagePlan(role),
+    progressReady, boqItems, canManageQty: canManagePlan(role),
+    // the open form's phase: remaining qty is per phase
+    boqRemaining: (boqId, exceptId) => boqRemaining(boqId, exceptId, phaseOfNode(draft?.phase_id)),
     onSplit: (task) => { cancelEdit(); setSplittingTaskId(task.id) },
   }
   const boardProps = {
@@ -798,6 +810,12 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
     taskPhotoCounts, onViewPhotos: handleViewPhotos, onAssignPhoto: handleAssignPhoto,
     tapAssignActive: canEdit && !!tapPhoto, onTapAssign: handleTapAssign,
+    // "+ การ์ดจาก BOQ (n)" per phase: BOQ mode, OWNER/PM, cards go straight on the phase (leaf)
+    boqBulkFor: (phaseId) => {
+      if (!canEdit || !canManagePlan(role) || !splits.boqMode || isIssueNode(phaseId) || !isLeaf(phaseId, subtasksByParent)) return null
+      const { count } = bulkCandidates(phaseId)
+      return count > 0 ? { count, onOpen: () => setBulkPhaseId(phaseId) } : null
+    },
   }
 
   return (
@@ -1011,6 +1029,13 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
           )}
           <PhaseBoard phaseId={activeLeafId} tasks={visibleTasks} progress={progressOf(activeLeafId)} {...boardProps} />
         </>
+      )}
+
+      {bulkPhaseId && phases.find((p) => p.id === bulkPhaseId) && (
+        <BoqBulkCardsDialog siteId={site.id} phase={phases.find((p) => p.id === bulkPhaseId)}
+          rows={bulkCandidates(bulkPhaseId).rows}
+          nextSortOrder={(microtasksByNodeId[bulkPhaseId] || []).reduce((m, t) => Math.max(m, t.sort_order || 0), 0) + 1}
+          onClose={() => setBulkPhaseId(null)} onCreated={afterWrite} />
       )}
 
       {recordingTask && (
@@ -1268,11 +1293,18 @@ function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
   dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto, progress,
-  role, childrenByParent, taskById, boqById, onRecord, formProps, isIssueNode, tapAssignActive, onTapAssign,
+  role, childrenByParent, taskById, boqById, onRecord, formProps, isIssueNode, tapAssignActive, onTapAssign, boqBulkFor,
 }) {
   const issueNode = !!isIssueNode?.(phaseId)
+  const boqBulk = boqBulkFor?.(phaseId)
   return (
     <>
+    {boqBulk && !editingId && (
+      <button type="button" className="btn btn-sm" data-testid="boq-bulk-button"
+        style={{ width: '100%', marginBottom: 10, border: '1px dashed var(--accent)', background: 'var(--bg3)', color: 'var(--accent)', fontWeight: 700 }}
+        title="รายการ BOQ ที่มี % ในเฟสนี้ แต่ยังมีจำนวนเหลือ"
+        onClick={boqBulk.onOpen}>+ การ์ดจาก BOQ ({boqBulk.count} รายการรอสร้าง)</button>
+    )}
     {progress && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10, fontSize: 12 }}>
         <span style={{ background: 'var(--bg3)', borderRadius: 20, padding: '2px 10px', fontWeight: 700, color: 'var(--text2)' }}>
@@ -1434,13 +1466,13 @@ function TaskEditPanel({
                   <option value="">— เลือกรายการ BOQ —</option>
                   {boqItems.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {`${b.code} ${b.description} — เหลือ ${fmtNum(boqRemaining?.(b.id, task?.id))}${b.unit ? ` ${b.unit}` : ''}`}
+                      {`${b.code} ${b.description} — เหลือในเฟสนี้ ${fmtNum(boqRemaining?.(b.id, task?.id))}${b.unit ? ` ${b.unit}` : ''}`}
                     </option>
                   ))}
                 </select>
               </label>
               <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
-                จำนวนในการ์ดนี้{boqUnit ? ` (${boqUnit})` : ''}{boqLeft != null ? ` · ใส่ได้ไม่เกิน ${fmtNum(boqLeft)}` : ''}
+                จำนวนในการ์ดนี้{boqUnit ? ` (${boqUnit})` : ''}{boqLeft != null ? ` · เหลือในเฟสนี้ ${fmtNum(boqLeft)} ใส่ได้ไม่เกินนี้` : ''}
                 <input type="number" min="0" step="any" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
                   value={draft.planned_qty} disabled={qtyLocked}
                   title={qtyLocked ? 'เฉพาะ OWNER/PM แก้จำนวนการ์ดที่มียอดแล้ว' : undefined}

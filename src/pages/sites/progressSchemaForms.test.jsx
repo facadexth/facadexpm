@@ -53,6 +53,7 @@ vi.mock('../../hooks/useSupabase.js', () => ({
   useExpenses: () => q([]),
   useSitePlans: () => ({ plans: mockPlans, items: {}, loading: false, error: null, reload: () => {} }),
   useProgressReports: () => q([]),
+  useAppSetting: () => q(''),
   attachPmWorkerNames: async (rows) => rows || [],
 }))
 

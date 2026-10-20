@@ -13,8 +13,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { useBoqItems, usePhaseTasks } from '../../hooks/useSupabase.js'
+import { useUserRole } from '../../hooks/useUserRole.js'
+import { canManagePlan } from '../../lib/roles.js'
 import { fmtNum } from './progressCalc.js'
 import { useProgressSchemaReady } from '../../lib/progressSchema.js'
+import BoqPhaseSplitSection from './BoqPhaseSplitSection.jsx'
 
 // onSave resolves to false when the save was rejected: the cell then goes back to the
 // stored value (a refetch alone returns the same value, so it would not reset the text).
@@ -40,7 +43,8 @@ function EditCell({ value, onSave, type = 'text', width, align }) {
 
 export default function BoqTab({ siteId }) {
   const { data: boq, loading, error: loadError, refetch } = useBoqItems(siteId)
-  const { data: allCards } = usePhaseTasks()
+  const { data: allCards, refetch: refetchCards } = usePhaseTasks()
+  const { role } = useUserRole()
   const [error, setError] = useState(null)
   const [note, setNote] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -190,6 +194,12 @@ export default function BoqTab({ siteId }) {
             </tbody>
           </table>
         </div>
+      )}
+      {/* "% ต่อเฟส" matrix: saving it puts the site in BOQ mode (phase weights derived by the DB);
+          card points change too, so the cards are refetched after a save */}
+      {!loading && boq.length > 0 && (
+        <BoqPhaseSplitSection siteId={siteId} boq={boq} sharesPct={shares} canManage={canManagePlan(role)}
+          onError={setError} onSaved={() => refetchCards?.()} />
       )}
     </div>
   )

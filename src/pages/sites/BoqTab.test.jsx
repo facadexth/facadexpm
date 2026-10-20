@@ -32,7 +32,9 @@ const cards = [
 vi.mock('../../hooks/useSupabase.js', () => ({
   useBoqItems: () => ({ data: boq, loading: false, error: null, refetch: refetchBoq }),
   usePhaseTasks: () => ({ data: cards, loading: false, error: null, refetch: vi.fn() }),
+  useSitePhases: () => ({ data: [], loading: false, error: null, refetch: vi.fn() }),
 }))
+vi.mock('../../hooks/useUserRole.js', () => ({ useUserRole: () => ({ role: 'PM' }) }))
 
 let mockReady = true
 vi.mock('../../lib/progressSchema.js', () => ({ useProgressSchemaReady: () => mockReady }))

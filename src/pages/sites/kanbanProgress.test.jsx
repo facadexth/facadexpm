@@ -147,7 +147,7 @@ describe('buildTaskSave (card form)', () => {
   })
   it('blocks a planned qty over what is left on the BOQ line', () => {
     expect(buildTaskSave({ draft: draft({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: '60' }), orig: null, progressReady: true, boqRemaining: () => 50 }).error)
-      .toBe('จำนวนในการ์ดนี้เกินที่เหลือใน BOQ (50)')
+      .toBe('จำนวนในการ์ดนี้เกินที่เหลือใน BOQ ของเฟสนี้ (50)')
   })
   it('sends no kind fields before the migration', () => {
     const { payload, weightFields } = buildTaskSave({ draft: draft(), orig: null, progressReady: false })
