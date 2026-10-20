@@ -92,10 +92,12 @@ function ApproveModal({ adv, startDefault, onClose, onDone }) {
   )
 }
 
-export default function AdvancesPanel({ canEdit }) {
+export default function AdvancesPanel({ canEdit, onChanged }) {
   const { isAtLeast, user } = useUserRole()
   const isOwner = isAtLeast('OWNER')
-  const { data: advances, refetch, loading, error } = useAdvances()
+  const { data: advances, refetch: refetchAdvances, loading, error } = useAdvances()
+  // Every reload also refreshes the pending count on the HR tab label.
+  const refetch = () => { refetchAdvances(); onChanged?.() }
   const { data: workers } = useAllActiveWorkers()
   const now = new Date()
   const myEmail = (user?.email || '').toLowerCase()

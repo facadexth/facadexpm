@@ -290,6 +290,15 @@ export default function HR({ navState }) {
   useEffect(() => { fetchRequests() }, [canReviewLeave, hasModuleAccess('line_bot')])
 
   const pendingRequestCount = leaveRequests.filter(r => r.status === 'pending').length
+
+  // Pending advance requests (LINE or web) for the 💸 tab label, like คำขอลา (n). RLS scopes the tenant.
+  const [pendingAdvanceCount, setPendingAdvanceCount] = useState(0)
+  const fetchPendingAdvances = async () => {
+    if (!canEdit || !showSalary) { setPendingAdvanceCount(0); return }
+    const { count, error } = await supabase.from('salary_advances').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+    if (!error) setPendingAdvanceCount(count || 0)
+  }
+  useEffect(() => { fetchPendingAdvances() }, [canEdit, showSalary])
   const visibleLeaveRequests = leaveRequests.filter(r => !leaveFocus.active || isLeavePending(r))
 
   // Check-in/check-out log -- worker_checkins, written by the GPS-based
@@ -563,7 +572,7 @@ export default function HR({ navState }) {
   const INNER_TABS = [
     { id: 'workers',  label: '👷 ข้อมูลช่าง' },
     ...(showSalary ? [{ id: 'payroll',  label: '💼 เงินเดือน' }] : []),
-    ...(showSalary ? [{ id: 'advances', label: '💸 เบิกล่วงหน้า' }] : []),
+    ...(showSalary ? [{ id: 'advances', label: `💸 เบิกล่วงหน้า${pendingAdvanceCount ? ` (${pendingAdvanceCount})` : ''}` }] : []),
     // Approval queue (เบิกของ/ขอลา จาก LINE) — only for tenants with the LINE bot module enabled, so other tenants don't see a tab for a feature they haven't set up
     ...(canReviewLeave && hasModuleAccess('line_bot') ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
     ...(canEdit ? [{ id: 'checkins', label: '🕐 เช็คอิน-เช็คเอาท์' }] : []),
@@ -715,7 +724,7 @@ export default function HR({ navState }) {
       )}
 
       {innerTab === 'payroll' && showSalary && <PayrollMonth canEdit={canEdit} />}
-      {innerTab === 'advances' && showSalary && <AdvancesPanel canEdit={canEdit} />}
+      {innerTab === 'advances' && showSalary && <AdvancesPanel canEdit={canEdit} onChanged={fetchPendingAdvances} />}
       {innerTab === 'pay_items' && showPayItems && <PayItemsEditor />}
       {innerTab === 'payroll_bank' && showPayrollBank && <BankExportSettings />}
 
