@@ -29,6 +29,8 @@ async function verifySignature(secret: string, rawBody: string, header: string |
 declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void } | undefined
 
 const SIGNED_URL_SECONDS = 604800
+// site_attachments rows that are photos (same rule as the /\.(jpe?g|png)$/i check in loadPhotos).
+const IMAGE_NAME_FILTER = 'file_name.ilike.*.jpg,file_name.ilike.*.jpeg,file_name.ilike.*.png'
 const DONE_WINDOW_MS = 30 * 24 * 3600 * 1000
 const REPAIR_SESSION_MS = 30 * 60 * 1000
 const REPAIR_BUCKET = 'repair-media'
@@ -96,6 +98,13 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
     return (data?.name as string) ?? ''
   }
 
+  // Photos are shown only when the client has exactly one active site (otherwise whose photos?).
+  async function onlyActiveSite(clientId: string): Promise<string | null> {
+    const { data: active } = await admin.from('sites').select('id')
+      .eq('tenant_id', tenantId).eq('client_id', clientId).in('status', ['Ongoing', 'On Hold'])
+    return active && active.length === 1 ? (active[0].id as string) : null
+  }
+
   const deps: CustomerDeps = {
     // A DB error must throw (the per-event catch logs it, no reply), never look like "not linked".
     async getAccount(lineUserId) {
@@ -140,8 +149,9 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         const { data: phases, error: pErr } = await admin.from('site_phases').select('site_id, name, start_date, end_date, status, sort_order')
           .eq('tenant_id', tenantId).in('site_id', activeIds).eq('is_issue_phase', false)
           .order('site_id').order('sort_order')
-        if (pErr) throw pErr
-        for (const p of phases ?? []) {
+        // Soft: only the status card needs phases; ประกันของฉัน must still answer.
+        if (pErr) console.error('customer-line loadSites phases failed', pErr.code ?? '', pErr.message ?? '')
+        for (const p of pErr ? [] : phases ?? []) {
           const list = phasesBySite.get(p.site_id as string) ?? []
           list.push({
             name: (p.name as string) ?? '',
@@ -170,15 +180,13 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       return out
     },
     async loadPhotos(clientId, limit) {
-      const { data: active } = await admin.from('sites').select('id')
-        .eq('tenant_id', tenantId).eq('client_id', clientId).in('status', ['Ongoing', 'On Hold'])
-      if (!active || active.length !== 1) return []
-      const siteId = active[0].id as string
+      const siteId = await onlyActiveSite(clientId)
+      if (!siteId) return []
       const { data: a } = await admin.from('line_site_photos').select('photo_path, created_at')
         .eq('tenant_id', tenantId).eq('site_id', siteId).eq('customer_visible', true)
         .order('created_at', { ascending: false }).limit(limit)
       const { data: b } = await admin.from('site_attachments').select('file_path, file_name, uploaded_at')
-        .eq('tenant_id', tenantId).eq('site_id', siteId).eq('customer_visible', true)
+        .eq('tenant_id', tenantId).eq('site_id', siteId).eq('customer_visible', true).or(IMAGE_NAME_FILTER)
         .order('uploaded_at', { ascending: false }).limit(10)
       const cands = [
         ...(a ?? []).map((r) => ({ bucket: 'line-site-photos', path: r.photo_path as string, at: r.created_at as string })),
@@ -191,6 +199,17 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         if (data?.signedUrl) urls.push({ url: data.signedUrl })
       }
       return urls
+    },
+    // Same rule as loadPhotos, but only counts rows (no storage signing): drives the status card's photo button.
+    async hasPhotos(clientId) {
+      const siteId = await onlyActiveSite(clientId)
+      if (!siteId) return false
+      const { count: a } = await admin.from('line_site_photos').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId).eq('site_id', siteId).eq('customer_visible', true)
+      if ((a ?? 0) > 0) return true
+      const { count: b } = await admin.from('site_attachments').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId).eq('site_id', siteId).eq('customer_visible', true).or(IMAGE_NAME_FILTER)
+      return (b ?? 0) > 0
     },
     async getContact() {
       const { data: ch } = await admin.from('customer_line_channels').select('contact_phone, contact_hours, display_name')

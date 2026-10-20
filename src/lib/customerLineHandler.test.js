@@ -23,6 +23,7 @@ function deps(over = {}) {
     getDisplayName: vi.fn().mockResolvedValue('คุณบิ๊ก'),
     loadSites: vi.fn().mockResolvedValue([site]),
     loadPhotos: vi.fn().mockResolvedValue([]),
+    hasPhotos: vi.fn().mockResolvedValue(false),
     getContact: vi.fn().mockResolvedValue(contact),
     openRequest: vi.fn().mockResolvedValue(undefined),
     touchAccount: vi.fn().mockResolvedValue(undefined),
@@ -85,15 +86,13 @@ describe('handleCustomerEvent', () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
     expect(await handleCustomerEvent(txt('ประกันของฉัน'), ctx, d)).toEqual([warrantyFlex([site], ctx.today, 'แชงค์')])
   })
-  it('linked status replies with the status card only; a photo check enables its button', async () => {
-    const d = deps({
-      getAccount: vi.fn().mockResolvedValue(linked),
-      loadPhotos: vi.fn().mockResolvedValue([{ url: 'https://x/1.jpg' }]),
-    })
+  it('linked status replies with the status card only; hasPhotos enables its button', async () => {
+    const d = deps({ getAccount: vi.fn().mockResolvedValue(linked), hasPhotos: vi.fn().mockResolvedValue(true) })
     const r = await handleCustomerEvent(txt('สถานะงาน'), ctx, d)
     expect(r).toEqual([statusFlex([{ ...site, hasPhotos: true }], '2026-10-19', 'แชงค์')])
     expect(r.some((m) => m.type === 'image')).toBe(false)
-    expect(d.loadPhotos).toHaveBeenCalledWith('c1', 1)
+    expect(d.hasPhotos).toHaveBeenCalledWith('c1')
+    expect(d.loadPhotos).not.toHaveBeenCalled()
   })
   it('linked status without photos: card has no photo button', async () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
@@ -101,20 +100,20 @@ describe('handleCustomerEvent', () => {
     expect(r).toEqual([statusFlex([{ ...site, hasPhotos: false }], '2026-10-19', 'แชงค์')])
     expect(JSON.stringify(r)).not.toContain('ดูรูปหน้างาน')
   })
-  it('linked รูปหน้างาน replies with up to 5 photos', async () => {
+  it('linked ดูรูปหน้างาน replies with up to 5 photos', async () => {
     const urls = Array.from({ length: 7 }, (_, i) => ({ url: `https://x/${i}.jpg` }))
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked), loadPhotos: vi.fn().mockResolvedValue(urls) })
-    const r = await handleCustomerEvent(txt('รูปหน้างาน'), ctx, d)
+    const r = await handleCustomerEvent(txt('ดูรูปหน้างาน'), ctx, d)
     expect(d.loadPhotos).toHaveBeenCalledWith('c1', 5)
     expect(r).toEqual(urls.slice(0, 5).map((p) => ({ type: 'image', originalContentUrl: p.url, previewImageUrl: p.url })))
   })
-  it('linked รูปหน้างาน with no photos says so', async () => {
+  it('linked ดูรูปหน้างาน with no photos says so', async () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
-    expect(await handleCustomerEvent(txt('รูปหน้างาน'), ctx, d)).toEqual([T(noPhotosText())])
+    expect(await handleCustomerEvent(txt('ดูรูปหน้างาน'), ctx, d)).toEqual([T(noPhotosText())])
   })
-  it('unlinked รูปหน้างาน -> notLinked, photos never loaded', async () => {
+  it('unlinked ดูรูปหน้างาน -> notLinked, photos never loaded', async () => {
     const d = deps()
-    expect(await handleCustomerEvent(txt('รูปหน้างาน'), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
+    expect(await handleCustomerEvent(txt('ดูรูปหน้างาน'), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
     expect(d.loadPhotos).not.toHaveBeenCalled()
   })
   it('contact for anyone', async () => {
@@ -252,6 +251,20 @@ describe('repair intake', () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
     expect(await handleCustomerEvent(txt('กระจกร้าว'), rctx, d)).toEqual([ack])
     expect(d.appendRepairText).toHaveBeenCalledWith('k1', 'กระจกร้าว')
+  })
+  it('ดูรูปหน้างาน during a session answers photos, keeps the session, appends nothing', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active), loadPhotos: vi.fn().mockResolvedValue([{ url: 'https://x/1.jpg' }]) })
+    expect(await handleCustomerEvent(txt('ดูรูปหน้างาน'), rctx, d)).toEqual([{ type: 'image', originalContentUrl: 'https://x/1.jpg', previewImageUrl: 'https://x/1.jpg' }])
+    expect(d.appendRepairText).not.toHaveBeenCalled()
+    expect(d.markCustomerUpdate).not.toHaveBeenCalled()
+    expect(d.cancelRepair).not.toHaveBeenCalled()
+    expect(d.finishRepair).not.toHaveBeenCalled()
+  })
+  it('plain รูปหน้างาน during a session is still appended as report text', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    expect(await handleCustomerEvent(txt('รูปหน้างาน'), rctx, d)).toEqual([ack])
+    expect(d.appendRepairText).toHaveBeenCalledWith('k1', 'รูปหน้างาน')
+    expect(d.loadPhotos).not.toHaveBeenCalled()
   })
   it('code-like text during a session is appended, not claimed', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })

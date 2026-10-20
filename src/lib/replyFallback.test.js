@@ -21,6 +21,20 @@ describe('replyWithFallback', () => {
     expect(send.mock.calls[1]).toEqual(['rt', [txt, { type: 'text', text: 'alt' }]])
     expect(log).toHaveBeenCalledWith('customer-line reply failed', 400, 'text,flex')
   })
+  it('fallbackText wins over altText on retry, and is never sent to LINE', async () => {
+    const send = vi.fn().mockResolvedValueOnce({ ok: false, status: 400 }).mockResolvedValueOnce({ ok: true, status: 200 })
+    const full = { ...flex, fallbackText: 'full status text' }
+    await replyWithFallback(send, 'rt', [full], vi.fn())
+    expect(send.mock.calls[0]).toEqual(['rt', [flex]])
+    expect(send.mock.calls[0][1][0]).not.toHaveProperty('fallbackText')
+    expect(send.mock.calls[1]).toEqual(['rt', [{ type: 'text', text: 'full status text' }]])
+    expect(full.fallbackText).toBe('full status text') // caller's message is not mutated
+  })
+  it('success path also strips fallbackText', async () => {
+    const send = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    await replyWithFallback(send, 'rt', [{ ...flex, fallbackText: 'x' }], vi.fn())
+    expect(send.mock.calls[0][1]).toEqual([flex])
+  })
   it('text-only failure does not retry', async () => {
     const send = vi.fn().mockResolvedValue({ ok: false, status: 500 })
     const log = vi.fn()

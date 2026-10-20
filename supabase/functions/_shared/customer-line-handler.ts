@@ -27,6 +27,8 @@ export type CustomerDeps = {
   loadSites: (clientId: string) => Promise<SiteStatus[]>
   // Newest customer-visible photos (signed https urls), at most `limit`; [] unless the client has exactly one active site.
   loadPhotos: (clientId: string, limit: number) => Promise<{ url: string }[]>
+  // Cheap check (counts rows, signs nothing): would loadPhotos return anything? Same single-active-site rule.
+  hasPhotos: (clientId: string) => Promise<boolean>
   getContact: () => Promise<{ companyName: string; phone: string | null; hours: string | null; brandName: string }>
   openRequest: (kind: 'quote', lineUserId: string, clientId: string | null, displayName: string | null) => Promise<void>
   touchAccount: (lineUserId: string) => Promise<void>
@@ -274,8 +276,8 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
   if (cmd === 'warranty') return [warrantyFlex(sites, ctx.today, (await deps.getContact()).brandName)]
 
   // status: one card per ongoing site; photos come from the card's "ดูรูปหน้างาน" button.
-  // loadPhotos only returns photos when the client has exactly one active site, so one check is enough.
-  const hasPhotos = (await deps.loadPhotos(account.clientId, 1)).length > 0
+  // hasPhotos follows loadPhotos' rule (exactly one active site), so one check covers every card.
+  const hasPhotos = await deps.hasPhotos(account.clientId)
   const { brandName } = await deps.getContact()
   return [statusFlex(sites.map((s) => ({ ...s, hasPhotos })), ctx.today, brandName)]
 }

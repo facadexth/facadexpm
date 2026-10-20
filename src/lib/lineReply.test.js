@@ -20,6 +20,12 @@ describe('sendLineReplyMessages', () => {
     await sendLineReplyMessages('tok', 'rt', [flex], f)
     expect(JSON.parse(f.mock.calls[0][1].body).messages).toEqual([flex])
   })
+  it('strips the local-only fallbackText from flex messages', async () => {
+    const f = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    const flex = { type: 'flex', altText: 'a', contents: { type: 'carousel', contents: [] } }
+    await sendLineReplyMessages('tok', 'rt', [{ ...flex, fallbackText: 'long' }], f)
+    expect(JSON.parse(f.mock.calls[0][1].body).messages).toEqual([flex])
+  })
   it('truncates to 5 messages', async () => {
     const f = vi.fn().mockResolvedValue({ ok: true, status: 200 })
     await sendLineReplyMessages('tok', 'rt', [1, 2, 3, 4, 5, 6, 7].map(t), f)

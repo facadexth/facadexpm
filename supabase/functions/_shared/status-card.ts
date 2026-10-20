@@ -13,12 +13,14 @@ const COLOR_TODAY = '#B04A38'
 const COLOR_MUTED = '#8A847C'
 
 const MAX_ROWS = 12
+const LINE_TEXT_MAX = 5000
 // LINE limits a carousel's JSON to 50 KB; keep a margin. A card costs ~1.5 KB plus ~0.55 KB per row,
 // so a busy carousel (many sites) shows fewer rows per card ("+N ขั้นตอน"), and only if even that is
 // too big are the last cards dropped (the altText fallback still lists every site).
 const CAROUSEL_BUDGET = 46000
 const MIN_ROWS = 3
 const MAX_MONTH_LABELS = 6
+const MAX_YEAR_LABELS = 4
 const ROW_H = 18
 const BAR_H = 10
 const NAME_W = '86px'
@@ -77,13 +79,17 @@ function monthLabels(span: GanttSpan): Flex[] {
   const [sy, sm] = span.start.split('-').map(Number)
   const [ey, em] = span.end.split('-').map(Number)
   const count = (ey - sy) * 12 + (em - sm) + 1
-  const step = Math.ceil(count / MAX_MONTH_LABELS)
+  // Over 12 months the same month name repeats, so each label gets a short พ.ศ. year ("ม.ค. 70"),
+  // and fewer labels fit.
+  const withYear = count > 12
+  const step = Math.ceil(count / (withYear ? MAX_YEAR_LABELS : MAX_MONTH_LABELS))
   const out: Flex[] = []
   for (let i = 0; i < count; i += step) {
     const y = sy + Math.floor((sm - 1 + i) / 12)
     const m = ((sm - 1 + i) % 12) + 1
     const offset = Math.round(((dayNum(ymd(y, m, 1)) - span.startDay) / span.days) * 100)
-    out.push({ type: 'text', text: MONTHS[m - 1], size: 'xxs', color: COLOR_MUTED, position: 'absolute', offsetStart: `${offset}%` })
+    const text = withYear ? `${MONTHS[m - 1]} ${String(y + 543).slice(-2)}` : MONTHS[m - 1]
+    out.push({ type: 'text', text, size: 'xxs', color: COLOR_MUTED, position: 'absolute', offsetTop: '0px', offsetStart: `${offset}%` })
   }
   return out
 }
@@ -95,7 +101,11 @@ function gantt(phases: SitePhase[], today: string, maxRows: number): Flex[] {
     return [{ type: 'text', text: 'ยังไม่มีแผนงาน', size: 'sm', color: COLOR_MUTED }]
   }
   const span = ganttSpan(phases, today)
-  const shown = phases.slice(0, maxRows)
+  // When capped, the window starts at the first phase not yet done (sliding back so it stays full).
+  const firstOpen = phases.findIndex((p) => p.status !== 'done')
+  const from = Math.max(0, Math.min(firstOpen === -1 ? phases.length : firstOpen, phases.length - maxRows))
+  const shown = phases.slice(from, from + maxRows)
+  const hiddenAfter = phases.length - from - shown.length
   const names: Flex[] = shown.map((p) => ({
     type: 'box', layout: 'vertical', height: `${ROW_H}px`, justifyContent: 'center',
     contents: [{ type: 'text', text: cut(p.name || '-', NAME_MAX), size: 'xxs' }],
@@ -114,7 +124,7 @@ function gantt(phases: SitePhase[], today: string, maxRows: number): Flex[] {
       contents: [
         {
           type: 'box', layout: 'vertical', position: 'absolute', offsetTop: `${(ROW_H - BAR_H) / 2}px`, offsetStart: `${offset}%`,
-          width: `${width}%`, height: `${BAR_H}px`, backgroundColor: barColor(p.status), cornerRadius: '3px', contents: [{ type: 'filler' }],
+          width: `${width}%`, height: `${BAR_H}px`, backgroundColor: barColor(p.status), cornerRadius: '3px', contents: [],
         },
       ],
     }
@@ -122,16 +132,17 @@ function gantt(phases: SitePhase[], today: string, maxRows: number): Flex[] {
   const todayPct = Math.min(99, Math.round(((dayNum(today) - span.startDay + 0.5) / span.days) * 100))
   tracks.push({
     type: 'box', layout: 'vertical', position: 'absolute', offsetTop: '0px', offsetStart: `${todayPct}%`,
-    width: '2px', height: `${shown.length * ROW_H}px`, backgroundColor: COLOR_TODAY, contents: [{ type: 'filler' }],
+    width: '2px', height: `${shown.length * ROW_H}px`, backgroundColor: COLOR_TODAY, contents: [],
   })
   const out: Flex[] = [
     {
       type: 'box', layout: 'horizontal', spacing: 'sm',
       contents: [
-        { type: 'box', layout: 'vertical', width: NAME_W, flex: 0, contents: [{ type: 'filler' }] },
+        { type: 'box', layout: 'vertical', width: NAME_W, flex: 0, contents: [] },
         { type: 'box', layout: 'vertical', flex: 1, height: '14px', contents: monthLabels(span) },
       ],
     },
+    ...(from > 0 ? [{ type: 'text', text: `+${from} ก่อนหน้า`, size: 'xxs', color: COLOR_MUTED, margin: 'xs' }] : []),
     {
       type: 'box', layout: 'horizontal', spacing: 'sm',
       contents: [
@@ -140,8 +151,8 @@ function gantt(phases: SitePhase[], today: string, maxRows: number): Flex[] {
       ],
     },
   ]
-  if (phases.length > maxRows) {
-    out.push({ type: 'text', text: `+${phases.length - maxRows} ขั้นตอน`, size: 'xxs', color: COLOR_MUTED, margin: 'sm' })
+  if (hiddenAfter > 0) {
+    out.push({ type: 'text', text: `+${hiddenAfter} ขั้นตอน`, size: 'xxs', color: COLOR_MUTED, margin: 'sm' })
   }
   out.push({ type: 'text', text: 'เส้นแดง = วันนี้ · ฟ้า = กำลังทำ · เขียว = เสร็จ', size: 'xxs', color: '#5C554D', margin: 'md', wrap: true })
   return out
@@ -157,7 +168,7 @@ function statusBubble(s: SiteStatus, today: string, maxRows: number): Flex {
   }
   const buttons: Flex[] = []
   if (s.hasPhotos) {
-    buttons.push({ type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'ดูรูปหน้างาน', text: 'รูปหน้างาน' } })
+    buttons.push({ type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'ดูรูปหน้างาน', text: 'ดูรูปหน้างาน' } })
   }
   buttons.push({ type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: 'ติดต่อเรา', text: 'ติดต่อเรา' } })
   return {
@@ -200,7 +211,9 @@ export function statusFlex(sites: SiteStatus[], today: string, brandName: string
   while (bytes(carousel) > CAROUSEL_BUDGET && rows > MIN_ROWS) carousel = build(active, --rows)
   let list = active
   while (bytes(carousel) > CAROUSEL_BUDGET && list.length > 1) carousel = build(list = list.slice(0, -1), rows)
-  return { type: 'flex', altText: altText(text), contents: carousel }
+  // fallbackText is local only: replyWithFallback sends it as plain text if LINE refuses the card,
+  // and it is stripped before anything goes to LINE.
+  return { type: 'flex', altText: altText(text), fallbackText: text.slice(0, LINE_TEXT_MAX), contents: carousel }
 }
 
 export function noPhotosText(): string {

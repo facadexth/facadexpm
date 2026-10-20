@@ -16,7 +16,7 @@ const COMMANDS: Record<string, CustomerCommand> = {
   'ตรวจสอบประกัน': 'warranty',
   'ติดต่อเรา': 'contact',
   // Sent by the status card's "ดูรูปหน้างาน" button.
-  'รูปหน้างาน': 'photos',
+  'ดูรูปหน้างาน': 'photos',
 }
 
 // Trims and removes every whitespace character, so "สถานะ งาน" matches "สถานะงาน".

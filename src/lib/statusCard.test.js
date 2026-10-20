@@ -155,7 +155,7 @@ describe('statusFlex', () => {
   it('photo button only when the site has photos', () => {
     const actions = (s) => bubbles(statusFlex([s], today, 'แชงค์'))[0].footer.contents.map((c) => c.action)
     expect(actions({ ...site, hasPhotos: true })).toEqual([
-      { type: 'message', label: 'ดูรูปหน้างาน', text: 'รูปหน้างาน' },
+      { type: 'message', label: 'ดูรูปหน้างาน', text: 'ดูรูปหน้างาน' },
       { type: 'message', label: 'ติดต่อเรา', text: 'ติดต่อเรา' },
     ])
     expect(actions(site)).toEqual([{ type: 'message', label: 'ติดต่อเรา', text: 'ติดต่อเรา' }])
@@ -198,6 +198,57 @@ describe('statusFlex', () => {
     expect(json).not.toContain('123456')
     expect(json).not.toContain('ภายใน')
     expect(json).not.toContain('สมชาย')
+  })
+  it('no deprecated filler; empty boxes use contents: []', () => {
+    const m = statusFlex([{ ...site, hasPhotos: true }], today, 'แชงค์')
+    expect(JSON.stringify(m)).not.toContain('filler')
+  })
+  it('every month label is absolute with offsetTop 0px', () => {
+    const b = bubbles(statusFlex([site], today, 'แชงค์'))[0]
+    for (const t of months(b).contents[1].contents) {
+      expect(t.position).toBe('absolute')
+      expect(t.offsetTop).toBe('0px')
+    }
+  })
+  it('a span over 12 months adds a short พ.ศ. year to month labels', () => {
+    const long = { ...site, phases: [ph('a', '2026-03-01', '2027-04-30')] }
+    const labels = texts(months(bubbles(statusFlex([long], today, 'แชงค์'))[0]))
+    expect(labels[0]).toBe('มี.ค. 69')
+    expect(labels.some((l) => l.endsWith(' 70'))).toBe(true)
+    // 12 months or fewer: no year
+    expect(texts(months(bubbles(statusFlex([site], today, 'แชงค์'))[0]))).toEqual(['ก.ย.', 'ต.ค.', 'พ.ย.'])
+  })
+  it('capped rows start at the first phase that is not done', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ph(`ขั้น ${i + 1}`, '2026-10-01', '2026-10-10', i < 5 ? 'done' : 'not_started'))
+    const t = texts(bubbles(statusFlex([{ ...site, phases: many }], today, 'แชงค์'))[0].body)
+    expect(t).toContain('+5 ก่อนหน้า')
+    expect(t).not.toContain('ขั้น 5')
+    expect(t).toContain('ขั้น 6')
+    expect(t).toContain('ขั้น 17')
+    expect(t).not.toContain('ขั้น 18')
+    expect(t).toContain('+3 ขั้นตอน')
+    // near the end: window slides back so 12 rows are still shown
+    const late = many.map((p, i) => ({ ...p, status: i < 18 ? 'done' : 'not_started' }))
+    const t2 = texts(bubbles(statusFlex([{ ...site, phases: late }], today, 'แชงค์'))[0].body)
+    expect(t2).toContain('+8 ก่อนหน้า')
+    expect(t2).toContain('ขั้น 9')
+    expect(t2).toContain('ขั้น 20')
+    expect(t2.some((x) => x.endsWith('ขั้นตอน'))).toBe(false)
+    // all done: show the last 12
+    const done = many.map((p) => ({ ...p, status: 'done' }))
+    expect(texts(bubbles(statusFlex([{ ...site, phases: done }], today, 'แชงค์'))[0].body)).toContain('+8 ก่อนหน้า')
+    // nothing done: no "ก่อนหน้า"
+    const fresh = many.map((p) => ({ ...p, status: 'not_started' }))
+    expect(texts(bubbles(statusFlex([{ ...site, phases: fresh }], today, 'แชงค์'))[0].body).some((x) => x.includes('ก่อนหน้า'))).toBe(false)
+  })
+  it('fallbackText is the full statusText, capped at 5000', () => {
+    const m = statusFlex([site], today, 'แชงค์')
+    expect(m.fallbackText).toBe(statusText([site], today, 'แชงค์'))
+    const big = Array.from({ length: 10 }, (_, i) => ({ ...site, name: `ไซต์ ${i} ${'ก'.repeat(80)}` }))
+    const m2 = statusFlex(big, today, 'แชงค์')
+    expect(m2.fallbackText).toBe(statusText(big, today, 'แชงค์'))
+    expect(m2.fallbackText.length).toBeGreaterThan(400)
+    expect(m2.fallbackText.length).toBeLessThanOrEqual(5000)
   })
   it('noPhotosText', () => {
     expect(noPhotosText().length).toBeGreaterThan(0)
