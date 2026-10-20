@@ -479,7 +479,11 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     // four elements now share this exact track geometry so they can't drift
     // apart again.
     const trackLeft = LABEL_W + GAP
-    const trackRight = 0
+    // + and ✎ get their own slot right of the track (they used to float over the
+    // track's right edge and covered bars that end near it). The slot stays while
+    // a row is being edited so the geometry never shifts.
+    const btnSlot = canEdit ? EDIT_BTN_W * 2 + 6 : 0
+    const trackRight = btnSlot ? btnSlot + GAP : 0
     const doneCount = phases.filter((p) => nodeStatsById[p.id].displayStatus === 'done').length
     const inProgressCount = phases.filter((p) => nodeStatsById[p.id].displayStatus === 'in_progress').length
     // % ตามสัญญา (ถ่วงน้ำหนัก, progressCalc.js = สูตรเดียวกับ SQL) + % รวม VO
@@ -833,31 +837,25 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                         {planTag.text}
                       </span>
                     )}
-                    {/* Floats over the track's right edge instead of taking
-                        a flex slot next to it -- so the track's own width
-                        always matches trackLeft/trackRight (no per-row
-                        canEdit-dependent shrinkage the header/grid/arrows
-                        would have to separately account for). ✎ edit and +
-                        add-subtask buttons both apply to every row (phase or
-                        subtask) now -- + sits to the left of ✎ so they never
-                        overlap. */}
-                    {canEdit && !editingId && (
-                      <button type="button" className="btn btn-sm btn-ghost"
-                        style={{
-                          position: 'absolute', top: '50%', right: 2, transform: 'translateY(-50%)',
-                          width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85,
-                        }}
-                        onClick={(e) => { e.stopPropagation(); startEdit(isPhase ? 'phase' : 'subtask', node) }}>✎</button>
-                    )}
-                    {canEdit && !editingId && (
-                      <button type="button" className="btn btn-sm btn-ghost"
-                        style={{ position: 'absolute', top: '50%', right: EDIT_BTN_W + 6, transform: 'translateY(-50%)', width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85 }}
-                        title="เพิ่มขั้นตอนย่อยใต้นี้"
-                        onClick={(e) => { e.stopPropagation(); startAdd(isPhase ? 'phase' : 'subtask', node.id, ((subtasksByParent[node.id] || []).length) + 1) }}>
-                        +
-                      </button>
-                    )}
                   </div>
+                  {btnSlot > 0 && (
+                    <div style={{ width: btnSlot, flexShrink: 0, display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      {!editingId && (
+                        <button type="button" className="btn btn-sm btn-ghost"
+                          style={{ width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85 }}
+                          title="เพิ่มขั้นตอนย่อยใต้นี้"
+                          onClick={(e) => { e.stopPropagation(); startAdd(isPhase ? 'phase' : 'subtask', node.id, ((subtasksByParent[node.id] || []).length) + 1) }}>
+                          +
+                        </button>
+                      )}
+                      {!editingId && (
+                        <button type="button" className="btn btn-sm btn-ghost"
+                          style={{ width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85 }}
+                          title="แก้ไขขั้นตอนนี้"
+                          onClick={(e) => { e.stopPropagation(); startEdit(isPhase ? 'phase' : 'subtask', node) }}>✎</button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -891,7 +889,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               </svg>
             )}
             {todayX != null && !editingId && (
-              <div style={{ position: 'absolute', top: 0, left: LABEL_W, right: 0, bottom: 0, pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', top: 0, left: trackLeft, right: trackRight, bottom: 0, pointerEvents: 'none' }}>
                 <div style={{ position: 'absolute', top: -16, left: `${todayX}%`, transform: 'translateX(-50%)', fontSize: 9.5, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
                   วันนี้
                 </div>
