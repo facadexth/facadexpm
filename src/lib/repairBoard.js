@@ -139,3 +139,24 @@ export function pickThumbs(media, max = 3) {
   }
   return out
 }
+
+// The customer added photos or details from LINE (add session) since staff last opened the ticket.
+// Instants are compared, not strings (Postgres sends +00:00 and microseconds). Same rule as the
+// repair_customer_update key of pending_counts().
+export function hasUnseenCustomerUpdate(ticket) {
+  const at = Date.parse(ticket?.customer_update_at || '')
+  if (Number.isNaN(at)) return false
+  const seen = Date.parse(ticket?.customer_update_seen_at || '')
+  return Number.isNaN(seen) || seen < at
+}
+
+// The modal's ก่อนซ่อม gallery: customer media (oldest first) then staff before photos, each item
+// marked fromCustomer for its ลูกค้า tag. Display only: the stored roles stay as they are.
+export function beforeGallery(media) {
+  const byTime = (a, b) => String(a.created_at).localeCompare(String(b.created_at))
+  const list = media || []
+  return [
+    ...list.filter((m) => m.role === 'customer').sort(byTime).map((m) => ({ ...m, fromCustomer: true })),
+    ...list.filter((m) => m.role === 'before').sort(byTime).map((m) => ({ ...m, fromCustomer: false })),
+  ]
+}

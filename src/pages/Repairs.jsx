@@ -19,7 +19,7 @@ import { formatThaiDate } from '../lib/thaiDate.js'
 import { REPAIR_STATUS, startTime } from '../lib/repairStatus.js'
 import {
   BOARD_COLUMNS, DONE_WINDOW_DAYS, groupTickets, dropAction, movePatch, ageText, crewCounts,
-  warrantyOf, matchesWarrantyFilter, pickThumbs, bangkokDateOf,
+  warrantyOf, matchesWarrantyFilter, pickThumbs, bangkokDateOf, hasUnseenCustomerUpdate,
 } from '../lib/repairBoard.js'
 
 const OPEN_STATUSES = 'pending_review,received,scheduled,in_progress'
@@ -80,6 +80,9 @@ function TicketCard({ ticket, today, nowMs, thumbs, urls, crew, canEdit, busy, o
       </div>
       {t.description && (
         <div style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>{t.description}</div>
+      )}
+      {hasUnseenCustomerUpdate(t) && (
+        <span className="badge badge-sent" style={{ cursor: 'default', alignSelf: 'flex-start' }} title="ลูกค้าส่งรูปหรือรายละเอียดเพิ่มทางไลน์ เปิดการ์ดเพื่อดู">🆕 ลูกค้าเพิ่มข้อมูล</span>
       )}
       <Thumbs thumbs={thumbs} urls={urls} />
 
@@ -143,7 +146,7 @@ export default function Repairs() {
     const cutoff = new Date(Date.now() - (DONE_WINDOW_DAYS + 1) * 86400000).toISOString()
     const { data, error: e1 } = await supabase
       .from('repair_tickets')
-      .select('id, ticket_number, site_id, client_id, source, status, description, scheduled_date, scheduled_start, duration_hours, created_at, received_at, started_at, done_at, declined_at, notified_schedule_at, reported_at, sites(name, site_number, handover_date, warranty_months), clients(name)')
+      .select('id, ticket_number, site_id, client_id, source, status, description, scheduled_date, scheduled_start, duration_hours, created_at, received_at, started_at, done_at, declined_at, notified_schedule_at, reported_at, customer_update_at, customer_update_seen_at, sites(name, site_number, handover_date, warranty_months), clients(name)')
       .or(`status.in.(${OPEN_STATUSES}),done_at.gte.${cutoff},declined_at.gte.${cutoff}`)
       .order('created_at', { ascending: false })
     if (stale()) return

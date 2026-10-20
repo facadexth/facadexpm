@@ -18,6 +18,9 @@ export const PENDING_ITEMS = [
   { key: 'warranty_followup', icon: '🛡️', label: 'ประกันใกล้หมด — ทักลูกค้า', tab: 'sites' },
   // Repair reports from customers (LINE) waiting for a yes/no on the งานซ่อม board (admin/owner, module line_bot).
   { key: 'repair_pending', icon: '🔧', label: 'งานซ่อมรอพิจารณา', tab: 'repairs' },
+  // Accepted repair tickets (received / scheduled / in_progress) the customer added photos or details to
+  // from LINE since staff last opened them (admin/owner). pending_review ones are already in repair_pending.
+  { key: 'repair_customer_update', icon: '🆕', label: 'ลูกค้าเพิ่มข้อมูลงานซ่อม', tab: 'repairs' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา',          tab: 'quotations' },
 ]
 

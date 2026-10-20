@@ -3,9 +3,11 @@
 //   onClose()   -- closed and nothing was saved
 //   onChanged() -- closed after something was saved; the board reloads
 // Sections: header (number, site, warranty, site status, status pills + in-between moves),
-// จากลูกค้า (description + customer media), นัดหมาย (date, time, hours, crew -> worker_assignments,
+// จากลูกค้า (description), นัดหมาย (date, time, hours, crew -> worker_assignments,
 // optional LINE push), ผลการซ่อม (before/after photos, fix note, ปิดงาน + report push).
 // Status changes go through movePatch (ruling R22). A push never undoes a saved schedule or close.
+// Customer media (role 'customer') is shown in the ก่อนซ่อม gallery with a ลูกค้า tag (beforeGallery).
+// Opening a ticket the customer added to from LINE marks the addition seen (board badge + bell).
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase.js'
@@ -17,7 +19,7 @@ import { canEditPage } from '../lib/permissions.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { formatThaiDate } from '../lib/thaiDate.js'
 import { REPAIR_STATUS, canMove, startTime } from '../lib/repairStatus.js'
-import { movePatch, warrantyOf, bangkokDateOf } from '../lib/repairBoard.js'
+import { movePatch, warrantyOf, bangkokDateOf, hasUnseenCustomerUpdate, beforeGallery } from '../lib/repairBoard.js'
 import { planRepairAssignments, repairShifts } from '../lib/repairAssign.js'
 import { uploadRepairPhotos, REPAIR_BUCKET } from '../lib/repairUpload.js'
 import { invokeRepairPush, customerPushDefault } from '../lib/repairPush.js'
@@ -53,6 +55,10 @@ const bkkTime = (iso) => {
 const workerLabel = (w) => (w ? `${w.name || '-'}${w.nickname ? ` (${w.nickname})` : ''}` : '-')
 const box = { width: 84, height: 84, borderRadius: 8, overflow: 'hidden', flex: '0 0 auto', border: '1px solid var(--border)', background: 'var(--bg3)' }
 const sec = { fontSize: 14, fontWeight: 700, marginTop: 4 }
+const customerTag = {
+  position: 'absolute', left: 3, top: 3, fontSize: 10, fontWeight: 700, lineHeight: 1.4, padding: '0 5px',
+  borderRadius: 4, background: 'rgba(0,0,0,0.6)', color: '#fff', pointerEvents: 'none',
+}
 
 function WarrantyPill({ ticket, today }) {
   const w = warrantyOf(ticket, today)
@@ -62,30 +68,38 @@ function WarrantyPill({ ticket, today }) {
   return <span className="badge badge-draft" style={{ cursor: 'default' }}>ยังไม่ส่งมอบ</span>
 }
 
+// One gallery tile: image (opens the lightbox), inline video, or a file download link.
+function mediaTile(m, url, onOpenImage) {
+  if (m.media_type === 'image') {
+    return (
+      <button key={m.id} type="button" title={m.file_name || ''} onClick={() => url && onOpenImage(url)}
+        style={{ ...box, padding: 0, cursor: url ? 'zoom-in' : 'default' }}>
+        {url ? <img src={url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : '🖼️'}
+      </button>
+    )
+  }
+  if (m.media_type === 'video') {
+    return url
+      ? <video key={m.id} src={url} controls preload="metadata" style={{ width: 200, height: 112, borderRadius: 8, background: '#000' }} />
+      : <div key={m.id} style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🎬</div>
+  }
+  return (
+    <a key={m.id} href={url || undefined} target="_blank" rel="noreferrer" download={m.file_name || true}
+      style={{ ...box, width: 'auto', minWidth: 84, maxWidth: 200, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text)', textDecoration: 'none' }}>
+      📄 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.file_name || 'ไฟล์'}</span>
+    </a>
+  )
+}
+
 function MediaTiles({ items, urls, onOpenImage, onAdd, adding }) {
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
       {items.map((m) => {
-        const url = urls[m.storage_path]
-        if (m.media_type === 'image') {
-          return (
-            <button key={m.id} type="button" title={m.file_name || ''} onClick={() => url && onOpenImage(url)}
-              style={{ ...box, padding: 0, cursor: url ? 'zoom-in' : 'default' }}>
-              {url ? <img src={url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : '🖼️'}
-            </button>
-          )
-        }
-        if (m.media_type === 'video') {
-          return url
-            ? <video key={m.id} src={url} controls preload="metadata" style={{ width: 200, height: 112, borderRadius: 8, background: '#000' }} />
-            : <div key={m.id} style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🎬</div>
-        }
-        return (
-          <a key={m.id} href={url || undefined} target="_blank" rel="noreferrer" download={m.file_name || true}
-            style={{ ...box, width: 'auto', minWidth: 84, maxWidth: 200, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text)', textDecoration: 'none' }}>
-            📄 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.file_name || 'ไฟล์'}</span>
-          </a>
-        )
+        const tile = mediaTile(m, urls[m.storage_path], onOpenImage)
+        // Customer media sits in the ก่อนซ่อม gallery; a small tag tells it apart from the crew's photos.
+        return m.fromCustomer
+          ? <div key={m.id} style={{ position: 'relative', display: 'flex' }}>{tile}<span style={customerTag}>ลูกค้า</span></div>
+          : tile
       })}
       {onAdd && (
         <label style={{ ...box, border: '2px dashed var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: adding ? 12 : 22, color: 'var(--text3)', cursor: adding ? 'wait' : 'pointer' }}
@@ -167,6 +181,17 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       const t = await loadTicket()
       if (!alive || !t) return
       loadMedia()
+      // The customer added something from LINE: opening the ticket marks it seen. The stored value is the
+      // customer_update_at we just read (not this device's clock), so a newer addition stays unseen.
+      // Runs alongside the form prefill below; onChanged on close then reloads the board.
+      if (hasUnseenCustomerUpdate(t)) {
+        supabase.from('repair_tickets')
+          .update({ customer_update_seen_at: t.customer_update_at }).eq('id', t.id).select('id')
+          .then(({ data: seen, error: seenErr }) => {
+            if (seenErr) console.error('repair: mark customer update seen failed', seenErr.message)
+            else if (alive && (seen || []).length > 0) setChanged(true)
+          })
+      }
       // Prefill the form from the saved appointment and the crew assigned on that date.
       let crew = []
       const names = {}
@@ -214,6 +239,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     for (const m of media) (g[m.role] || (g[m.role] = [])).push(m)
     return g
   }, [media])
+  const beforeItems = useMemo(() => beforeGallery(media), [media])
 
   const workerById = useMemo(() => Object.fromEntries((workers || []).map((w) => [w.id, w])), [workers])
   const shownWorkers = useMemo(() => {
@@ -409,10 +435,11 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                 : `รายละเอียด (เปิดเอง${t.created_by ? ` โดย ${t.created_by}` : ''} · ${formatThaiDate(bangkokDateOf(t.created_at))} ${bkkTime(t.created_at)})`}
             </div>
             <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{t.description || <span style={{ color: 'var(--text3)' }}>ไม่มีรายละเอียด</span>}</div>
-            {byRole.customer.length > 0 && (
+            {/* No ผลการซ่อม section on these statuses, so the customer's media is shown here (read-only). */}
+            {(status === 'pending_review' || status === 'declined') && beforeItems.length > 0 && (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>จากลูกค้า</div>
-                <MediaTiles items={byRole.customer} urls={urls} onOpenImage={setLightbox} />
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>ก่อนซ่อม</div>
+                <MediaTiles items={beforeItems} urls={urls} onOpenImage={setLightbox} />
               </div>
             )}
 
@@ -492,7 +519,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                 <div className="form-grid-2" style={{ gap: 14 }}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>ก่อนซ่อม</div>
-                    <MediaTiles items={byRole.before} urls={urls} onOpenImage={setLightbox}
+                    <MediaTiles items={beforeItems} urls={urls} onOpenImage={setLightbox}
                       onAdd={canUpload ? (f) => upload('before', f) : null} adding={uploading === 'before'} />
                     <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>รูปจากลูกค้า + ช่างถ่ายก่อนเริ่ม</div>
                   </div>

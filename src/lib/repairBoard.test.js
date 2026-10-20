@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   BOARD_COLUMNS, DONE_WINDOW_DAYS, groupTickets, dropAction, movePatch, ageText, crewCounts,
-  warrantyOf, matchesWarrantyFilter, pickThumbs, bangkokDateOf,
+  warrantyOf, matchesWarrantyFilter, pickThumbs, bangkokDateOf, hasUnseenCustomerUpdate, beforeGallery,
 } from './repairBoard.js'
 
 const TODAY = '2026-10-20'
@@ -192,5 +192,43 @@ describe('pickThumbs', () => {
     const out = pickThumbs(rows)
     expect(out.a.shown.map((m) => m.id)).toEqual(['c1', 'c2', 'be'])
     expect(out.a.more).toBe(1)
+  })
+})
+
+describe('hasUnseenCustomerUpdate', () => {
+  it('true when the customer added something and staff have not seen it since', () => {
+    expect(hasUnseenCustomerUpdate({ customer_update_at: '2026-10-20T03:00:00Z', customer_update_seen_at: null })).toBe(true)
+    expect(hasUnseenCustomerUpdate({ customer_update_at: '2026-10-20T03:00:00Z' })).toBe(true)
+    expect(hasUnseenCustomerUpdate({ customer_update_at: '2026-10-20T03:00:00Z', customer_update_seen_at: '2026-10-20T02:59:59Z' })).toBe(true)
+  })
+  it('false when nothing was added, or staff saw it at/after the update', () => {
+    expect(hasUnseenCustomerUpdate({})).toBe(false)
+    expect(hasUnseenCustomerUpdate(null)).toBe(false)
+    expect(hasUnseenCustomerUpdate({ customer_update_at: null, customer_update_seen_at: null })).toBe(false)
+    expect(hasUnseenCustomerUpdate({ customer_update_at: '2026-10-20T03:00:00Z', customer_update_seen_at: '2026-10-20T03:00:00Z' })).toBe(false)
+    expect(hasUnseenCustomerUpdate({ customer_update_at: '2026-10-20T03:00:00Z', customer_update_seen_at: '2026-10-20T04:00:00Z' })).toBe(false)
+  })
+  it('compares instants, not strings (+00:00 vs Z, microseconds)', () => {
+    expect(hasUnseenCustomerUpdate({ customer_update_at: '2026-10-20T03:00:00.5+00:00', customer_update_seen_at: '2026-10-20T03:00:01Z' })).toBe(false)
+    expect(hasUnseenCustomerUpdate({ customer_update_at: '2026-10-20T10:00:00+07:00', customer_update_seen_at: '2026-10-20T02:00:00Z' })).toBe(true)
+  })
+})
+
+describe('beforeGallery', () => {
+  it('customer media first, then before photos; after photos left out; customer items are tagged', () => {
+    const media = [
+      { id: 'b1', role: 'before', created_at: '2026-10-20T01:00:00Z' },
+      { id: 'c2', role: 'customer', created_at: '2026-10-20T02:00:00Z' },
+      { id: 'a1', role: 'after', created_at: '2026-10-20T03:00:00Z' },
+      { id: 'c1', role: 'customer', created_at: '2026-10-19T02:00:00Z' },
+    ]
+    const g = beforeGallery(media)
+    expect(g.map((m) => m.id)).toEqual(['c1', 'c2', 'b1'])
+    expect(g.map((m) => m.fromCustomer)).toEqual([true, true, false])
+    expect(g[0].role).toBe('customer') // the data role is unchanged
+  })
+  it('empty and missing input', () => {
+    expect(beforeGallery([])).toEqual([])
+    expect(beforeGallery(null)).toEqual([])
   })
 })

@@ -94,3 +94,16 @@ describe('repair_pending bell item', () => {
     expect(visiblePendingItems({ repair_pending: 2 }, tab => tab !== 'repairs')).toEqual([])
   })
 })
+
+describe('repair_customer_update bell item', () => {
+  it('is listed right after repair_pending, lands on งานซ่อม, hides from anyone who cannot open it', () => {
+    const item = PENDING_ITEMS.find(i => i.key === 'repair_customer_update')
+    expect(item).toEqual({ key: 'repair_customer_update', icon: '🆕', label: 'ลูกค้าเพิ่มข้อมูลงานซ่อม', tab: 'repairs' })
+    const keys = PENDING_ITEMS.map(i => i.key)
+    expect(keys.indexOf('repair_customer_update')).toBe(keys.indexOf('repair_pending') + 1)
+    const shown = visiblePendingItems({ repair_pending: 1, repair_customer_update: 2 }, all)
+    expect(shown.map(i => [i.key, i.count, i.tab])).toEqual([['repair_pending', 1, 'repairs'], ['repair_customer_update', 2, 'repairs']])
+    expect(badgeByTab(shown)).toEqual({ repairs: 3 })
+    expect(visiblePendingItems({ repair_customer_update: 2 }, tab => tab !== 'repairs')).toEqual([])
+  })
+})
