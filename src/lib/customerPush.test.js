@@ -159,3 +159,20 @@ describe('customerPushDeps', () => {
     expect(await customerPushDeps(b).accessToken('t1')).toBe(null)
   })
 })
+
+describe('flex fallback', () => {
+  const FLEX = [{ type: 'flex', altText: 'นัดเข้าซ่อม', contents: { type: 'bubble' } }]
+  it('LINE rejects a card with 400: resend once as its plain altText, one budget use', async () => {
+    const d = deps({ fetch: vi.fn().mockResolvedValueOnce({ ok: false, status: 400 }).mockResolvedValueOnce({ ok: true, status: 200 }) })
+    const r = await pushToCustomer(d, 't1', 'U1', FLEX)
+    expect(r).toEqual({ sent: true, status: 200 })
+    expect(d.fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(d.fetch.mock.calls[1][1].body).messages).toEqual([{ type: 'text', text: 'นัดเข้าซ่อม' }])
+    expect(d.consumeBudget).toHaveBeenCalledTimes(1)
+  })
+  it('a plain-text 400 is not retried', async () => {
+    const d = deps({ fetch: vi.fn(async () => ({ ok: false, status: 400 })) })
+    await pushToCustomer(d, 't1', 'U1', MSG)
+    expect(d.fetch).toHaveBeenCalledTimes(1)
+  })
+})

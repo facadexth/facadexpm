@@ -3,7 +3,7 @@ import {
   REPAIR_STATUS, REPAIR_STEPS, canMove, stepIndex, mediaTooBig, thaiWeekday, endTime,
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, scheduleText, reminderText, repairStatusFlex, repairReportFlex,
-  repairMediaExt, repairMediaPath, quickReplyLabel, repairUploadMime, repairReceivedFlex, repairGotItText,
+  repairMediaExt, repairMediaPath, quickReplyLabel, repairUploadMime, repairReceivedFlex, repairGotItText, repairScheduleFlex, repairReminderFlex,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const sched = {
@@ -321,5 +321,30 @@ describe('received card', () => {
   })
   it('got-it text', () => {
     expect(repairGotItText()).toBe('ได้รับแล้ว ✓ ส่งเพิ่มได้อีก หรือกด "ส่งครบแล้ว" เมื่อครบ')
+  })
+})
+
+describe('appointment and reminder cards', () => {
+  it('appointment card: valid, text fallback, date, time, contact button', () => {
+    const m = repairScheduleFlex(sched)
+    checkFlex(m)
+    expect(m.altText).toBe(scheduleText(sched))
+    const all = JSON.stringify(m.contents)
+    for (const x of ['RP2610-001', 'นัดเข้าซ่อม', 'บ้านคุณสมชาย', 'พ. 21/10/2569', '09:00–10:30', 'ประมาณ 1.5 ชม.']) expect(all).toContain(x)
+    expect(m.contents.footer.contents[0].action).toEqual({ type: 'message', label: 'ติดต่อ / ขอเลื่อนนัด', text: 'ติดต่อเรา' })
+  })
+  it('reminder card: valid, text fallback, says tomorrow', () => {
+    const m = repairReminderFlex(sched)
+    checkFlex(m)
+    expect(m.altText).toBe(reminderText(sched))
+    const all = JSON.stringify(m.contents)
+    for (const x of ['พรุ่งนี้', 'บ้านคุณสมชาย', 'พ. 21/10/2569', '09:00–10:30', 'เตรียมพื้นที่']) expect(all).toContain(x)
+  })
+  it('missing start time: no time row, no dangling dash', () => {
+    for (const f of [repairScheduleFlex, repairReminderFlex]) {
+      const m = f({ ...sched, scheduled_start: null })
+      checkFlex(m)
+      expect(JSON.stringify(m.contents)).not.toMatch(/–|ประมาณ/)
+    }
   })
 })

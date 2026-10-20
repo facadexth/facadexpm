@@ -56,14 +56,24 @@ export async function pushToCustomer(
   }
   if (!allowed) return { sent: false, skipped: 'budget' }
 
+  const send = (msgs: unknown[]) => deps.fetch(LINE_PUSH_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to: recipient, messages: msgs }),
+    signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(15000) : undefined,
+  })
   let res: { ok: boolean; status: number }
   try {
-    res = await deps.fetch(LINE_PUSH_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: recipient, messages }),
-      signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(15000) : undefined,
-    })
+    res = await send(messages)
+    // LINE refuses the whole push (400) if a card is invalid: resend once as the cards' plain altText.
+    const hasFlex = messages.some((m) => (m as { type?: string })?.type === 'flex')
+    if (!res.ok && res.status === 400 && hasFlex) {
+      console.error('customer push: card refused, sending text', tenantId)
+      res = await send(messages.map((m) => {
+        const x = m as { type?: string; altText?: string }
+        return x?.type === 'flex' ? { type: 'text', text: String(x.altText ?? '') } : m
+      }))
+    }
   } catch (e) {
     console.error('customer push: LINE unreachable', tenantId, (e as Error)?.name ?? 'Error')
     return { sent: false, skipped: 'error', status: 0 }

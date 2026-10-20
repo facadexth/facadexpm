@@ -324,6 +324,61 @@ export function repairReceivedFlex(ticketNumber: string, siteName: string, count
   }
 }
 
+function appointmentBox(t: RepairTicket, color: string, bg: string): Flex {
+  const d = String(t.scheduled_date ?? '')
+  const range = timeRange(t)
+  return {
+    type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '12px', backgroundColor: bg, cornerRadius: '8px',
+    contents: [
+      { type: 'text', text: `${thaiWeekday(d)} ${formatThaiDate(d)}`.trim() || '-', size: 'lg', weight: 'bold', color, wrap: true },
+      ...(range ? [{ type: 'text', text: `🕘 ${range}${durationNote(t)}`, size: 'sm', color: '#5C554D', wrap: true }] : []),
+    ],
+  }
+}
+
+function pushCard(alt: string, headerColor: string, headTop: string, headTitle: string, body: Flex[]): LineMessage {
+  return {
+    type: 'flex',
+    altText: altOf(alt),
+    contents: {
+      type: 'bubble', size: 'mega',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: headerColor, paddingAll: '16px', spacing: 'xs',
+        contents: [
+          { type: 'text', text: headTop, size: 'xs', color: '#FFFFFFCC' },
+          { type: 'text', text: headTitle, size: 'lg', weight: 'bold', color: '#FFFFFF', wrap: true },
+        ],
+      },
+      body: { type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '16px', contents: body },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          { type: 'button', style: 'secondary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'message', label: 'ติดต่อ / ขอเลื่อนนัด', text: 'ติดต่อเรา' } },
+        ],
+      },
+    },
+  }
+}
+
+// Appointment push. altText = scheduleText, which is also the fallback if LINE refuses the card.
+export function repairScheduleFlex(t: RepairTicket): LineMessage {
+  return pushCard(scheduleText(t), HEADER_COLOR.scheduled, t.ticket_number || '-', '📅 นัดเข้าซ่อม', [
+    { type: 'text', text: t.site_name || '-', size: 'md', weight: 'bold', wrap: true },
+    appointmentBox(t, HEADER_COLOR.scheduled, '#EBF4FF'),
+    stepper(stepIndex('scheduled')),
+    { type: 'text', text: 'หากไม่สะดวก ตอบกลับในแชทนี้ได้เลยครับ', size: 'xs', color: '#8A847C', wrap: true },
+  ])
+}
+
+// Day-before reminder push (13:00). altText = reminderText.
+export function repairReminderFlex(t: RepairTicket): LineMessage {
+  return pushCard(reminderText(t), COLOR_AMBER, t.ticket_number || '-', '🔔 พรุ่งนี้ทีมช่างเข้าซ่อม', [
+    { type: 'text', text: t.site_name || '-', size: 'md', weight: 'bold', wrap: true },
+    appointmentBox(t, COLOR_AMBER, '#FFF7E6'),
+    { type: 'text', text: 'รบกวนเตรียมพื้นที่หน้างานให้ด้วยนะครับ 🙏', size: 'sm', color: '#5C554D', wrap: true },
+  ])
+}
+
 const OPEN = ['pending_review', 'received', 'scheduled', 'in_progress']
 
 export function repairStatusFlex(tickets: RepairTicket[], today: string): LineMessage {

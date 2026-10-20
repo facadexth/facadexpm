@@ -14,7 +14,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { pushToCustomer, customerPushDeps } from '../_shared/customer-push.ts'
 import type { CustomerPushDeps, CustomerPushResult } from '../_shared/customer-push.ts'
-import { scheduleText, reminderText, repairReportFlex } from '../_shared/repair.ts'
+import { repairScheduleFlex, repairReminderFlex, repairReportFlex } from '../_shared/repair.ts'
 import type { RepairTicket } from '../_shared/repair.ts'
 import { warrantyStatus } from '../_shared/warranty.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
@@ -148,7 +148,7 @@ async function actionSchedule(tenantId: string, t: TicketRow): Promise<Response>
   const site = await loadSite(tenantId, t.site_id)
   const to = await recipientFor(tenantId, t)
   const result = await pushToCustomer(customerPushDeps(admin), tenantId, to,
-    [{ type: 'text', text: scheduleText(toRepairTicket(t, site)) }])
+    [repairScheduleFlex(toRepairTicket(t, site))])
   const patch: Record<string, unknown> = {}
   if (result.sent) patch.notified_schedule_at = new Date().toISOString()
   // A moved appointment that is still ahead gets reminded again, whether or not this push went out.
@@ -279,7 +279,7 @@ async function runReminders(): Promise<Response> {
       for (const t of tickets) {
         const to = t.line_user_id || (t.client_id ? accounts.get(t.client_id) : null) || null
         const r = await pushToCustomer(deps, tenantId, to,
-          [{ type: 'text', text: reminderText(toRepairTicket(t, sites.get(t.site_id) ?? null)) }])
+          [repairReminderFlex(toRepairTicket(t, sites.get(t.site_id) ?? null))])
         const kind = r.sent ? 'sent' : (r.skipped ?? 'error')
         summary[kind]++
         handled++
