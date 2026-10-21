@@ -987,7 +987,11 @@ export function useBoqItems(siteId) {
       .eq('site_id', siteId)
       .order('sort_order', { ascending: true })
     if (err) throw err
-    return rows || []
+    // Rows read in รหัส order (1, 2, …, 10, 11), natural sort; no code -> last, then sort_order.
+    return (rows || []).slice().sort((x, y) => {
+      if (!x.code !== !y.code) return x.code ? -1 : 1
+      return String(x.code ?? '').localeCompare(String(y.code ?? ''), 'th', { numeric: true }) || (x.sort_order ?? 0) - (y.sort_order ?? 0)
+    })
   }, [siteId])
   return { data: data ?? [], loading, error, refetch }
 }
