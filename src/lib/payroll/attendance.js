@@ -6,9 +6,13 @@ import { weekdayOf, monthRange } from './period.js'
 
 const WORK_TYPES = ['site', 'factory', 'office']
 
-export function summarizeAttendance({ shifts = [], otRows = [], holidayDates = [], requireConfirm = false }) {
+// checkinOt (optional, 2026-10-21 "คิด OT จากเวลาเช็คอิน", default off): 'worker|date' -> OT
+// hours computed from check-in work time (src/lib/checkinDay.js). A date in it REPLACES that
+// date's assignment/worker_ot OT; every other date keeps the manual OT.
+export function summarizeAttendance({ shifts = [], otRows = [], holidayDates = [], requireConfirm = false, checkinOt = null }) {
   const hol = new Set(holidayDates)
   const out = {}
+  const fromCheckin = (w, d) => checkinOt != null && Object.prototype.hasOwnProperty.call(checkinOt, `${w}|${d}`)
   const get = id => (out[id] ||= { daysWorked: 0, leavePersonalDays: 0, leaveSickDays: 0, otHours: 0, holidayShifts: 0, officeDays: 0 })
   for (const s of shifts) {
     const a = get(s.worker_id)
@@ -17,10 +21,11 @@ export function summarizeAttendance({ shifts = [], otRows = [], holidayDates = [
     if (s.type === 'office') a.officeDays += 0.5
     if (s.type === 'leave_sick') a.leaveSickDays += 0.5
     if (s.type === 'leave_personal' || s.type === 'leave') a.leavePersonalDays += 0.5
-    if (s.type === 'site') a.otHours += Number(s.ot_hours) || 0
+    if (s.type === 'site' && !fromCheckin(s.worker_id, s.date)) a.otHours += Number(s.ot_hours) || 0
     if ((s.type === 'factory' || siteCounts) && (hol.has(s.date) || weekdayOf(s.date) === 0)) a.holidayShifts += 1
   }
-  for (const o of otRows) get(o.worker_id).otHours += Number(o.ot_hours) || 0
+  for (const o of otRows) if (!fromCheckin(o.worker_id, o.date)) get(o.worker_id).otHours += Number(o.ot_hours) || 0
+  for (const [k, h] of Object.entries(checkinOt ?? {})) get(k.split('|')[0]).otHours += Number(h) || 0
   return out
 }
 

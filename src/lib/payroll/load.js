@@ -3,6 +3,7 @@
 import { supabase } from '../supabase.js'
 import { monthRange } from './period.js'
 import { summarizeAttendance, findAssignGaps } from './attendance.js'
+import { buildCheckinDays, otByWorkerDate } from '../checkinDay.js'
 import { advancesDueFor, manualFromLines, buildPayrollRun, diffRuns } from './run.js'
 
 const must = ({ data, error }) => { if (error) throw error; return data }
@@ -38,10 +39,10 @@ export async function loadPayrollMonth(year, month) {
       .select('id, worker_id, net_pay, paid_date, facts, workers(name, nickname, position, employee_code, bank_code, bank_account_no, bank_account_name, bank_branch_code), salary_record_lines(*)')
       .eq('year', year).eq('month', month).then(must),
     fetchAllPages(() => supabase.from('worker_assignments').select('id, worker_id, type, shift, ot_hours, date, confirmed_at').gte('date', from).lte('date', to)),
-    fetchAllPages(() => supabase.from('worker_ot').select('id, worker_id, ot_hours').gte('date', from).lte('date', to)),
+    fetchAllPages(() => supabase.from('worker_ot').select('id, worker_id, ot_hours, date').gte('date', from).lte('date', to)),
     supabase.from('company_holidays').select('date').gte('date', from).lte('date', to).then(must),
     supabase.from('salary_advances').select('*').in('status', ['approved', 'settled']).then(must),
-    supabase.from('app_settings').select('key, value').in('key', ['holiday_pay_multiplier', 'require_checkin_confirmation']).then(must),
+    supabase.from('app_settings').select('key, value').in('key', ['holiday_pay_multiplier', 'require_checkin_confirmation', 'ot_from_checkin', 'checkin_standard_day_hours', 'assembly_mode', 'assembly_location_id']).then(must),
   ])
   // Ex-workers who still have a record or shifts this month stay in the run.
   const activeIds = new Set(activeWorkers.map(w => w.id))
@@ -53,6 +54,7 @@ export async function loadPayrollMonth(year, month) {
   const workers = [...activeWorkers, ...extra.map(w => ({ ...w, inactive: true }))]
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'th'))
   const setting = k => settingsRows.find(r => r.key === k)?.value
+  const checkinOt = setting('ot_from_checkin') === 'true' ? await loadCheckinOt(from, to, setting) : null
   const priorLines = await loadAdvanceLines(advances.filter(a => ['approved', 'settled'].includes(a.status)).map(a => a.id))
   const amountsByWorker = {}
   for (const a of amounts) (amountsByWorker[a.worker_id] ||= {})[a.pay_item_id] = Number(a.amount)
@@ -60,7 +62,7 @@ export async function loadPayrollMonth(year, month) {
   for (const r of records) manualByWorker[r.worker_id] = manualFromLines(r.salary_record_lines)
   const inputs = {
     items, workers, amountsByWorker, manualByWorker,
-    attendanceByWorker: summarizeAttendance({ shifts, otRows, holidayDates: holidays.map(h => h.date), requireConfirm: setting('require_checkin_confirmation') === 'true' }),
+    attendanceByWorker: summarizeAttendance({ shifts, otRows, holidayDates: holidays.map(h => h.date), requireConfirm: setting('require_checkin_confirmation') === 'true', checkinOt }),
     advancesDueByWorker: advancesDueFor({ advances, priorLines, year, month }),
     settings: { holidayMultiplier: parseFloat(setting('holiday_pay_multiplier')) || 1.5 },
   }
@@ -68,6 +70,23 @@ export async function loadPayrollMonth(year, month) {
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const assignGaps = findAssignGaps({ workers: workers.filter(w => !w.inactive), shifts, holidayDates: holidays.map(h => h.date), year, month, today })
   return { period, items, workers, records, advances, advanceLines: priorLines, inputs, assignGaps }
+}
+
+// "คิด OT จากเวลาเช็คอิน" (app_settings ot_from_checkin = 'true', default off): OT per
+// worker-date from check-in work time (src/lib/checkinDay.js). Only read when the switch is on,
+// so payroll is unchanged for every tenant that never turned it on.
+async function loadCheckinOt(from, to, setting) {
+  const [checkins, assignments, sites] = await Promise.all([
+    fetchAllPages(() => supabase.from('worker_checkins').select('id, worker_id, date, site_id, checkin_location_id, is_assembly, checkin_at, checkout_at').gte('date', from).lte('date', to)),
+    fetchAllPages(() => supabase.from('worker_assignments').select('id, worker_id, date, site_id, shift, type, is_team_leader').gte('date', from).lte('date', to)),
+    supabase.from('sites').select('id, name, assembly_mode').then(must),
+  ])
+  const days = buildCheckinDays({
+    checkins, assignments,
+    sites: Object.fromEntries(sites.map(s => [s.id, s])),
+    settings: { assemblyMode: setting('assembly_mode') || 'none', assemblyLocationId: setting('assembly_location_id') || null },
+  })
+  return otByWorkerDate(days, parseFloat(setting('checkin_standard_day_hours')) || 8)
 }
 
 export async function loadAdvanceLines(advanceIds) {

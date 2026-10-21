@@ -54,3 +54,21 @@ describe('findAssignGaps', () => {
     expect(findAssignGaps({ workers, shifts: [], holidayDates: [], year: 2026, month: 11, today: '2026-10-07' })).toEqual([])
   })
 })
+
+describe('summarizeAttendance checkinOt (คิด OT จากเวลาเช็คอิน)', () => {
+  const shifts = [
+    { worker_id: 'a', type: 'site', date: '2026-10-01', ot_hours: 1 },
+    { worker_id: 'a', type: 'site', date: '2026-10-02', ot_hours: 2 },
+  ]
+  const otRows = [{ worker_id: 'a', date: '2026-10-01', ot_hours: 3 }, { worker_id: 'a', date: '2026-10-03', ot_hours: 0.5 }]
+  it('without checkinOt: unchanged sum', () => {
+    expect(summarizeAttendance({ shifts, otRows }).a.otHours).toBe(6.5)
+  })
+  it('a date with a check-in work time replaces that date\'s manual OT; other dates keep theirs', () => {
+    const r = summarizeAttendance({ shifts, otRows, checkinOt: { 'a|2026-10-01': 2.47 } })
+    expect(r.a.otHours).toBeCloseTo(2.47 + 2 + 0.5, 5)
+  })
+  it('adds a worker who only has check-in OT', () => {
+    expect(summarizeAttendance({ shifts: [], otRows: [], checkinOt: { 'z|2026-10-01': 1.5 } }).z.otHours).toBe(1.5)
+  })
+})
