@@ -437,7 +437,7 @@ export default function App() {
   // enforced for that tab (module entitlement, per-role permission
   // override, platformAdminOnly).
   const renderPage = () => {
-    const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
+    const props = { navigateTo, navState, pendingCounts, canSeeTab, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
     const entry = ALL_TAB_ENTRIES.find(t => t.id === activeTab) ?? ALL_TAB_ENTRIES[0]
     const gate = { tabId: entry.id, minRole: entry.minRole, module: entry.module, pageKey: entry.permKey ?? entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading }
 

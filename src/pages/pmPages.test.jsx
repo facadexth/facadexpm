@@ -137,11 +137,35 @@ describe.each([false, true])('PM pages (phone=%s)', isPhone => {
     expect(container.textContent).not.toMatch(MONEY)
   })
 
-  it('Dashboard lists the ongoing site without billing %', () => {
+  it('Dashboard shows the PM site-work cards without money', () => {
     const { container } = render(<Dashboard navigateTo={() => {}} openSiteOverview={() => {}} />)
-    expect(container.textContent).toContain('Tower A')
+    expect(container.textContent).toContain('คนงานวันนี้ แยกไซท์')
+    expect(container.textContent).toContain('ต้องบันทึกยอด BOQ')
+    expect(container.textContent).toContain('เลยกำหนดส่งมอบ')
     expect(container.textContent).not.toMatch(MONEY)
     expect(container.textContent).not.toContain('ความคืบหน้างาน')
+  })
+})
+
+describe('PM dashboard data', () => {
+  it('reads no money table: only assignments, check-ins, progress snapshots and pm_* RPCs', async () => {
+    const { loadPmDashboard } = await import('../hooks/useDashboardData.js')
+    const today = '2026-10-21'
+    tableRows = {
+      worker_assignments: [
+        { id: 'a1', worker_id: 'w1', site_id: 's1', date: today, type: 'site' },
+        { id: 'a2', worker_id: 'w2', site_id: 's1', date: '2026-10-23', type: 'site', repair_ticket_id: 't1' },
+      ],
+      worker_checkins: [{ worker_id: 'w1', site_id: 's1', checkin_at: '2026-10-21T01:00:00Z' }],
+      site_progress_daily: [{ site_id: 's1', day: '2026-10-20', contract_pct: 0 }],
+    }
+    rpcRows = { pm_sites: [{ ...PM_SITE, end_date: '2026-10-01' }], pm_workers: [{ id: 'w1', name: 'สมชาย' }, { id: 'w2', name: 'สมศรี' }] }
+    const d = await loadPmDashboard(today)
+    expect(new Set(fromCalls)).toEqual(new Set(['worker_assignments', 'worker_checkins', 'site_progress_daily']))
+    expect(new Set(rpcCalls.map(c => c[0]))).toEqual(new Set(['pm_sites', 'pm_workers']))
+    expect(d.todayAssignments.map(a => a.id)).toEqual(['a1'])
+    expect(d.todayAssignments[0].workers.name).toBe('สมชาย')
+    expect(d.pctBySite).toEqual({ s1: 0 })
   })
 })
 

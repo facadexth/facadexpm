@@ -875,7 +875,11 @@ export function useAssignments(month, year) {
 
 /** Assignments ในช่วงวันที่ (รวม shift) — ใช้กับมุมมอง Day/Week/Month */
 export function useAssignmentsRange(from, to) {
-  return useQuery(async () => {
+  return useQuery(() => loadAssignmentsRange(from, to), [from, to])
+}
+
+/** The loader behind useAssignmentsRange (PM-safe: names via pm_workers/pm_sites). */
+export async function loadAssignmentsRange(from, to) {
     if (!from || !to) return []
     if (isPm()) {
       const { data, error } = await supabase
@@ -895,7 +899,6 @@ export function useAssignmentsRange(from, to) {
       .order('date')
     if (error) throw error
     return data
-  }, [from, to])
 }
 
 /** ค่าแรงช่างต่อไซท์ */
