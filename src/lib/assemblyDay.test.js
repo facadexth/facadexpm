@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planAssemblyDay, stepLabel, stepAction, chooseStepByGps, distanceM, skipStep, assemblyLinkReplyText } from '../../supabase/functions/_shared/assembly-day.ts'
+import { planAssemblyDay, stepLabel, stepAction, chooseStepByGps, distanceM, skipStep, assemblyLinkReplyText, nextStepHint } from '../../supabase/functions/_shared/assembly-day.ts'
 
 const site = (siteId, siteName, nextAction = 'check_in', shifts = ['morning']) => ({ siteId, siteName, shifts, nextAction, atFactory: false })
 const FAC = 'โรงงาน (ส่วนกลาง)'
@@ -125,5 +125,54 @@ describe('review fixes', () => {
     const txt = assemblyLinkReplyText(st, 'L')
     expect(txt).not.toContain('ถึงไซท์')
     expect(txt).toContain(`"ถึง${FAC} — งานบ้านคุณบิ๊ก"`)
+  })
+})
+
+describe('nextStepHint', () => {
+  const stepsOf = (sites, asm = null) => planAssemblyDay(sites, asm, FAC).steps
+  it('first leave with 1 site: go check in at that site', () => {
+    const steps = stepsOf([site('a', 'A')])
+    expect(nextStepHint(steps, steps[0])).toBe('ต่อไป: ไปเช็คอินถึงไซท์ A')
+  })
+  it('first leave with 2 sites: next site + the day order', () => {
+    const steps = stepsOf([site('a', 'A'), site('b', 'B')])
+    expect(nextStepHint(steps, steps[0])).toBe('ต่อไป: ไปเช็คอินถึงไซท์ A\nไซท์วันนี้: A → B')
+  })
+  it('leave a site with another site pending', () => {
+    const steps = stepsOf([site('a', 'A', 'check_out'), site('b', 'B')], { leave_at: 't', return_at: null })
+    const tapped = steps.find(s => s.kind === 'site_leave' && s.siteId === 'a')
+    expect(nextStepHint(steps, tapped)).toBe('ต่อไป: ไปเช็คอินถึงไซท์ B')
+  })
+  it('leave the last site on an assembly day: remind to tap back at the assembly point', () => {
+    const steps = stepsOf([site('a', 'A', 'done'), site('b', 'B', 'check_out')], { leave_at: 't', return_at: null })
+    const tapped = steps.find(s => s.kind === 'site_leave' && s.siteId === 'b')
+    expect(nextStepHint(steps, tapped)).toBe(`อย่าลืมกดเช็คอิน กลับถึง${FAC} เมื่อถึงแล้ว`)
+  })
+  it('leave the last site on a no-assembly day: no hint', () => {
+    const steps = stepsOf([site('a', 'A', 'check_out')]).filter(s => s.kind !== 'assembly_leave' && s.kind !== 'assembly_return')
+    expect(nextStepHint(steps, steps.find(s => s.kind === 'site_leave'))).toBe('')
+  })
+})
+
+describe('factory-only day: single check-in / check-out', () => {
+  const fac = (id, name, next = 'check_in') => ({ ...site(id, name, next), atFactory: true })
+  it('only factory work: no assembly steps, plain เช็คอินที่', () => {
+    const p = planAssemblyDay([fac('f', FAC)], null, FAC)
+    expect(p.steps.map(s => s.kind)).toEqual(['site_arrive', 'site_leave'])
+    expect(p.next.kind).toBe('site_arrive')
+    expect(stepLabel(p.next).title).toBe(`เช็คอินที่${FAC}`)
+  })
+  it('checked in: next is เช็คเอาท์ที่, no hint after it', () => {
+    const p = planAssemblyDay([fac('f', FAC, 'check_out')], null, FAC)
+    expect(stepLabel(p.next).title).toBe(`เช็คเอาท์ที่${FAC}`)
+    expect(nextStepHint(p.steps, p.next)).toBe('')
+  })
+  it('checked out: day done, no return step', () => {
+    expect(planAssemblyDay([fac('f', FAC, 'done')], null, FAC).next).toBeNull()
+  })
+  it('mixed day (factory + site) keeps the full flow', () => {
+    const p = planAssemblyDay([fac('f', FAC), site('a', 'A')], null, FAC)
+    expect(p.steps[0].kind).toBe('assembly_leave')
+    expect(p.steps.at(-1).kind).toBe('assembly_return')
   })
 })

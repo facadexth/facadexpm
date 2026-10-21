@@ -45,7 +45,7 @@ import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
 import { payslipWindow, inPayslipWindow, pickYtd, pickContribBalance } from '../_shared/payslip-data.ts'
 import { todaysSites, pickSiteForNow } from '../_shared/todays-sites.ts'
 import { resolveFactoryLocation } from '../_shared/factory-location.ts'
-import { planAssemblyDay, skipStep, stepLabel, chooseStepByGps, distanceM, type DayStep } from '../_shared/assembly-day.ts'
+import { planAssemblyDay, skipStep, stepLabel, chooseStepByGps, distanceM, nextStepHint, type DayStep } from '../_shared/assembly-day.ts'
 import { mergeSiteLists, repairSiteOptions, repairTicketOnSiteToday, REPAIR_ACTIVE_STATUSES } from '../_shared/material-sites.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -616,7 +616,7 @@ Deno.serve(async (req) => {
         await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         const openTasks = step.kind === 'site_arrive' ? await resolveOpenTasksForWorker(worker.id, worker.tenant_id) : []
         const label = stepLabel(step)
-        return json({ ok: true, message: result.message, step: stepView({ ...step, done: true }), title: label.title, siteName: label.place, openTasks: openTasks.map(t => t.name) })
+        return json({ ok: true, message: result.message, hint: nextStepHint(day.steps, step), step: stepView({ ...step, done: true }), title: label.title, siteName: label.place, openTasks: openTasks.map(t => t.name) })
       }
 
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {

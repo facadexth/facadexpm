@@ -133,3 +133,12 @@ RPCs; auto-OT on web checkout; AttendanceGrid.
 4. Check-in OT applies only on a date that has a counted site shift: type site, and confirmed when confirmation is required. On every other date the typed OT stays.
 5. On an assembly day, `flag` is set when leave or return is still missing after every fallback. A flagged (red) day pays no check-in OT; that date keeps its typed OT, which is how an admin fixes it.
 6. Factory work never says "ถึงไซท์". The page and the LINE reply use the work-place name, for example "ถึงโรงงาน (ส่วนกลาง) — งานX".
+
+## Addendum 2026-10-21: next-step hints + factory-only days
+
+- After a successful leave tap, field-form returns `hint` (`nextStepHint`, `_shared/assembly-day.ts`), shown prominently on the success screen:
+  - leave assembly: `ต่อไป: ไปเช็คอินถึงไซท์ <first>`, plus `ไซท์วันนี้: A → B` when there are 2 or more sites;
+  - leave site: the next pending site, or `อย่าลืมกดเช็คอิน กลับถึง<assembly> เมื่อถึงแล้ว` after the last site;
+  - no hint when there is no assembly step.
+  The LINE bot only sends the link; it has no success reply of its own.
+- Factory-only day rule: if EVERY site today is factory work (`atFactory`), the day is plain check-in / check-out per entry, `เช็คอินที่ / เช็คเอาท์ที่ <factory>`. There are no assembly leave/return steps and no hints, and work time is check-in → check-out. Any non-factory site that day (mixed, in either order) keeps the full flow.

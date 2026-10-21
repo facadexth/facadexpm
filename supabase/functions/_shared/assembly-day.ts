@@ -11,17 +11,32 @@
 import type { TodaysSite } from './todays-sites.ts'
 
 export type StepKind = 'assembly_leave' | 'site_arrive' | 'site_leave' | 'assembly_return'
-export type DayStep = { kind: StepKind; siteId: string | null; placeName: string; done: boolean; atFactory: boolean }
+// single: a factory-only day (see planAssemblyDay) -- plain เช็คอิน/เช็คเอาท์ที่ <factory>.
+export type DayStep = { kind: StepKind; siteId: string | null; placeName: string; done: boolean; atFactory: boolean; single?: boolean }
 // The worker's assembly row today: checkin_at = left the assembly point, checkout_at = back.
 export type AssemblyTaps = { leave_at: string | null; return_at: string | null } | null
 
 export function planAssemblyDay(sites: TodaysSite[], assembly: AssemblyTaps, assemblyName: string): { steps: DayStep[]; next: DayStep | null } {
   const leaveDone = !!assembly?.leave_at
   const returnDone = !!assembly?.return_at
-  const steps: DayStep[] = [{ kind: 'assembly_leave', siteId: null, placeName: assemblyName, done: leaveDone, atFactory: false }]
+  // Factory-only day (2026-10-21 owner rule): when EVERY site today is factory work (atFactory:
+  // type 'factory', geofenced at the factory = the assembly point), the crew never leaves, so it
+  // is one plain check-in and one check-out per entry -- no assembly leave/return taps, no hints;
+  // the work time is check-in -> check-out. Any non-factory site today (mixed day, in either
+  // order) keeps the full leave -> sites -> return flow.
+  const factoryOnly = sites.length > 0 && sites.every((s) => s.atFactory)
+  const single = factoryOnly ? { single: true } : {}
+  const steps: DayStep[] = factoryOnly ? [] : [{ kind: 'assembly_leave', siteId: null, placeName: assemblyName, done: leaveDone, atFactory: false }]
   for (const s of sites) {
-    steps.push({ kind: 'site_arrive', siteId: s.siteId, placeName: s.siteName, done: s.nextAction !== 'check_in', atFactory: s.atFactory })
-    steps.push({ kind: 'site_leave', siteId: s.siteId, placeName: s.siteName, done: s.nextAction === 'done', atFactory: s.atFactory })
+    steps.push({ kind: 'site_arrive', siteId: s.siteId, placeName: s.siteName, done: s.nextAction !== 'check_in', atFactory: s.atFactory, ...single })
+    steps.push({ kind: 'site_leave', siteId: s.siteId, placeName: s.siteName, done: s.nextAction === 'done', atFactory: s.atFactory, ...single })
+  }
+  if (factoryOnly) {
+    const open = sites.find((s) => s.nextAction === 'check_out')
+    const next = open
+      ? steps.find((st) => st.kind === 'site_leave' && st.siteId === open.siteId) ?? null
+      : steps.find((st) => st.kind === 'site_arrive' && !st.done) ?? null
+    return { steps, next }
   }
   steps.push({ kind: 'assembly_return', siteId: null, placeName: assemblyName, done: returnDone, atFactory: false })
 
@@ -54,7 +69,9 @@ export function skipStep(plan: { steps: DayStep[]; next: DayStep | null }): DayS
   return null
 }
 
-export function stepLabel(step: { kind: StepKind; placeName: string; atFactory?: boolean }): { emoji: string; title: string; place: string } {
+export function stepLabel(step: { kind: StepKind; placeName: string; atFactory?: boolean; single?: boolean }): { emoji: string; title: string; place: string } {
+  if (step.single && step.kind === 'site_arrive') return { emoji: '🏭', title: `เช็คอินที่${step.placeName}`, place: step.placeName }
+  if (step.single && step.kind === 'site_leave') return { emoji: '🏭', title: `เช็คเอาท์ที่${step.placeName}`, place: step.placeName }
   // Factory work is geofenced at the factory: never say "ไซท์", name the work place.
   if (step.atFactory && step.kind === 'site_arrive') return { emoji: '🏭', title: `ถึง${step.placeName}`, place: step.placeName }
   if (step.atFactory && step.kind === 'site_leave') return { emoji: '🏭', title: `ออกจาก${step.placeName}`, place: step.placeName }
@@ -87,8 +104,26 @@ export function distanceM(lat1: number, lng1: number, lat2: number, lng2: number
 }
 
 // The LINE reply carrying the one link on an assembly day.
-export function assemblyLinkReplyText(step: { kind: StepKind; placeName: string; atFactory?: boolean }, link: string): string {
+export function assemblyLinkReplyText(step: { kind: StepKind; placeName: string; atFactory?: boolean; single?: boolean }, link: string): string {
   const l = stepLabel(step)
   const what = (step.kind === 'site_arrive' || step.kind === 'site_leave') && !step.atFactory ? `${l.title} ${l.place}` : l.title
   return `${l.emoji} กดลิงก์นี้เพื่อบันทึก "${what}" ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`
+}
+
+// The "where next" line on the success screen after a leave tap (2026-10-21 owner request).
+// steps = the plan BEFORE the tap; tapped = the step just recorded. '' = no hint.
+export function nextStepHint(steps: DayStep[], tapped: DayStep): string {
+  if (tapped.single) return ''
+  const ret = steps.find((s) => s.kind === 'assembly_return')
+  const pending = steps.filter((s) => s.kind === 'site_arrive' && !s.done && s.siteId !== tapped.siteId)
+  if (tapped.kind === 'assembly_leave') {
+    if (pending.length === 0) return ''
+    const first = `ต่อไป: ไปเช็คอินถึงไซท์ ${pending[0].placeName}`
+    return pending.length > 1 ? `${first}\nไซท์วันนี้: ${pending.map((s) => s.placeName).join(' → ')}` : first
+  }
+  if (tapped.kind === 'site_leave') {
+    if (pending.length > 0) return `ต่อไป: ไปเช็คอินถึงไซท์ ${pending[0].placeName}`
+    return ret && !ret.done ? `อย่าลืมกดเช็คอิน กลับถึง${ret.placeName} เมื่อถึงแล้ว` : ''
+  }
+  return ''
 }

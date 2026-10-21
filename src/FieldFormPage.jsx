@@ -155,6 +155,7 @@ function TimeClockFlow({ token, workerName, next, steps }) {
   const [distanceInfo, setDistanceInfo] = useState(null)
   const [openTasks, setOpenTasks] = useState([])
   const [doneKey, setDoneKey] = useState(null)
+  const [hint, setHint] = useState('')
 
   const record = useCallback(() => {
     setPhase('requesting')
@@ -176,6 +177,7 @@ function TimeClockFlow({ token, workerName, next, steps }) {
             setPhase('success')
             setMessage(data.message || '')
             setOpenTasks(data.openTasks || [])
+            setHint(data.hint || '')
             setDoneKey(data.step ? `${data.step.kind}|${data.step.siteId ?? ''}` : null)
           } else {
             setPhase('rejected')
@@ -225,6 +227,9 @@ function TimeClockFlow({ token, workerName, next, steps }) {
         <div style={{ textAlign: 'center', padding: '12px 0' }}>
           <div style={{ fontSize: 32, marginBottom: 6 }}>✅</div>
           <div style={{ fontWeight: 700 }}>{message}</div>
+          {hint && (
+            <div style={{ marginTop: 12, background: '#1D4ED8', color: '#fff', borderRadius: 12, padding: 14, fontSize: 17, fontWeight: 800, whiteSpace: 'pre-line' }}>👉 {hint}</div>
+          )}
           {openTasks.length > 0 && (
             <div style={{ textAlign: 'left', fontSize: 13, color: 'var(--text3)', marginTop: 12, border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>🔧 งานของคุณวันนี้</div>
