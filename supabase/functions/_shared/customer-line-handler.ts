@@ -147,8 +147,10 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
   const now = ctx.now ?? Date.now()
   if (event?.type === 'follow') {
     if (event.source?.type !== 'user' || !event.source?.userId) return []
-    // Always greet a new friend; follow events are rare, so no daily claim here.
+    // Always greet a new friend, and use up today's welcome so the next chat message
+    // the same day is not greeted a second time.
     if (await deps.getAccount(event.source.userId)) return []
+    await deps.claimWelcome(event.source.userId)
     return [{ type: 'text', text: notLinkedText((await deps.getContact()).brandName) }]
   }
   if (event?.type !== 'message') return []

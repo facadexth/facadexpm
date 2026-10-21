@@ -148,10 +148,10 @@ describe('handleCustomerEvent', () => {
 
 describe('welcome behaviours', () => {
   const follow = (source = { type: 'user', userId: 'U1' }) => ({ type: 'follow', replyToken: 'rt', source })
-  it('follow from unlinked user: welcome, no claim', async () => {
+  it('follow from unlinked user: welcome, and today\'s welcome is used up', async () => {
     const d = deps()
     expect(await handleCustomerEvent(follow(), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
-    expect(d.claimWelcome).not.toHaveBeenCalled()
+    expect(d.claimWelcome).toHaveBeenCalledWith('U1')
   })
   it('follow from linked user: silent', async () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
