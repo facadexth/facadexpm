@@ -84,8 +84,14 @@ describe('Kanban BOQ per phase', () => {
     const opt = await screen.findByText(/1 กระจก — เหลือในเฟสนี้/)
     expect(opt.textContent).toBe('1 กระจก — เหลือในเฟสนี้ 6 ตร.ม.')
     expect(screen.getByText(/2 ประตู — เหลือในเฟสนี้ 1 ชุด/)).toBeTruthy()
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'b1' } })
-    expect(screen.getByText(/เหลือในเฟสนี้ 6 ใส่ได้ไม่เกินนี้/)).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('เลือก กระจก'))
+    expect(screen.getByLabelText('จำนวน กระจก').value).toBe('6')
+    // editing the ติดตั้ง card: single-item select, 0 left besides this card's own 26
+    fireEvent.click(screen.getByText('ยกเลิก'))
+    fireEvent.click(screen.getAllByText('ติดตั้ง')[0])
+    fireEvent.click(await screen.findByText('หุ้มกระจก'))
+    expect((await screen.findByRole('combobox')).value).toBe('b1')
+    expect(screen.getByText(/เหลือในเฟสนี้ 26 ใส่ได้ไม่เกินนี้/)).toBeTruthy()
   })
   it('no bulk button outside BOQ mode', async () => {
     await openPhase('ติดตั้ง')

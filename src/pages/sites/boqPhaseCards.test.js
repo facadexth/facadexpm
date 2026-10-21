@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { boqRemainingInPhase, boqCardCandidates, bulkCardRows } from './boqPhaseCards.js'
+import { boqRemainingInPhase, boqCardCandidates, bulkCardRows, buildBoqMultiSave } from './boqPhaseCards.js'
 
 const boq = [
   { id: 'b1', code: '1', description: 'กระจก', unit: 'ตร.ม.', planned_qty: 26, sort_order: 1 },
@@ -59,5 +59,38 @@ describe('bulkCardRows', () => {
   })
   it('drops picks with no positive qty', () => {
     expect(bulkCardRows({ siteId: 's1', phaseId: 'p', nextSortOrder: 1, picks: [{ item: boq[0], qty: 0 }, { item: boq[1], qty: '' }] })).toEqual([])
+  })
+})
+
+describe('buildBoqMultiSave (new-card form, several BOQ items at once)', () => {
+  const draft = (over = {}) => ({ name: '', progress_mode: 'quantity', boqPicks: [], ...over })
+  const left = { b1: 6, b2: 1, b3: 0 }
+  const remaining = (id) => left[id]
+  it('needs at least one picked item', () => {
+    expect(buildBoqMultiSave({ draft: draft(), boqItems: boq, boqRemaining: remaining }).error).toMatch(/เลือกรายการ BOQ/)
+  })
+  it('two items -> two picks named after the BOQ description, the typed name is ignored', () => {
+    const { picks } = buildBoqMultiSave({
+      draft: draft({ name: 'ชั้น 3', boqPicks: [{ boq_item_id: 'b1', qty: '6' }, { boq_item_id: 'b2', qty: '1' }] }),
+      boqItems: boq, boqRemaining: remaining,
+    })
+    expect(picks).toEqual([{ item: boq[0], qty: 6, name: 'กระจก' }, { item: boq[1], qty: 1, name: 'ประตู' }])
+  })
+  it('one item keeps the typed name, else the description', () => {
+    expect(buildBoqMultiSave({ draft: draft({ name: ' W-01 ชั้น 3 ', boqPicks: [{ boq_item_id: 'b1', qty: '4' }] }), boqItems: boq, boqRemaining: remaining }).picks)
+      .toEqual([{ item: boq[0], qty: 4, name: 'W-01 ชั้น 3' }])
+    expect(buildBoqMultiSave({ draft: draft({ boqPicks: [{ boq_item_id: 'b1', qty: '4' }] }), boqItems: boq, boqRemaining: remaining }).picks[0].name).toBe('กระจก')
+  })
+  it('qty must be > 0 and <= the remaining qty in this phase, the error names the item', () => {
+    expect(buildBoqMultiSave({ draft: draft({ boqPicks: [{ boq_item_id: 'b1', qty: '0' }] }), boqItems: boq, boqRemaining: remaining }).error).toMatch(/กระจก.*มากกว่า 0/)
+    expect(buildBoqMultiSave({ draft: draft({ boqPicks: [{ boq_item_id: 'b1', qty: '6' }, { boq_item_id: 'b2', qty: '2' }] }), boqItems: boq, boqRemaining: remaining }).error)
+      .toBe('จำนวน "ประตู" เกินที่เหลือใน BOQ ของเฟสนี้ (1)')
+  })
+  it('bulkCardRows can target a subtask node, carry zone/due date and a per-pick name', () => {
+    const rows = bulkCardRows({ siteId: 's1', phaseId: 'p', subtaskId: 'st1', nextSortOrder: 3, zone: 'ชั้น 2', dueDate: '2026-11-01', picks: [{ item: boq[0], qty: 2, name: 'ตั้งชื่อเอง' }, { item: boq[1], qty: 1 }] })
+    expect(rows).toEqual([
+      { site_id: 's1', phase_id: 'p', subtask_id: 'st1', name: 'ตั้งชื่อเอง', zone: 'ชั้น 2', due_date: '2026-11-01', sort_order: 3, status: 'not_started', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 2 },
+      { site_id: 's1', phase_id: 'p', subtask_id: 'st1', name: 'ประตู', zone: 'ชั้น 2', due_date: '2026-11-01', sort_order: 4, status: 'not_started', progress_mode: 'quantity', boq_item_id: 'b2', planned_qty: 1 },
+    ])
   })
 })

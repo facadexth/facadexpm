@@ -33,8 +33,8 @@ import { canManagePlan, canManageSites } from '../../lib/roles.js'
 import { auditLog } from '../../lib/audit.js'
 import { useBoqPhaseSplits } from './useBoqPhaseSplits.js'
 import { cellsFromRows } from './boqPhaseSplit.js'
-import { boqRemainingInPhase, boqCardCandidates } from './boqPhaseCards.js'
-import BoqBulkCardsDialog from './BoqBulkCardsDialog.jsx'
+import { boqRemainingInPhase, boqCardCandidates, bulkCardRows, buildBoqMultiSave } from './boqPhaseCards.js'
+import BoqBulkCardsDialog, { insertBoqCards } from './BoqBulkCardsDialog.jsx'
 import RecordProgressDialog from './RecordProgressDialog.jsx'
 import SplitTaskDialog from './SplitTaskDialog.jsx'
 
@@ -123,10 +123,12 @@ function PhotoPreview({ photos, photoId, canSelect, onNavigate, onClose, onSelec
 
 // A new card starts as a BOQ card when the site has a BOQ line to pick
 // (defaultBoq), else as a general card. Issue phases never count, so the caller
-// passes defaultBoq false there.
+// passes defaultBoq false there. A new BOQ card picks its lines in boqPicks
+// ([{ boq_item_id, qty }], one card per pick); boq_item_id/planned_qty are the
+// edit form's single-item fields.
 export const emptyDraft = (phaseId, status, sortOrder, defaultBoq = false) => ({
   phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [], leadWorkerId: null,
-  progress_mode: defaultBoq ? 'quantity' : 'status', boq_item_id: '', planned_qty: '',
+  progress_mode: defaultBoq ? 'quantity' : 'status', boq_item_id: '', planned_qty: '', boqPicks: [],
 })
 
 // The card-kind/quantity fields a card form saves (and audits when they change).
@@ -645,9 +647,66 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
+  // phase_task_workers of one card = draft.assigneeIds (+ lead), non-destructively.
+  const syncTaskWorkers = async (taskId) => {
+    if (draft.assigneeIds.length) {
+      // upsert(ignoreDuplicates) adds anyone newly checked (with the
+      // right is_lead already set) without touching rows that already
+      // existed -- same non-destructive ordering as before (insert the
+      // new set first, only delete what's no longer wanted, further
+      // below), so a failure here never wipes an existing assignee.
+      const { error: insErr } = await supabase.from('phase_task_workers')
+        .upsert(draft.assigneeIds.map((worker_id) => ({ task_id: taskId, worker_id, is_lead: worker_id === draft.leadWorkerId })), { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
+      if (insErr) throw insErr
+      // ignoreDuplicates means an assignee who was already on the task
+      // keeps whatever is_lead value their row already had -- sync it
+      // explicitly for the two people whose leader status can actually
+      // change: clear it off everyone who isn't the new leader, then
+      // set it on the new leader (a real UPDATE, now that phase_task_
+      // workers has an admin_updates policy -- see migration -01).
+      const { error: clearLeadErr } = await supabase.from('phase_task_workers')
+        .update({ is_lead: false }).eq('task_id', taskId).neq('worker_id', draft.leadWorkerId || '00000000-0000-0000-0000-000000000000')
+      if (clearLeadErr) throw clearLeadErr
+      if (draft.leadWorkerId) {
+        const { error: setLeadErr } = await supabase.from('phase_task_workers')
+          .update({ is_lead: true }).eq('task_id', taskId).eq('worker_id', draft.leadWorkerId)
+        if (setLeadErr) throw setLeadErr
+      }
+    }
+    let delQuery = supabase.from('phase_task_workers').delete().eq('task_id', taskId)
+    if (draft.assigneeIds.length) delQuery = delQuery.not('worker_id', 'in', `(${draft.assigneeIds.join(',')})`)
+    const { error: delErr } = await delQuery
+    if (delErr) throw delErr
+  }
+
+  // A new BOQ card: one card per ticked BOQ line (draft.boqPicks), inserted in one
+  // batch + audited like "+ การ์ดจาก BOQ". The name is optional (single pick keeps it).
+  const saveNewBoqCards = async () => {
+    const draftPhaseId = phaseOfNode(draft.phase_id)
+    const built = buildBoqMultiSave({ draft, boqItems, boqRemaining: (boqId) => boqRemaining(boqId, null, draftPhaseId) })
+    if (built.error) { alert(built.error); return }
+    const isTargetPhase = phases.some((p) => p.id === draft.phase_id)
+    const inserts = bulkCardRows({
+      siteId: site.id, phaseId: draftPhaseId, subtaskId: isTargetPhase ? null : draft.phase_id,
+      nextSortOrder: draft.sort_order, zone: draft.zone.trim() || null, dueDate: draft.due_date || null, picks: built.picks,
+    })
+    setSaving(true)
+    try {
+      const created = await insertBoqCards(inserts, draftPhaseId)
+      for (const t of created) await syncTaskWorkers(t.id)
+      await afterWrite()
+      cancelEdit()
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const saveDraft = async () => {
-    if (!draft.name.trim()) { alert('กรุณาตั้งชื่องาน'); return }
     const isNew = String(editingId).startsWith('__new__')
+    if (isNew && progressReady && draft.progress_mode === 'quantity') return saveNewBoqCards()
+    if (!draft.name.trim()) { alert('กรุณาตั้งชื่องาน'); return }
     const orig = isNew ? null : taskById[editingId]
     const draftPhaseId = phaseOfNode(orig ? (orig.subtask_id || orig.phase_id) : draft.phase_id)
     const built = buildTaskSave({
@@ -684,34 +743,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
           if (WEIGHT_FIELDS.some((k) => before[k] !== after[k])) await auditLog('phase_tasks', editingId, 'update', before, after)
         }
       }
-      if (draft.assigneeIds.length) {
-        // upsert(ignoreDuplicates) adds anyone newly checked (with the
-        // right is_lead already set) without touching rows that already
-        // existed -- same non-destructive ordering as before (insert the
-        // new set first, only delete what's no longer wanted, further
-        // below), so a failure here never wipes an existing assignee.
-        const { error: insErr } = await supabase.from('phase_task_workers')
-          .upsert(draft.assigneeIds.map((worker_id) => ({ task_id: taskId, worker_id, is_lead: worker_id === draft.leadWorkerId })), { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
-        if (insErr) throw insErr
-        // ignoreDuplicates means an assignee who was already on the task
-        // keeps whatever is_lead value their row already had -- sync it
-        // explicitly for the two people whose leader status can actually
-        // change: clear it off everyone who isn't the new leader, then
-        // set it on the new leader (a real UPDATE, now that phase_task_
-        // workers has an admin_updates policy -- see migration -01).
-        const { error: clearLeadErr } = await supabase.from('phase_task_workers')
-          .update({ is_lead: false }).eq('task_id', taskId).neq('worker_id', draft.leadWorkerId || '00000000-0000-0000-0000-000000000000')
-        if (clearLeadErr) throw clearLeadErr
-        if (draft.leadWorkerId) {
-          const { error: setLeadErr } = await supabase.from('phase_task_workers')
-            .update({ is_lead: true }).eq('task_id', taskId).eq('worker_id', draft.leadWorkerId)
-          if (setLeadErr) throw setLeadErr
-        }
-      }
-      let delQuery = supabase.from('phase_task_workers').delete().eq('task_id', taskId)
-      if (draft.assigneeIds.length) delQuery = delQuery.not('worker_id', 'in', `(${draft.assigneeIds.join(',')})`)
-      const { error: delErr } = await delQuery
-      if (delErr) throw delErr
+      await syncTaskWorkers(taskId)
       await afterWrite()
       cancelEdit()
     } catch (e) {
@@ -1409,10 +1441,21 @@ function TaskEditPanel({
   const setKind = (mode) => setDraft((d) => ({ ...d, progress_mode: mode }))
   const boqLeft = isQuantity && draft.boq_item_id ? boqRemaining?.(draft.boq_item_id, task?.id) : null
   const boqUnit = boqItems.find((b) => b.id === draft.boq_item_id)?.unit
+  // new card: several BOQ lines at once (one card each); ticking a line starts its
+  // qty at what is left in this phase; a line with nothing left cannot be ticked
+  const multiBoq = isQuantity && isNew
+  const pickOf = (id) => (draft.boqPicks || []).find((p) => p.boq_item_id === id)
+  const togglePick = (b) => setDraft((d) => {
+    const picks = d.boqPicks || []
+    if (picks.some((p) => p.boq_item_id === b.id)) return { ...d, boqPicks: picks.filter((p) => p.boq_item_id !== b.id) }
+    const left = boqRemaining?.(b.id, null)
+    return { ...d, boqPicks: [...picks, { boq_item_id: b.id, qty: left != null ? String(left) : '' }] }
+  })
+  const setPickQty = (id, qty) => setDraft((d) => ({ ...d, boqPicks: (d.boqPicks || []).map((p) => (p.boq_item_id === id ? { ...p, qty } : p)) }))
   return (
     <div style={{ background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 9, padding: 12, marginBottom: 10 }}>
       <input className="input input-sm" style={{ width: '100%', marginBottom: 8, fontWeight: 600 }}
-        value={draft.name} placeholder="ชื่องาน" autoFocus
+        value={draft.name} placeholder={multiBoq ? 'ชื่องาน (เว้นว่าง = ใช้ชื่อรายการ BOQ)' : 'ชื่องาน'} autoFocus
         onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
       {isQuantity || isParent ? (
         <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>
@@ -1457,7 +1500,30 @@ function TaskEditPanel({
               )
             })}
           </div>
-          {isQuantity && (
+          {multiBoq && (
+            <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--text3)' }}>
+              รายการ BOQ — ติ๊กได้หลายรายการ สร้างการ์ดละ 1 ใบ · จำนวนเริ่มที่ที่เหลือในเฟสนี้
+              <div style={{ display: 'grid', gap: 4, marginTop: 4, maxHeight: 220, overflowY: 'auto', background: 'var(--bg3)', borderRadius: 6, padding: 6 }}>
+                {boqItems.map((b) => {
+                  const left = boqRemaining?.(b.id, null)
+                  const full = left != null && left <= 0
+                  const pick = pickOf(b.id)
+                  return (
+                    <div key={b.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 80px', gap: 6, alignItems: 'center', fontSize: 12, color: full ? 'var(--text3)' : 'var(--text)' }}>
+                      <input type="checkbox" aria-label={`เลือก ${b.description}`} checked={!!pick} disabled={full || saving} onChange={() => togglePick(b)} />
+                      <span>{`${b.code} ${b.description} — เหลือในเฟสนี้ ${fmtNum(left)}${b.unit ? ` ${b.unit}` : ''}`}</span>
+                      <input type="number" min="0" step="any" className="input input-sm" style={{ textAlign: 'right' }} aria-label={`จำนวน ${b.description}`}
+                        value={pick ? pick.qty : ''} disabled={!pick || saving} placeholder={full ? '—' : undefined}
+                        onChange={(e) => setPickQty(b.id, e.target.value)} />
+                    </div>
+                  )
+                })}
+                {!boqItems.length && <div>ไซต์นี้ยังไม่มีรายการ BOQ</div>}
+              </div>
+              <div style={{ marginTop: 4 }}>แต้มคิดให้อัตโนมัติจากมูลค่า ไม่ต้องกรอก</div>
+            </div>
+          )}
+          {isQuantity && !multiBoq && (
             <>
               <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
                 รายการ BOQ

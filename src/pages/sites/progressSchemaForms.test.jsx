@@ -89,8 +89,8 @@ describe('Kanban first card on an empty node (schema probe)', () => {
   it('picking งาน BOQ shows the line, the qty and the auto-points note', async () => {
     await openNewCard()
     fireEvent.click(await screen.findByLabelText('งาน BOQ (นับ %)'))
-    expect(screen.getByText('รายการ BOQ')).toBeTruthy()
-    expect(screen.getByText(/จำนวนในการ์ดนี้/)).toBeTruthy()
+    expect(screen.getByText(/รายการ BOQ — ติ๊กได้หลายรายการ/)).toBeTruthy()
+    expect(screen.getByText('ไซต์นี้ยังไม่มีรายการ BOQ')).toBeTruthy()
     expect(screen.getByText('แต้มคิดให้อัตโนมัติจากมูลค่า ไม่ต้องกรอก')).toBeTruthy()
     expect(screen.queryByLabelText('แต้ม')).toBeNull()
   })
@@ -99,7 +99,8 @@ describe('Kanban first card on an empty node (schema probe)', () => {
     await openNewCard()
     expect((await screen.findByLabelText('งาน BOQ (นับ %)')).checked).toBe(true)
     expect(screen.getByLabelText('งานทั่วไป (ไม่นับ %)').checked).toBe(false)
-    expect(screen.getByText('รายการ BOQ')).toBeTruthy()
+    expect(screen.getByText(/รายการ BOQ — ติ๊กได้หลายรายการ/)).toBeTruthy()
+    expect(screen.getByLabelText('เลือก หน้าต่าง')).toBeTruthy()
   })
   it('a new card in an issue phase offers no BOQ choice (general only), even with BOQ lines', async () => {
     mockBoq = [{ id: 'b1', code: 'W-01', description: 'หน้าต่าง', unit: 'ชุด', planned_qty: 10, sort_order: 1 }]
@@ -109,7 +110,7 @@ describe('Kanban first card on an empty node (schema probe)', () => {
     fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[0])
     expect((await screen.findByLabelText('งานทั่วไป (ไม่นับ %)')).checked).toBe(true)
     expect(screen.queryByLabelText('งาน BOQ (นับ %)')).toBeNull()
-    expect(screen.queryByText('รายการ BOQ')).toBeNull()
+    expect(screen.queryByText(/รายการ BOQ/)).toBeNull()
   })
   it('pre-migration: a BOQ-line default does not hide the status buttons', async () => {
     probeError = { message: 'no column' }
@@ -235,18 +236,20 @@ describe('Kanban final-review rules', () => {
     expect(insertOf()).toMatchObject({ phase_id: 'pi', progress_mode: 'status', status: 'done' })
     expect('weight_pts' in insertOf()).toBe(false)
   })
-  it('a new BOQ card saves line + qty, starts not_started and sends no points', async () => {
+  it('a new BOQ card saves line + qty, starts not_started and sends no points (one row in the batch insert)', async () => {
     mockBoq = [{ id: 'b1', code: 'W-01', description: 'หน้าต่างบานเลื่อน', unit: 'ชุด', planned_qty: 120, sort_order: 1 }]
     openPhase()
     fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[1])
-    fireEvent.change(screen.getByPlaceholderText('ชื่องาน'), { target: { value: 'W-01 ชั้น 3' } })
+    fireEvent.change(screen.getByPlaceholderText(/ชื่องาน/), { target: { value: 'W-01 ชั้น 3' } })
     fireEvent.click(await screen.findByLabelText('งาน BOQ (นับ %)'))
-    fireEvent.change(screen.getByText('รายการ BOQ').querySelector('select'), { target: { value: 'b1' } })
-    fireEvent.change(screen.getByText(/จำนวนในการ์ดนี้/).querySelector('input'), { target: { value: '40' } })
+    fireEvent.click(screen.getByLabelText('เลือก หน้าต่างบานเลื่อน'))
+    expect(screen.getByLabelText('จำนวน หน้าต่างบานเลื่อน').value).toBe('120')
+    fireEvent.change(screen.getByLabelText('จำนวน หน้าต่างบานเลื่อน'), { target: { value: '40' } })
     fireEvent.click(screen.getByText('✅ บันทึก'))
     await waitFor(() => expect(insertOf()).toBeTruthy())
-    expect(insertOf()).toMatchObject({ name: 'W-01 ชั้น 3', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 40, status: 'not_started' })
-    expect('weight_pts' in insertOf()).toBe(false)
+    expect(insertOf()).toHaveLength(1)
+    expect(insertOf()[0]).toMatchObject({ name: 'W-01 ชั้น 3', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 40, status: 'not_started' })
+    expect('weight_pts' in insertOf()[0]).toBe(false)
   })
   it('a BOQ card shows "BOQ · N แต้ม" and the board shows no "ยังไม่แจก" pill', async () => {
     mockTasks = [card({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 10, weight_pts: 40 })]

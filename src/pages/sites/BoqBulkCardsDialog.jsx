@@ -13,6 +13,20 @@ import { auditLog } from '../../lib/audit.js'
 import { fmtNum } from './progressCalc.js'
 import { bulkCardRows } from './boqPhaseCards.js'
 
+/**
+ * Insert BOQ cards in one batch and audit each insert (kind + line + qty + phase), the
+ * same way the card form audits a kind/qty change. Returns the created rows
+ * ({ id, boq_item_id, planned_qty }). Shared with the card form's multi-item add.
+ */
+export async function insertBoqCards(inserts, phaseId) {
+  const { data, error } = await supabase.from('phase_tasks').insert(inserts).select('id, boq_item_id, planned_qty')
+  if (error) throw error
+  for (const t of data || []) {
+    await auditLog('phase_tasks', t.id, 'insert', null, { progress_mode: 'quantity', boq_item_id: t.boq_item_id, planned_qty: Number(t.planned_qty), phase_id: phaseId })
+  }
+  return data || []
+}
+
 export default function BoqBulkCardsDialog({ siteId, phase, rows, nextSortOrder, onClose, onCreated }) {
   const [picked, setPicked] = useState(() => new Set(rows.filter((r) => !r.full).map((r) => r.item.id)))
   const [qty, setQty] = useState(() => Object.fromEntries(rows.map((r) => [r.item.id, r.remaining])))
@@ -28,11 +42,7 @@ export default function BoqBulkCardsDialog({ siteId, phase, rows, nextSortOrder,
     if (!inserts.length || overLimit) return
     setSaving(true); setError(null)
     try {
-      const { data, error: err } = await supabase.from('phase_tasks').insert(inserts).select('id, boq_item_id, planned_qty')
-      if (err) throw err
-      for (const t of data || []) {
-        await auditLog('phase_tasks', t.id, 'insert', null, { progress_mode: 'quantity', boq_item_id: t.boq_item_id, planned_qty: Number(t.planned_qty), phase_id: phase.id })
-      }
+      await insertBoqCards(inserts, phase.id)
       await onCreated?.()
       onClose()
     } catch (e) {
