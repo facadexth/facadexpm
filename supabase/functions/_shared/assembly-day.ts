@@ -40,14 +40,24 @@ export function planAssemblyDay(sites: TodaysSite[], assembly: AssemblyTaps, ass
   return { steps, next }
 }
 
-// The one forward skip allowed by GPS: expected leave, but the worker is already at the
-// first site (forgot to tap at the factory) -> record the site arrival instead.
+// The forward skips allowed by GPS:
+// - expected leave, but the worker is already at the first site (forgot to tap at the factory)
+//   -> record the site arrival instead;
+// - expected a site arrival, but the worker is back at the assembly point (that site was
+//   skipped today) -> record the return.
 export function skipStep(plan: { steps: DayStep[]; next: DayStep | null }): DayStep | null {
-  if (plan.next?.kind !== 'assembly_leave') return null
-  return plan.steps.find((s) => s.kind === 'site_arrive') ?? null
+  if (plan.next?.kind === 'assembly_leave') return plan.steps.find((s) => s.kind === 'site_arrive') ?? null
+  if (plan.next?.kind === 'site_arrive') {
+    const ret = plan.steps[plan.steps.length - 1]
+    return ret.kind === 'assembly_return' && !ret.done ? ret : null
+  }
+  return null
 }
 
-export function stepLabel(step: { kind: StepKind; placeName: string }): { emoji: string; title: string; place: string } {
+export function stepLabel(step: { kind: StepKind; placeName: string; atFactory?: boolean }): { emoji: string; title: string; place: string } {
+  // Factory work is geofenced at the factory: never say "ไซท์", name the work place.
+  if (step.atFactory && step.kind === 'site_arrive') return { emoji: '🏭', title: `ถึง${step.placeName}`, place: step.placeName }
+  if (step.atFactory && step.kind === 'site_leave') return { emoji: '🏭', title: `ออกจาก${step.placeName}`, place: step.placeName }
   switch (step.kind) {
     case 'assembly_leave': return { emoji: '🏭', title: `ออกจาก${step.placeName}`, place: step.placeName }
     case 'assembly_return': return { emoji: '🏭', title: `กลับถึง${step.placeName}`, place: step.placeName }
@@ -77,8 +87,8 @@ export function distanceM(lat1: number, lng1: number, lat2: number, lng2: number
 }
 
 // The LINE reply carrying the one link on an assembly day.
-export function assemblyLinkReplyText(step: { kind: StepKind; placeName: string }, link: string): string {
+export function assemblyLinkReplyText(step: { kind: StepKind; placeName: string; atFactory?: boolean }, link: string): string {
   const l = stepLabel(step)
-  const what = step.kind === 'site_arrive' || step.kind === 'site_leave' ? `${l.title} ${l.place}` : l.title
+  const what = (step.kind === 'site_arrive' || step.kind === 'site_leave') && !step.atFactory ? `${l.title} ${l.place}` : l.title
   return `${l.emoji} กดลิงก์นี้เพื่อบันทึก "${what}" ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`
 }

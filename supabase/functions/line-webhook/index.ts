@@ -732,7 +732,14 @@ async function sendAssemblyDayLink(
   const { data: row } = await admin.from('worker_checkins').select('checkin_at, checkout_at')
     .eq('worker_id', worker.id).eq('tenant_id', settings.tenant_id).eq('checkin_location_id', assembly.location_id)
     .eq('date', bangkokToday()).eq('is_assembly', true).maybeSingle()
-  const plan = planAssemblyDay(sites, row ? { leave_at: row.checkin_at, return_at: row.checkout_at } : null, assembly.location_name)
+  // Factory work: name the work place exactly as the /f/ page does ('โรงงาน (ส่วนกลาง) — งานX').
+  const named: TodaysSite[] = []
+  for (const s of sites) {
+    if (!s.atFactory) { named.push(s); continue }
+    const loc = await resolveFactoryLocation(admin, settings.tenant_id, worker.id, s.siteId, bangkokToday())
+    named.push(loc ? { ...s, siteName: `${loc.name} — งาน${s.siteName}` } : s)
+  }
+  const plan = planAssemblyDay(named, row ? { leave_at: row.checkin_at, return_at: row.checkout_at } : null, assembly.location_name)
   if (!plan.next) {
     await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
     return

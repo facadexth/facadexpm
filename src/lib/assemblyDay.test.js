@@ -92,10 +92,10 @@ describe('distanceM', () => {
 })
 
 describe('skipStep', () => {
-  it('only when the expected step is leaving the assembly point: the first site arrival', () => {
+  it('expected leave: the first site arrival; expected arrival: the return', () => {
     const p = planAssemblyDay([site('a', 'A'), site('b', 'B')], null, FAC)
     expect(skipStep(p)).toMatchObject({ kind: 'site_arrive', siteId: 'a' })
-    expect(skipStep(planAssemblyDay([site('a', 'A')], { leave_at: 't', return_at: null }, FAC))).toBeNull()
+    expect(skipStep(planAssemblyDay([site('a', 'A')], { leave_at: 't', return_at: null }, FAC))).toMatchObject({ kind: 'assembly_return' })
   })
 })
 
@@ -104,5 +104,26 @@ describe('assemblyLinkReplyText', () => {
     expect(assemblyLinkReplyText({ kind: 'assembly_leave', placeName: FAC }, 'https://x/f/1'))
       .toBe(`🏭 กดลิงก์นี้เพื่อบันทึก "ออกจาก${FAC}" ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\nhttps://x/f/1`)
     expect(assemblyLinkReplyText({ kind: 'site_arrive', placeName: 'A' }, 'L')).toContain('"ถึงไซท์ A"')
+  })
+})
+
+describe('review fixes', () => {
+  it('skipped site: expected arrival, already back at the assembly point -> return', () => {
+    const p = planAssemblyDay([site('a', 'A', 'done'), site('b', 'B', 'check_in', ['evening'])], { leave_at: 't', return_at: null }, FAC)
+    expect(p.next.kind).toBe('site_arrive')
+    expect(skipStep(p)).toMatchObject({ kind: 'assembly_return' })
+    const ret = skipStep(p)
+    expect(chooseStepByGps({ next: p.next, nextDistance: 9000, skip: ret, skipDistance: 30, radius: 200 })).toEqual({ step: ret })
+  })
+  it('no skip from an open site or once returned', () => {
+    expect(skipStep(planAssemblyDay([site('a', 'A', 'check_out')], { leave_at: 't', return_at: null }, FAC))).toBeNull()
+  })
+  it('factory work never says ถึงไซท์: uses the work-place name', () => {
+    const st = { kind: 'site_arrive', placeName: `${FAC} — งานบ้านคุณบิ๊ก`, atFactory: true }
+    expect(stepLabel(st).title).toBe(`ถึง${FAC} — งานบ้านคุณบิ๊ก`)
+    expect(stepLabel({ ...st, kind: 'site_leave' }).title).toBe(`ออกจาก${FAC} — งานบ้านคุณบิ๊ก`)
+    const txt = assemblyLinkReplyText(st, 'L')
+    expect(txt).not.toContain('ถึงไซท์')
+    expect(txt).toContain(`"ถึง${FAC} — งานบ้านคุณบิ๊ก"`)
   })
 })

@@ -124,3 +124,12 @@ RPCs; auto-OT on web checkout; AttendanceGrid.
   check-in the same day collides with the one-row-per-location key: the assembly tap is
   refused with a message instead of overwriting the office row.
 - Return tap requires the last site to be checked out (one open check-in at a time).
+
+## Review fixes (2026-10-21)
+
+1. The office location RPCs (`perform_location_checkin/checkout` and their `_by_id` twins) are re-issued in this migration, with bodies copied from 2026-10-20-05 and 2026-10-21-01. When today's row at that location is an assembly row they refuse with "วันนี้ตำแหน่งนี้เป็นจุดรวมพลของคุณแล้ว…". The conflict update and the checkout update also skip assembly rows (`not is_assembly`). The dry run checks this in case (i).
+2. Second GPS skip: when the expected step is `site_arrive` but the worker is inside the assembly radius (a site was skipped that day), the page records `assembly_return`.
+3. OT = (กลับถึงโรงงาน − ออกจากโรงงาน − พัก) − ชั่วโมงทำงานปกติ. The break comes from `checkin_break_minutes` (default 60). For a one-shift day both the break and the standard are halved. The formula is shown next to the switch.
+4. Check-in OT applies only on a date that has a counted site shift: type site, and confirmed when confirmation is required. On every other date the typed OT stays.
+5. On an assembly day, `flag` is set when leave or return is still missing after every fallback. A flagged (red) day pays no check-in OT; that date keeps its typed OT, which is how an admin fixes it.
+6. Factory work never says "ถึงไซท์". The page and the LINE reply use the work-place name, for example "ถึงโรงงาน (ส่วนกลาง) — งานX".

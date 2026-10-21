@@ -3,7 +3,7 @@
 -- EXCEPT the token CHECK swap, which drops the live constraint by name first (same as 2026-10-20-02).
 -- This file contains no row-removal keyword. Tenant: FacadeX 1b9affc4-2136-4ed1-b168-a36e6624e743; fixtures
 -- are dryrun-named rows; app_settings assembly_* are changed inside the transaction only.
--- Expect PASS notices (a)..(h) and a final ALL PASS row.
+-- Expect PASS notices (a)..(i) and a final ALL PASS row.
 BEGIN;
 
 -- ===== inlined migration 2026-10-21-02 =====
@@ -185,6 +185,281 @@ begin
 end;
 $function$;
 
+-- 6) Office location check-in/out never touch an assembly row (review fix 2026-10-21). The four
+--    location RPCs are re-issued with their bodies copied from 2026-10-20-05 (web) and
+--    2026-10-21-01 (by_id); the only change: refuse when today's row at that location is an
+--    assembly row, and "not is_assembly" on the conflict update and the checkout update.
+--    CREATE OR REPLACE keeps the existing grants.
+
+CREATE OR REPLACE FUNCTION public.perform_location_checkin(p_lat numeric, p_lng numeric)
+ RETURNS TABLE(success boolean, distance_m numeric, radius_m numeric, message text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_tenant_id uuid := current_tenant_id();
+  v_worker_id uuid;
+  v_role text;
+  v_location_id uuid;
+  v_loc_lat numeric;
+  v_loc_lng numeric;
+  v_radius numeric;
+  v_distance numeric;
+  v_today date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
+begin
+  select role, assigned_checkin_location_id into v_role, v_location_id
+  from user_roles where user_email = auth.email() and tenant_id = v_tenant_id;
+
+  if v_role is null or v_role not in ('ADMIN', 'OWNER', 'PM') then
+    return query select false, null::numeric, null::numeric, 'ฟีเจอร์นี้ใช้ได้เฉพาะแอดมิน/เจ้าของ'::text;
+    return;
+  end if;
+
+  if v_location_id is null then
+    select id into v_location_id from checkin_locations where tenant_id = v_tenant_id and role = 'office' limit 1;
+  end if;
+
+  if v_location_id is null then
+    return query select false, null::numeric, null::numeric, 'ยังไม่ได้ตั้งค่าตำแหน่งเช็คอินสำหรับบัญชีนี้ — ติดต่อเจ้าของระบบ'::text;
+    return;
+  end if;
+
+  select id into v_worker_id from workers where email = auth.email() and tenant_id = v_tenant_id;
+  if v_worker_id is null then
+    return query select false, null::numeric, null::numeric, 'บัญชีนี้ยังไม่ได้เชื่อมกับข้อมูลพนักงาน — ติดต่อผู้ดูแลระบบ'::text;
+    return;
+  end if;
+
+  select lat, lng into v_loc_lat, v_loc_lng from checkin_locations where id = v_location_id and tenant_id = v_tenant_id;
+  if v_loc_lat is null or v_loc_lng is null then
+    return query select false, null::numeric, null::numeric, 'ไม่พบตำแหน่งที่กำหนด — ติดต่อเจ้าของระบบ'::text;
+    return;
+  end if;
+
+  select coalesce((select value::numeric from app_settings where tenant_id = v_tenant_id and key = 'checkin_radius_m'), 200) into v_radius;
+  v_distance := haversine_distance_m(p_lat, p_lng, v_loc_lat, v_loc_lng);
+
+  if v_distance > v_radius then
+    return query select false, v_distance, v_radius,
+      format('คุณอยู่ห่างจากตำแหน่งที่กำหนด %s เมตร ต้องอยู่ในระยะ %s เมตรจึงจะเช็คอินได้', round(v_distance), round(v_radius))::text;
+    return;
+  end if;
+
+  if exists (
+    select 1 from worker_checkins
+    where worker_id = v_worker_id and checkin_location_id = v_location_id and date = v_today and tenant_id = v_tenant_id and is_assembly
+  ) then
+    return query select false, null::numeric, null::numeric, 'วันนี้ตำแหน่งนี้เป็นจุดรวมพลของคุณแล้ว — ใช้ปุ่มเช็คอินในไลน์ หรือติดต่อแอดมิน'::text;
+    return;
+  end if;
+
+  insert into worker_checkins (tenant_id, worker_id, checkin_location_id, date, checkin_at, checkin_lat, checkin_lng, checkin_distance_m)
+  values (v_tenant_id, v_worker_id, v_location_id, v_today, now(), p_lat, p_lng, v_distance)
+  on conflict (worker_id, checkin_location_id, date) where checkin_location_id is not null do update
+    set checkin_at = now(), checkin_lat = p_lat, checkin_lng = p_lng, checkin_distance_m = v_distance
+    where not worker_checkins.is_assembly;
+
+  return query select true, v_distance, v_radius, 'เช็คอินสำเร็จ'::text;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.perform_location_checkout(p_lat numeric, p_lng numeric)
+ RETURNS TABLE(success boolean, distance_m numeric, radius_m numeric, message text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_tenant_id uuid := current_tenant_id();
+  v_worker_id uuid;
+  v_role text;
+  v_location_id uuid;
+  v_loc_lat numeric;
+  v_loc_lng numeric;
+  v_radius numeric;
+  v_distance numeric;
+  v_today date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
+begin
+  select role, assigned_checkin_location_id into v_role, v_location_id
+  from user_roles where user_email = auth.email() and tenant_id = v_tenant_id;
+
+  if v_role is null or v_role not in ('ADMIN', 'OWNER', 'PM') then
+    return query select false, null::numeric, null::numeric, 'ฟีเจอร์นี้ใช้ได้เฉพาะแอดมิน/เจ้าของ'::text;
+    return;
+  end if;
+
+  if v_location_id is null then
+    select id into v_location_id from checkin_locations where tenant_id = v_tenant_id and role = 'office' limit 1;
+  end if;
+
+  if v_location_id is null then
+    return query select false, null::numeric, null::numeric, 'ยังไม่ได้ตั้งค่าตำแหน่งเช็คอินสำหรับบัญชีนี้ — ติดต่อเจ้าของระบบ'::text;
+    return;
+  end if;
+
+  select id into v_worker_id from workers where email = auth.email() and tenant_id = v_tenant_id;
+  if v_worker_id is null then
+    return query select false, null::numeric, null::numeric, 'บัญชีนี้ยังไม่ได้เชื่อมกับข้อมูลพนักงาน — ติดต่อผู้ดูแลระบบ'::text;
+    return;
+  end if;
+
+  if exists (
+    select 1 from worker_checkins
+    where worker_id = v_worker_id and checkin_location_id = v_location_id and date = v_today and tenant_id = v_tenant_id and is_assembly
+  ) then
+    return query select false, null::numeric, null::numeric, 'วันนี้ตำแหน่งนี้เป็นจุดรวมพลของคุณแล้ว — ใช้ปุ่มเช็คอินในไลน์ หรือติดต่อแอดมิน'::text;
+    return;
+  end if;
+
+  if not exists (
+    select 1 from worker_checkins
+    where worker_id = v_worker_id and checkin_location_id = v_location_id and date = v_today and tenant_id = v_tenant_id
+  ) then
+    return query select false, null::numeric, null::numeric, 'ยังไม่ได้เช็คอินวันนี้ — เช็คอินก่อนจึงจะเช็คเอาท์ได้'::text;
+    return;
+  end if;
+
+  select lat, lng into v_loc_lat, v_loc_lng from checkin_locations where id = v_location_id and tenant_id = v_tenant_id;
+  select coalesce((select value::numeric from app_settings where tenant_id = v_tenant_id and key = 'checkin_radius_m'), 200) into v_radius;
+  v_distance := haversine_distance_m(p_lat, p_lng, v_loc_lat, v_loc_lng);
+
+  if v_distance > v_radius then
+    return query select false, v_distance, v_radius,
+      format('คุณอยู่ห่างจากตำแหน่งที่กำหนด %s เมตร ต้องอยู่ในระยะ %s เมตรจึงจะเช็คเอาท์ได้', round(v_distance), round(v_radius))::text;
+    return;
+  end if;
+
+  update worker_checkins
+  set checkout_at = now(), checkout_lat = p_lat, checkout_lng = p_lng, checkout_distance_m = v_distance
+  where worker_id = v_worker_id and checkin_location_id = v_location_id and date = v_today and tenant_id = v_tenant_id and not is_assembly;
+
+  return query select true, v_distance, v_radius, 'เช็คเอาท์สำเร็จ'::text;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.perform_location_checkin_by_id(p_worker_id uuid, p_location_id uuid, p_lat numeric, p_lng numeric)
+ RETURNS TABLE(success boolean, distance_m numeric, radius_m numeric, message text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_tenant_id uuid;
+  v_loc_lat numeric;
+  v_loc_lng numeric;
+  v_radius numeric;
+  v_distance numeric;
+  v_today date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
+begin
+  select tenant_id into v_tenant_id from workers where id = p_worker_id;
+  if v_tenant_id is null then
+    return query select false, null::numeric, null::numeric, 'ไม่พบข้อมูลพนักงาน'::text;
+    return;
+  end if;
+
+  if not location_checkin_allowed(p_worker_id, p_location_id, v_tenant_id) then
+    return query select false, null::numeric, null::numeric, 'ยังไม่ได้ตั้งค่าตำแหน่งเช็คอินสำหรับบัญชีนี้ — ติดต่อเจ้าของระบบ'::text;
+    return;
+  end if;
+
+  select lat, lng into v_loc_lat, v_loc_lng from checkin_locations where id = p_location_id and tenant_id = v_tenant_id;
+  if v_loc_lat is null or v_loc_lng is null then
+    return query select false, null::numeric, null::numeric, 'ไม่พบตำแหน่งที่กำหนด — ติดต่อเจ้าของระบบ'::text;
+    return;
+  end if;
+
+  select coalesce((select value::numeric from app_settings where tenant_id = v_tenant_id and key = 'checkin_radius_m'), 200) into v_radius;
+  v_distance := haversine_distance_m(p_lat, p_lng, v_loc_lat, v_loc_lng);
+
+  if v_distance > v_radius then
+    return query select false, v_distance, v_radius,
+      format('คุณอยู่ห่างจากตำแหน่งที่กำหนด %s เมตร ต้องอยู่ในระยะ %s เมตรจึงจะเช็คอินได้', round(v_distance), round(v_radius))::text;
+    return;
+  end if;
+
+  if exists (
+    select 1 from worker_checkins
+    where worker_id = p_worker_id and checkin_location_id = p_location_id and date = v_today and tenant_id = v_tenant_id and is_assembly
+  ) then
+    return query select false, null::numeric, null::numeric, 'วันนี้ตำแหน่งนี้เป็นจุดรวมพลของคุณแล้ว — ใช้ปุ่มเช็คอินในไลน์ หรือติดต่อแอดมิน'::text;
+    return;
+  end if;
+
+  insert into worker_checkins (tenant_id, worker_id, checkin_location_id, date, checkin_at, checkin_lat, checkin_lng, checkin_distance_m)
+  values (v_tenant_id, p_worker_id, p_location_id, v_today, now(), p_lat, p_lng, v_distance)
+  on conflict (worker_id, checkin_location_id, date) where checkin_location_id is not null do update
+    set checkin_at = now(), checkin_lat = p_lat, checkin_lng = p_lng, checkin_distance_m = v_distance
+    where not worker_checkins.is_assembly;
+
+  return query select true, v_distance, v_radius, 'เช็คอินสำเร็จ'::text;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.perform_location_checkout_by_id(p_worker_id uuid, p_location_id uuid, p_lat numeric, p_lng numeric)
+ RETURNS TABLE(success boolean, distance_m numeric, radius_m numeric, message text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_tenant_id uuid;
+  v_loc_lat numeric;
+  v_loc_lng numeric;
+  v_radius numeric;
+  v_distance numeric;
+  v_today date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
+begin
+  select tenant_id into v_tenant_id from workers where id = p_worker_id;
+  if v_tenant_id is null then
+    return query select false, null::numeric, null::numeric, 'ไม่พบข้อมูลพนักงาน'::text;
+    return;
+  end if;
+
+  if not location_checkin_allowed(p_worker_id, p_location_id, v_tenant_id) then
+    return query select false, null::numeric, null::numeric, 'ยังไม่ได้ตั้งค่าตำแหน่งเช็คอินสำหรับบัญชีนี้ — ติดต่อเจ้าของระบบ'::text;
+    return;
+  end if;
+
+  if exists (
+    select 1 from worker_checkins
+    where worker_id = p_worker_id and checkin_location_id = p_location_id and date = v_today and tenant_id = v_tenant_id and is_assembly
+  ) then
+    return query select false, null::numeric, null::numeric, 'วันนี้ตำแหน่งนี้เป็นจุดรวมพลของคุณแล้ว — ใช้ปุ่มเช็คอินในไลน์ หรือติดต่อแอดมิน'::text;
+    return;
+  end if;
+
+  if not exists (
+    select 1 from worker_checkins
+    where worker_id = p_worker_id and checkin_location_id = p_location_id and date = v_today and tenant_id = v_tenant_id
+  ) then
+    return query select false, null::numeric, null::numeric, 'ยังไม่ได้เช็คอินวันนี้ — เช็คอินก่อนจึงจะเช็คเอาท์ได้'::text;
+    return;
+  end if;
+
+  select lat, lng into v_loc_lat, v_loc_lng from checkin_locations where id = p_location_id and tenant_id = v_tenant_id;
+  if v_loc_lat is null or v_loc_lng is null then
+    return query select false, null::numeric, null::numeric, 'ไม่พบตำแหน่งที่กำหนด — ติดต่อเจ้าของระบบ'::text;
+    return;
+  end if;
+
+  select coalesce((select value::numeric from app_settings where tenant_id = v_tenant_id and key = 'checkin_radius_m'), 200) into v_radius;
+  v_distance := haversine_distance_m(p_lat, p_lng, v_loc_lat, v_loc_lng);
+
+  if v_distance > v_radius then
+    return query select false, v_distance, v_radius,
+      format('คุณอยู่ห่างจากตำแหน่งที่กำหนด %s เมตร ต้องอยู่ในระยะ %s เมตรจึงจะเช็คเอาท์ได้', round(v_distance), round(v_radius))::text;
+    return;
+  end if;
+
+  update worker_checkins
+  set checkout_at = now(), checkout_lat = p_lat, checkout_lng = p_lng, checkout_distance_m = v_distance
+  where worker_id = p_worker_id and checkin_location_id = p_location_id and date = v_today and tenant_id = v_tenant_id and not is_assembly;
+
+  return query select true, v_distance, v_radius, 'เช็คเอาท์สำเร็จ'::text;
+end;
+$function$;
+
 REVOKE ALL ON FUNCTION public.worker_assembly_location(uuid,date) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.perform_assembly_tap_by_id(uuid,text,numeric,numeric) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.worker_assembly_location(uuid,date) TO service_role;
@@ -205,6 +480,8 @@ DECLARE
   r        record;
   v_today  date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
   v_ok     boolean;
+  v_adm    uuid;   -- ADMIN whose assigned office location is also the assembly point
+  v_at     timestamptz;
 BEGIN
   -- (a) schema + privileges
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'sites' AND column_name = 'assembly_mode')
@@ -324,6 +601,24 @@ BEGIN
   SELECT * INTO r FROM perform_assembly_tap_by_id(v_w1, 'sideways', 13.7564, 100.5019);
   IF r.success THEN RAISE EXCEPTION 'FAIL (h): bad step accepted'; END IF;
   RAISE NOTICE 'PASS (h) time_clock token + step validation';
+
+  -- (i) office location check-in/out never overwrite an assembly row
+  IF EXISTS (SELECT 1 FROM user_roles WHERE user_email = 'adm@asm.dryrun.invalid') THEN RAISE EXCEPTION 'SETUP: dryrun email exists'; END IF;
+  INSERT INTO workers (tenant_id, name, email, status) VALUES (v_tenant, 'dryrun asm admin', 'adm@asm.dryrun.invalid', 'active') RETURNING id INTO v_adm;
+  INSERT INTO user_roles (user_email, role, tenant_id, status, assigned_checkin_location_id) VALUES ('adm@asm.dryrun.invalid', 'ADMIN', v_tenant, 'approved', v_loc);
+  INSERT INTO worker_assignments (tenant_id, worker_id, site_id, date, shift, type) VALUES (v_tenant, v_adm, v_site_a, v_today, 'morning', 'site');
+  SELECT * INTO r FROM perform_assembly_tap_by_id(v_adm, 'leave', 13.7564, 100.5019);
+  IF NOT r.success THEN RAISE EXCEPTION 'FAIL (i): admin leave: %', r; END IF;
+  SELECT checkin_at INTO v_at FROM worker_checkins WHERE worker_id = v_adm AND is_assembly;
+  SELECT * INTO r FROM perform_location_checkin_by_id(v_adm, v_loc, 13.7564, 100.5019);
+  IF r.success OR r.message NOT LIKE 'วันนี้ตำแหน่งนี้เป็นจุดรวมพล%' THEN RAISE EXCEPTION 'FAIL (i): office check-in over assembly row: %', r; END IF;
+  SELECT * INTO r FROM perform_location_checkout_by_id(v_adm, v_loc, 13.7564, 100.5019);
+  IF r.success OR r.message NOT LIKE 'วันนี้ตำแหน่งนี้เป็นจุดรวมพล%' THEN RAISE EXCEPTION 'FAIL (i): office checkout over assembly row: %', r; END IF;
+  IF NOT EXISTS (SELECT 1 FROM worker_checkins WHERE worker_id = v_adm AND is_assembly AND checkin_at = v_at AND checkout_at IS NULL)
+     OR (SELECT count(*) FROM worker_checkins WHERE worker_id = v_adm) <> 1 THEN
+    RAISE EXCEPTION 'FAIL (i): assembly row changed';
+  END IF;
+  RAISE NOTICE 'PASS (i) office location RPCs leave the assembly row alone';
 END $$;
 
 SELECT 'ALL PASS' AS result;

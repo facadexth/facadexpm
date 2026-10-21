@@ -42,7 +42,7 @@ export async function loadPayrollMonth(year, month) {
     fetchAllPages(() => supabase.from('worker_ot').select('id, worker_id, ot_hours, date').gte('date', from).lte('date', to)),
     supabase.from('company_holidays').select('date').gte('date', from).lte('date', to).then(must),
     supabase.from('salary_advances').select('*').in('status', ['approved', 'settled']).then(must),
-    supabase.from('app_settings').select('key, value').in('key', ['holiday_pay_multiplier', 'require_checkin_confirmation', 'ot_from_checkin', 'checkin_standard_day_hours', 'assembly_mode', 'assembly_location_id']).then(must),
+    supabase.from('app_settings').select('key, value').in('key', ['holiday_pay_multiplier', 'require_checkin_confirmation', 'ot_from_checkin', 'checkin_standard_day_hours', 'checkin_break_minutes', 'assembly_mode', 'assembly_location_id']).then(must),
   ])
   // Ex-workers who still have a record or shifts this month stay in the run.
   const activeIds = new Set(activeWorkers.map(w => w.id))
@@ -86,7 +86,8 @@ async function loadCheckinOt(from, to, setting) {
     sites: Object.fromEntries(sites.map(s => [s.id, s])),
     settings: { assemblyMode: setting('assembly_mode') || 'none', assemblyLocationId: setting('assembly_location_id') || null },
   })
-  return otByWorkerDate(days, parseFloat(setting('checkin_standard_day_hours')) || 8)
+  const brk = parseFloat(setting('checkin_break_minutes'))
+  return otByWorkerDate(days, parseFloat(setting('checkin_standard_day_hours')) || 8, Number.isFinite(brk) ? brk : 60)
 }
 
 export async function loadAdvanceLines(advanceIds) {

@@ -96,13 +96,13 @@ describe('buildCheckinDays', () => {
 
 describe('otHoursForDay', () => {
   it('work beyond the standard day, half for a one-shift day', () => {
-    expect(otHoursForDay({ workMin: 628, shiftCount: 2 }, 8)).toBe(2.47)
+    expect(otHoursForDay({ workMin: 628, shiftCount: 2 }, 8, 0)).toBe(2.47)
     expect(otHoursForDay({ workMin: 400, shiftCount: 2 }, 8)).toBe(0)
-    expect(otHoursForDay({ workMin: 300, shiftCount: 1 }, 8)).toBe(1)
+    expect(otHoursForDay({ workMin: 300, shiftCount: 1 }, 8, 0)).toBe(1)
     expect(otHoursForDay({ workMin: null, shiftCount: 2 }, 8)).toBeNull()
   })
   it('otByWorkerDate keys only days with a known work time', () => {
-    const m = otByWorkerDate([{ workerId: 'w', date: D, workMin: 600, shiftCount: 2 }, { workerId: 'w', date: '2026-10-22', workMin: null, shiftCount: 2 }], 8)
+    const m = otByWorkerDate([{ workerId: 'w', date: D, workMin: 600, shiftCount: 2 }, { workerId: 'w', date: '2026-10-22', workMin: null, shiftCount: 2 }], 8, 0)
     expect(m).toEqual({ [`w|${D}`]: 2 })
   })
 })
@@ -116,5 +116,22 @@ describe('summarizeTaps', () => {
     ])
     expect(s.w).toEqual({ daysWorked: 2, tapsMade: 6, tapsExpected: 8, pct: 75 })
     expect(s.v).toEqual({ daysWorked: 1, tapsMade: 0, tapsExpected: 2, pct: 0 })
+  })
+})
+
+describe('review fixes', () => {
+  it('break is subtracted (halved on one-shift days) before the standard', () => {
+    expect(otHoursForDay({ workMin: 628, shiftCount: 2 }, 8, 60)).toBe(1.47)
+    expect(otHoursForDay({ workMin: 540, shiftCount: 2 }, 8, 60)).toBe(0)
+    expect(otHoursForDay({ workMin: 330, shiftCount: 1 }, 8, 60)).toBe(1)
+    expect(otHoursForDay({ workMin: 628, shiftCount: 2 }, 8)).toBe(1.47) // default break 60
+  })
+  it('flagged days give no check-in OT', () => {
+    expect(otByWorkerDate([{ workerId: 'w', date: D, workMin: 700, shiftCount: 2, flag: true }], 8, 60)).toEqual({})
+  })
+  it('assembly day with a point still missing after all fallbacks is flagged', () => {
+    const [d] = buildCheckinDays({ checkins: [asmRow('w6', T('07:50'), null), siteRow('w6', 'a', T('08:40'), null)], assignments: [asg('w6', 'a')], sites, settings: ON })
+    expect(d.return).toBeNull()
+    expect(d.flag).toBe(true)
   })
 })

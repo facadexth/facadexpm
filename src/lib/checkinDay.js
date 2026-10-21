@@ -97,6 +97,8 @@ export function buildCheckinDays({ checkins = [], assignments = [], sites = {}, 
       else if (depart) { ret = { at: depart.at, source: 'site' }; flag = true }
     }
 
+    // A point still missing after every fallback on an assembly day needs the admin too.
+    if (mode === 'assembly' && (!leave || !ret)) flag = true
     const start = mode === 'assembly' ? leave?.at : arrive?.at
     const end = mode === 'assembly' ? ret?.at : depart?.at
     const workMin = minutesBetween(start, end)
@@ -118,19 +120,26 @@ export function buildCheckinDays({ checkins = [], assignments = [], sites = {}, 
   return days.sort((a, b) => b.date.localeCompare(a.date) || a.workerId.localeCompare(b.workerId))
 }
 
-// OT hours for one day: work time beyond the standard day (half of it for a one-shift day),
-// 2 decimals. null when the work time is unknown.
-export function otHoursForDay(day, standardHours = 8) {
+// OT hours for one day (owner ruling 2026-10-21):
+//   OT = (กลับถึงโรงงาน − ออกจากโรงงาน − พัก) − ชั่วโมงทำงานปกติ
+// break (app_settings checkin_break_minutes, default 60) and standard (checkin_standard_day_hours,
+// default 8) are both halved for a one-shift day. 2 decimals; null when the work time is unknown.
+export const DEFAULT_BREAK_MINUTES = 60
+export function otHoursForDay(day, standardHours = 8, breakMinutes = DEFAULT_BREAK_MINUTES) {
   if (day.workMin == null) return null
-  const std = (Number(standardHours) || 8) * 60 * (day.shiftCount === 1 ? 0.5 : 1)
-  return Math.round(Math.max(0, day.workMin - std) / 60 * 100) / 100
+  const f = day.shiftCount === 1 ? 0.5 : 1
+  const std = (Number(standardHours) || 8) * 60 * f
+  const brk = (Number.isFinite(Number(breakMinutes)) ? Number(breakMinutes) : DEFAULT_BREAK_MINUTES) * f
+  return Math.round(Math.max(0, day.workMin - brk - std) / 60 * 100) / 100
 }
 
-// 'worker|date' -> OT hours, only for days whose work time is known.
-export function otByWorkerDate(days, standardHours = 8) {
+// 'worker|date' -> OT hours, only for days whose work time is known and NOT flagged (a red day
+// pays no check-in OT; that date keeps the typed OT, which is how an admin fixes it).
+export function otByWorkerDate(days, standardHours = 8, breakMinutes = DEFAULT_BREAK_MINUTES) {
   const out = {}
   for (const d of days) {
-    const h = otHoursForDay(d, standardHours)
+    if (d.flag) continue
+    const h = otHoursForDay(d, standardHours, breakMinutes)
     if (h != null) out[`${d.workerId}|${d.date}`] = h
   }
   return out

@@ -12,7 +12,8 @@ const WORK_TYPES = ['site', 'factory', 'office']
 export function summarizeAttendance({ shifts = [], otRows = [], holidayDates = [], requireConfirm = false, checkinOt = null }) {
   const hol = new Set(holidayDates)
   const out = {}
-  const fromCheckin = (w, d) => checkinOt != null && Object.prototype.hasOwnProperty.call(checkinOt, `${w}|${d}`)
+  const counted = (w, d) => shifts.some(s => s.worker_id === w && s.date === d && s.type === 'site' && (!requireConfirm || !!s.confirmed_at))
+  const fromCheckin = (w, d) => checkinOt != null && Object.prototype.hasOwnProperty.call(checkinOt, `${w}|${d}`) && counted(w, d)
   const get = id => (out[id] ||= { daysWorked: 0, leavePersonalDays: 0, leaveSickDays: 0, otHours: 0, holidayShifts: 0, officeDays: 0 })
   for (const s of shifts) {
     const a = get(s.worker_id)
@@ -25,7 +26,9 @@ export function summarizeAttendance({ shifts = [], otRows = [], holidayDates = [
     if ((s.type === 'factory' || siteCounts) && (hol.has(s.date) || weekdayOf(s.date) === 0)) a.holidayShifts += 1
   }
   for (const o of otRows) if (!fromCheckin(o.worker_id, o.date)) get(o.worker_id).otHours += Number(o.ot_hours) || 0
-  for (const [k, h] of Object.entries(checkinOt ?? {})) get(k.split('|')[0]).otHours += Number(h) || 0
+  // Check-in OT only on a date with a counted site shift (type site, confirmed when required).
+  const countedSite = new Set(shifts.filter(s => s.type === 'site' && (!requireConfirm || !!s.confirmed_at)).map(s => `${s.worker_id}|${s.date}`))
+  for (const [k, h] of Object.entries(checkinOt ?? {})) if (countedSite.has(k)) get(k.split('|')[0]).otHours += Number(h) || 0
   return out
 }
 

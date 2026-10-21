@@ -25,7 +25,11 @@ function useCheckinSettings() {
   const { data: mode } = useAppSetting('assembly_mode', 'none')
   const { data: loc } = useAppSetting('assembly_location_id', '')
   const { data: std } = useAppSetting('checkin_standard_day_hours', '8')
-  return useMemo(() => ({ assemblyMode: mode || 'none', assemblyLocationId: loc || null, standardHours: parseFloat(std) || 8, ready: mode != null && loc != null }), [mode, loc, std])
+  const { data: brk } = useAppSetting('checkin_break_minutes', '60')
+  return useMemo(() => {
+    const b = parseFloat(brk)
+    return { assemblyMode: mode || 'none', assemblyLocationId: loc || null, standardHours: parseFloat(std) || 8, breakMinutes: Number.isFinite(b) ? b : 60, ready: mode != null && loc != null }
+  }, [mode, loc, std, brk])
 }
 
 function Point({ p, siteName }) {
@@ -70,7 +74,7 @@ export function CheckinDayTable({ from, to, workerFilter, workers = [] }) {
         </thead>
         <tbody>
           {days.map(d => {
-            const ot = otHoursForDay(d, settings.standardHours)
+            const ot = d.flag ? null : otHoursForDay(d, settings.standardHours, settings.breakMinutes)
             const travel = (d.travelOutMin ?? 0) + (d.travelBackMin ?? 0)
             return (
               <tr key={`${d.workerId}|${d.date}`} style={d.flag ? { background: 'rgba(220,38,38,0.06)' } : undefined}>
@@ -149,9 +153,12 @@ export function CheckinMonthSummary({ workers = [] }) {
 export function OtFromCheckinSetting() {
   const { data: on, refetch } = useAppSetting('ot_from_checkin', 'false')
   const { data: std, refetch: refetchStd } = useAppSetting('checkin_standard_day_hours', '8')
+  const { data: brk, refetch: refetchBrk } = useAppSetting('checkin_break_minutes', '60')
   const [stdInput, setStdInput] = useState('')
+  const [brkInput, setBrkInput] = useState('')
   const [saving, setSaving] = useState(false)
   useEffect(() => { if (std != null) setStdInput(String(std)) }, [std])
+  useEffect(() => { if (brk != null) setBrkInput(String(brk)) }, [brk])
   const run = async (fn) => {
     setSaving(true)
     try { await fn() } catch (e) { alert('Error: ' + e.message) } finally { setSaving(false) }
@@ -175,7 +182,16 @@ export function OtFromCheckinSetting() {
         <input type="number" className="input input-sm" min="1" max="24" step="0.5" style={{ width: 80 }} value={stdInput} onChange={e => setStdInput(e.target.value)} />
         <button className="btn btn-sm btn-ghost" disabled={saving || !(parseFloat(stdInput) > 0)}
           onClick={() => run(async () => { await saveAppSetting('checkin_standard_day_hours', String(parseFloat(stdInput))); refetchStd() })}>บันทึก</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, marginLeft: 26, fontSize: 13 }}>
+        <span>พักต่อวัน (นาที)</span>
+        <input type="number" className="input input-sm" min="0" max="600" step="5" style={{ width: 80 }} value={brkInput} onChange={e => setBrkInput(e.target.value)} />
+        <button className="btn btn-sm btn-ghost" disabled={saving || !(parseFloat(brkInput) >= 0)}
+          onClick={() => run(async () => { await saveAppSetting('checkin_break_minutes', String(parseFloat(brkInput))); refetchBrk() })}>บันทึก</button>
         <span style={{ color: 'var(--text3)', fontSize: 12 }}>(กะเดียว = ครึ่งหนึ่ง)</span>
+      </div>
+      <div style={{ marginTop: 6, marginLeft: 26, fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>
+        OT = (กลับถึงโรงงาน − ออกจากโรงงาน − พัก) − ชั่วโมงทำงานปกติ · นับเฉพาะวันที่มีกะไซท์ที่นับค่าแรงแล้ว · แถวแดงไม่คิด OT จากเช็คอิน (ใช้ OT ที่กรอกเองแทน)
       </div>
     </div>
   )

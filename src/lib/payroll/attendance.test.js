@@ -68,7 +68,20 @@ describe('summarizeAttendance checkinOt (คิด OT จากเวลาเ�
     const r = summarizeAttendance({ shifts, otRows, checkinOt: { 'a|2026-10-01': 2.47 } })
     expect(r.a.otHours).toBeCloseTo(2.47 + 2 + 0.5, 5)
   })
-  it('adds a worker who only has check-in OT', () => {
-    expect(summarizeAttendance({ shifts: [], otRows: [], checkinOt: { 'z|2026-10-01': 1.5 } }).z.otHours).toBe(1.5)
+  it('adds a worker whose only OT is from check-in (on a counted site shift)', () => {
+    expect(summarizeAttendance({ shifts: [{ worker_id: 'z', type: 'site', date: '2026-10-01', ot_hours: 0 }], otRows: [], checkinOt: { 'z|2026-10-01': 1.5 } }).z.otHours).toBe(1.5)
+  })
+})
+
+describe('checkinOt only on counted site shifts', () => {
+  it('ignores check-in OT on a date without a counted site shift (unconfirmed, leave, none)', () => {
+    const shifts = [
+      { worker_id: 'a', type: 'site', date: '2026-10-01', ot_hours: 0, confirmed_at: null },
+      { worker_id: 'a', type: 'leave_sick', date: '2026-10-02', ot_hours: 0 },
+      { worker_id: 'a', type: 'site', date: '2026-10-03', ot_hours: 0, confirmed_at: 'x' },
+    ]
+    const checkinOt = { 'a|2026-10-01': 1, 'a|2026-10-02': 1, 'a|2026-10-03': 1, 'a|2026-10-04': 1 }
+    expect(summarizeAttendance({ shifts, otRows: [], requireConfirm: true, checkinOt }).a.otHours).toBe(1)
+    expect(summarizeAttendance({ shifts, otRows: [], requireConfirm: false, checkinOt }).a.otHours).toBe(2)
   })
 })
