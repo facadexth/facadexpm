@@ -2,7 +2,7 @@
 // Dashboard — ภาพรวม (หน้าแรก) แยกตามบทบาท
 //   OWNER  : การ์ดเงินเดิม 8 ใบ + ตัวเลือกช่วงเวลา + การ์ดใหม่ "วันนี้ / หน้างาน"
 //            ทั้งหมดปรับแต่ง (ซ่อน/เรียง) ได้ที่ "ปรับแต่งการ์ด" -- ต่อผู้ใช้ (localStorage)
-//   ADMIN  : เรื่องรออนุมัติ, ต้องจ่าย (เกินกำหนด), ต้องรับ, คนงานวันนี้ -- ไม่มีแนวโน้มยอดขาย/กำไร
+//   ADMIN  : เหมือน OWNER ทุกอย่าง (owner เลือกแบบ B)
 //   PM     : หน้างานล้วน ไม่มีเงิน และไม่โหลด query เงินเลย (ดู useDashboardData.js)
 //   WORKER : เหมือนเดิม
 // ตรรกะการจัดกลุ่ม/นับทั้งหมดอยู่ใน src/lib/dashboardCards.js (มีเทสต์)
@@ -11,7 +11,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useSites, useExpenses, useIncomes, usePaymentForecast, useSitesProgress, useSiteRetentionSummary, useCheques, useAppSetting, useQuery } from '../hooks/useSupabase.js'
-import { useOwnerDashboard, useAdminDashboard, usePmDashboard } from '../hooks/useDashboardData.js'
+import { useOwnerDashboard, usePmDashboard } from '../hooks/useDashboardData.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { isPm } from '../lib/roles.js'
 import { useTenant } from '../hooks/useTenant.js'
@@ -315,8 +315,8 @@ const ALL_TABS = () => true
 
 export default function Dashboard({ navigateTo, pendingCounts = null, canSeeTab = ALL_TABS }) {
   const { role, user } = useUserRole()
-  if (role === 'OWNER') return <OwnerDashboard navigateTo={navigateTo} user={user} pendingCounts={pendingCounts} canSeeTab={canSeeTab} />
-  if (role === 'ADMIN') return <AdminDashboard navigateTo={navigateTo} pendingCounts={pendingCounts} canSeeTab={canSeeTab} />
+  // OWNER and ADMIN share one dashboard (owner decision B, 2026-10-21).
+  if (role === 'OWNER' || role === 'ADMIN') return <OwnerDashboard navigateTo={navigateTo} user={user} pendingCounts={pendingCounts} canSeeTab={canSeeTab} />
   if (isPm(role)) return <PmDashboard navigateTo={navigateTo} pendingCounts={pendingCounts} canSeeTab={canSeeTab} />
   if (!role) return null
   return <WorkerSiteProgress />
@@ -374,39 +374,9 @@ function PmDashboard({ navigateTo, pendingCounts, canSeeTab }) {
   )
 }
 
-// ── ADMIN: approvals, payables, receivables, today's check-in. No sales/profit trends. ──
-function AdminDashboard({ navigateTo, pendingCounts, canSeeTab }) {
-  const today = bangkokDate()
-  const { data } = useAdminDashboard(today, true)
-  const crew = useMemo(() => (data ? todayCrewSummary(data.assignments, data.checkins) : null), [data])
-  const overdue = useMemo(() => overdueExpenses(data?.unpaid, today), [data, today])
-  const receivable = useMemo(() => ({
-    count: (data?.invoices || []).length,
-    total: (data?.invoices || []).reduce((s, i) => s + (Number(i.total) || 0), 0),
-  }), [data])
-  const items = pendingSummary(pendingCounts, canSeeTab, ['po_draft', 'leave_pending', 'advances_pending', 'repair_pending'])
-
-  return (
-    <div>
-      <GuideProgressCard navigateTo={navigateTo} />
-      <div style={CARD_GRID}>
-        <PendingCard title="เรื่องรออนุมัติ / รอทำ" items={items} navigateTo={navigateTo} />
-        <DashCard title="ต้องจ่าย (เกินกำหนด)" onOpen={() => navigateTo('expenses', expensesDue(EARLIEST, addDaysIso(today, -1)))}>
-          <div style={{ ...num, fontSize: 22, color: overdue.count ? 'var(--red)' : 'var(--text3)' }}>{fmt(overdue.total)}</div>
-          <div style={muted}>{overdue.count ? `เกินกำหนด ${overdue.count} รายการ` : 'ไม่มีรายการเกินกำหนด'}</div>
-        </DashCard>
-        <DashCard title="ต้องรับ" onOpen={() => navigateTo('invoices')}>
-          <div style={{ ...num, fontSize: 22, color: 'var(--green)' }}>{fmt(receivable.total)}</div>
-          <div style={muted}>{receivable.count ? `ใบแจ้งหนี้ค้างรับ ${receivable.count} ใบ` : 'ไม่มีใบแจ้งหนี้ค้างรับ'}</div>
-        </DashCard>
-        <CrewTodayCard crew={crew} navigateTo={navigateTo} showNames={false} />
-      </div>
-    </div>
-  )
-}
-
-// ── OWNER: the 8 money cards (unchanged maths) + the new cards, all customisable. ──
+// ── OWNER / ADMIN: the 8 money cards (unchanged maths) + the new cards, all customisable. ──
 function OwnerDashboard({ navigateTo, user, pendingCounts, canSeeTab }) {
+  const salesTab = canSeeTab('sales_report') ? 'sales_report' : 'income'
   const [period, setPeriod] = useState('ytd')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')
@@ -546,7 +516,7 @@ function OwnerDashboard({ navigateTo, user, pendingCounts, canSeeTab }) {
     income: <Kpi key="income" label="รายรับรวม" value={fmtShort(totalIncome)} sub={`${fmt(totalIncome)} บาท`} cls="green" color="var(--green)" onClick={() => navigateTo('income')} />,
     non_vat_income: <Kpi key="non_vat_income" label="รายรับไม่มี VAT" value={fmtShort(nonVatIncome)} sub={`${fmt(nonVatIncome)} บาท`} cls="green" color="var(--green)" onClick={() => navigateTo('income')} />,
     expense: <Kpi key="expense" label="รายจ่ายรวม" value={fmtShort(totalExpense)} sub={`${fmt(totalExpense)} บาท`} cls="red" color="var(--red)" onClick={() => navigateTo('expenses', range.from ? { dateFrom: range.from, dateTo: range.to } : {})} />,
-    profit: <Kpi key="profit" label="กำไรเบื้องต้น" value={fmtShort(profit)} sub={profit >= 0 ? `+${(profit/totalIncome*100).toFixed(1)}%` : 'ขาดทุน'} cls={profit>=0?'green':'red'} color={profit>=0?'var(--green)':'var(--red)'} onClick={() => navigateTo('sales_report')} />,
+    profit: <Kpi key="profit" label="กำไรเบื้องต้น" value={fmtShort(profit)} sub={profit >= 0 ? `+${(profit/totalIncome*100).toFixed(1)}%` : 'ขาดทุน'} cls={profit>=0?'green':'red'} color={profit>=0?'var(--green)':'var(--red)'} onClick={() => navigateTo(salesTab)} />,
     due_this_month: <Kpi key="due_this_month" label={`ต้องชำระ ${format(new Date(), 'MMM yy', {locale:th})}`} value={fmtShort(dueThisMonth)} sub="ยอดค้างจ่ายเดือนนี้" cls="yellow" color="var(--yellow)"
       onClick={() => navigateTo('expenses', expensesDue(format(startOfMonth(new Date()), 'yyyy-MM-dd'), format(endOfMonth(new Date()), 'yyyy-MM-dd')))} />,
     due_next_month: <Kpi key="due_next_month" label={`ต้องชำระ ${format(addMonths(new Date(),1), 'MMM yy', {locale:th})}`} value={fmtShort(dueNextMonth)} sub="ยอดค้างจ่ายเดือนหน้า" cls="blue" color="var(--blue)"
@@ -570,7 +540,7 @@ function OwnerDashboard({ navigateTo, user, pendingCounts, canSeeTab }) {
       ),
     } : {}),
     monthly_chart: (
-      <DashCard key="monthly_chart" wide title="รายรับ vs รายจ่าย รายเดือน" onOpen={() => navigateTo('sales_report')}>
+      <DashCard key="monthly_chart" wide title="รายรับ vs รายจ่าย รายเดือน" onOpen={() => navigateTo(salesTab)}>
         <div style={{ ...muted, marginTop: -6, marginBottom: 6 }}>ตามช่วงเวลาด้านบน</div>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={monthlyData} margin={{ top: 0, right: 6, bottom: 0, left: 0 }}>

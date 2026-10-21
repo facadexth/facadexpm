@@ -20,7 +20,6 @@ vi.mock('../hooks/useSupabase.js', () => ({
 }))
 vi.mock('../hooks/useDashboardData.js', () => ({
   useOwnerDashboard: () => ({ data: { assignments: [], checkins: [], unpaid: [{ amount: 500, due_date: '2000-01-01' }], quotations: [{ status: 'sent' }] } }),
-  useAdminDashboard: () => ({ data: { assignments: [], checkins: [], unpaid: [], invoices: [{ id: 'i', total: 41516 }] } }),
   usePmDashboard: () => ({ data: null }),
 }))
 
@@ -57,11 +56,18 @@ describe('OWNER dashboard', () => {
 })
 
 describe('ADMIN dashboard', () => {
-  it('shows approvals, payables, receivables and check-ins, no sales/profit', () => {
+  it('is the same as OWNER: money cards, new cards and the customizer', () => {
     hookRole = 'ADMIN'
     const { container } = render(<Dashboard navigateTo={() => {}} />)
-    const text = container.textContent
-    for (const t of ['เรื่องรออนุมัติ', 'ต้องจ่าย', 'ต้องรับ', '41,516', 'คนงานวันนี้']) expect(text).toContain(t)
-    for (const t of ['รายรับรวม', 'กำไร', 'รายรับ vs รายจ่าย']) expect(text).not.toContain(t)
+    for (const t of ['รายรับรวม', 'กำไรเบื้องต้น', 'ต้องชำระ 1–3 เดือนข้างหน้า', 'คนงานวันนี้', 'ปรับแต่งการ์ด']) expect(container.textContent).toContain(t)
+  })
+})
+
+describe('sales_report fallback', () => {
+  it('profit card opens income when sales_report is blocked', () => {
+    const nav = vi.fn()
+    const { getByText } = render(<Dashboard navigateTo={nav} canSeeTab={t => t !== 'sales_report'} />)
+    fireEvent.click(getByText('กำไรเบื้องต้น'))
+    expect(nav).toHaveBeenCalledWith('income')
   })
 })

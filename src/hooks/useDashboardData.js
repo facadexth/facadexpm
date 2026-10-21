@@ -28,19 +28,9 @@ export async function loadOwnerDashboard(today) {
     loadAssignmentsRange(today, today),
     loadCheckins(today),
     loadUnpaidExpenses(),
-    supabase.from('quotations').select('status').gte('date', `${ym}-01`).lte('date', monthEndIso(ym)).then(unwrap),
+    fetchAllRows(() => supabase.from('quotations').select('id, status').gte('date', `${ym}-01`).lte('date', monthEndIso(ym)).order('id')),
   ])
   return { assignments, checkins, unpaid, quotations }
-}
-
-export async function loadAdminDashboard(today) {
-  const [assignments, checkins, unpaid, invoices] = await Promise.all([
-    loadAssignmentsRange(today, today),
-    loadCheckins(today),
-    loadUnpaidExpenses(),
-    fetchAllRows(() => supabase.from('invoices').select('id, total').eq('status', 'unpaid').order('id')),
-  ])
-  return { assignments, checkins, unpaid, invoices }
 }
 
 export async function loadPmDashboard(today) {
@@ -55,15 +45,16 @@ export async function loadPmDashboard(today) {
   // (site_progress_pct() is not SECURITY DEFINER and reads sites, which PM cannot read,
   // so it would return nothing for a PM; the daily snapshot table is PM-readable.)
   const siteIds = [...new Set(todayAssignments.map(a => a.site_id).filter(Boolean))]
+  // Last 7 days only (snapshots are daily), paged, newest first; deduped per site below.
+  // A site with no snapshot in that window is left out of pctBySite (unknown), never a fake 0.
   const snaps = siteIds.length
-    ? await supabase.from('site_progress_daily').select('site_id, day, contract_pct')
-      .in('site_id', siteIds).gte('day', addDaysIso(today, -60)).order('day', { ascending: false }).then(unwrap)
+    ? await fetchAllRows(() => supabase.from('site_progress_daily').select('site_id, day, contract_pct')
+      .in('site_id', siteIds).gte('day', addDaysIso(today, -7)).order('day', { ascending: false }).order('site_id'))
     : []
   const pctBySite = {}
-  for (const r of snaps) if (!(r.site_id in pctBySite)) pctBySite[r.site_id] = Number(r.contract_pct) || 0
+  for (const r of snaps) if (!(r.site_id in pctBySite) && r.contract_pct != null) pctBySite[r.site_id] = Number(r.contract_pct)
   return { weekAssignments, todayAssignments, checkins, sites, pctBySite }
 }
 
 export const useOwnerDashboard = (today, enabled) => useQuery(() => (enabled ? loadOwnerDashboard(today) : null), [today, enabled])
-export const useAdminDashboard = (today, enabled) => useQuery(() => (enabled ? loadAdminDashboard(today) : null), [today, enabled])
 export const usePmDashboard = (today, enabled) => useQuery(() => (enabled ? loadPmDashboard(today) : null), [today, enabled])
