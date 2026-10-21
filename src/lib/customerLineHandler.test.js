@@ -153,6 +153,10 @@ describe('welcome behaviours', () => {
     expect(await handleCustomerEvent(follow(), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
     expect(d.claimWelcome).toHaveBeenCalledWith('U1')
   })
+  it('follow from someone already welcomed before: silent', async () => {
+    const d = deps({ claimWelcome: vi.fn().mockResolvedValue(false) })
+    expect(await handleCustomerEvent(follow(), ctx, d)).toEqual([])
+  })
   it('follow from linked user: silent', async () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked) })
     expect(await handleCustomerEvent(follow(), ctx, d)).toEqual([])
