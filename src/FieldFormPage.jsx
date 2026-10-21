@@ -144,6 +144,123 @@ function CheckInFlow({ token, actionType, workerName, siteName, placeKind }) {
   )
 }
 
+// Assembly day (2026-10-21, รวมพลที่บริษัท/โรงงานก่อน): ONE link, the page shows the step the
+// day's order says comes next -- big -- and records it from the phone's GPS. field-form picks the
+// actual step server-side (it may record "ถึงไซท์" if the worker forgot to tap at the factory).
+const STEP_COLORS = { assembly_leave: '#B45309', site_arrive: '#1D4ED8', site_leave: '#0F766E', assembly_return: '#7C3AED' }
+
+function TimeClockFlow({ token, workerName, next, steps }) {
+  const [phase, setPhase] = useState('ready') // ready | requesting | submitting | success | rejected | error
+  const [message, setMessage] = useState('')
+  const [distanceInfo, setDistanceInfo] = useState(null)
+  const [openTasks, setOpenTasks] = useState([])
+  const [doneKey, setDoneKey] = useState(null)
+
+  const record = useCallback(() => {
+    setPhase('requesting')
+    if (!navigator.geolocation) {
+      setPhase('error')
+      setMessage('เบราว์เซอร์นี้ไม่รองรับการขอตำแหน่ง กรุณาใช้เบราว์เซอร์อื่น')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        setPhase('submitting')
+        try {
+          const { data, error } = await supabase.functions.invoke('field-form', {
+            body: { action: 'submit', token, lat: pos.coords.latitude, lng: pos.coords.longitude },
+          })
+          if (error) throw error
+          if (data?.error) throw new Error(data.error)
+          if (data?.ok) {
+            setPhase('success')
+            setMessage(data.message || '')
+            setOpenTasks(data.openTasks || [])
+            setDoneKey(data.step ? `${data.step.kind}|${data.step.siteId ?? ''}` : null)
+          } else {
+            setPhase('rejected')
+            setMessage(data?.message || 'อยู่นอกระยะที่กำหนด')
+            setDistanceInfo({ distanceM: data?.distanceM, radiusM: data?.radiusM })
+          }
+        } catch (e) {
+          setPhase('error')
+          setMessage(thaiOr(e.message, 'บันทึกไม่สำเร็จ กรุณาลองใหม่'))
+        }
+      },
+      (err) => { setPhase('error'); setMessage(geoErrorMessage(err)) },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    )
+  }, [token])
+
+  const isDone = (st) => st.done || doneKey === `${st.kind}|${st.siteId ?? ''}`
+  const color = next ? STEP_COLORS[next.kind] : 'var(--green)'
+
+  return (
+    <Shell>
+      <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 10 }}>สวัสดีครับคุณ{workerName}</div>
+      {!next ? (
+        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+          <div style={{ fontWeight: 700 }}>วันนี้บันทึกครบทุกจุดแล้ว</div>
+        </div>
+      ) : (
+        <div style={{ background: color, color: '#fff', borderRadius: 12, padding: 14, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, opacity: 0.9 }}>ขั้นต่อไป</div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, margin: '2px 0' }}><span aria-hidden="true">{next.emoji} </span>{next.title}</h2>
+          <div style={{ fontSize: 13, opacity: 0.95 }}>📍 {next.place}</div>
+        </div>
+      )}
+
+      {next && phase === 'ready' && (
+        <button type="button" className="btn btn-primary" style={{ width: '100%', height: 48, fontSize: 16, fontWeight: 700 }} onClick={record}>
+          บันทึก {next.title}
+        </button>
+      )}
+      {(phase === 'requesting' || phase === 'submitting') && (
+        <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--text3)' }}>
+          {phase === 'requesting' ? '⏳ กำลังขอตำแหน่งของคุณ... (อนุญาตให้เว็บใช้ตำแหน่งด้วยครับ)' : '⏳ กำลังบันทึก...'}
+        </div>
+      )}
+      {phase === 'success' && (
+        <div style={{ textAlign: 'center', padding: '12px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 6 }}>✅</div>
+          <div style={{ fontWeight: 700 }}>{message}</div>
+          {openTasks.length > 0 && (
+            <div style={{ textAlign: 'left', fontSize: 13, color: 'var(--text3)', marginTop: 12, border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>🔧 งานของคุณวันนี้</div>
+              {openTasks.map((t, i) => <div key={i}>• {t}</div>)}
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>ขั้นต่อไป กดปุ่มเช็คอินในไลน์อีกครั้ง</div>
+        </div>
+      )}
+      {(phase === 'error' || phase === 'rejected') && (
+        <div style={{ textAlign: 'center', padding: '12px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 6 }}>⚠️</div>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{message}</div>
+          {phase === 'rejected' && distanceInfo?.distanceM != null && (
+            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 10 }}>
+              อยู่นอกพื้นที่ (ห่าง {Math.round(distanceInfo.distanceM)} เมตร ต้องอยู่ในระยะ {Math.round(distanceInfo.radiusM)} เมตร)
+            </div>
+          )}
+          <button type="button" className="btn btn-primary" onClick={record}>🔄 ลองอีกครั้ง</button>
+        </div>
+      )}
+
+      <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 6 }}>ลำดับวันนี้</div>
+        {(steps || []).map((st, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '3px 0', color: isDone(st) ? 'var(--text3)' : 'var(--text)' }}>
+            <span>{isDone(st) ? '✅' : st.emoji}</span>
+            <span>{st.title}</span>
+            {(st.kind === 'site_arrive' || st.kind === 'site_leave') && <span style={{ color: 'var(--text3)' }}>· {st.place}</span>}
+          </div>
+        ))}
+      </div>
+    </Shell>
+  )
+}
+
 const SHEET_W = 794
 const SHEET_H = 559
 
@@ -399,6 +516,10 @@ export default function FieldFormPage({ token }) {
 
   if (state.actionType === 'check_in' || state.actionType === 'check_out') {
     return <CheckInFlow token={token} actionType={state.actionType} workerName={state.workerName} siteName={state.siteName} placeKind={state.placeKind} />
+  }
+
+  if (state.actionType === 'time_clock') {
+    return <TimeClockFlow token={token} workerName={state.workerName} next={state.next} steps={state.steps} />
   }
 
   if (state.actionType === 'payslip') {

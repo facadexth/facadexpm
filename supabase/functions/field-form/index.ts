@@ -45,6 +45,7 @@ import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
 import { payslipWindow, inPayslipWindow, pickYtd, pickContribBalance } from '../_shared/payslip-data.ts'
 import { todaysSites, pickSiteForNow } from '../_shared/todays-sites.ts'
 import { resolveFactoryLocation } from '../_shared/factory-location.ts'
+import { planAssemblyDay, skipStep, stepLabel, chooseStepByGps, distanceM, type DayStep } from '../_shared/assembly-day.ts'
 import { mergeSiteLists, repairSiteOptions, repairTicketOnSiteToday, REPAIR_ACTIVE_STATUSES } from '../_shared/material-sites.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -201,6 +202,55 @@ async function resolveTokenLocation(tok: { checkin_location_id?: string | null }
   return data ?? null
 }
 
+// ── Assembly day (2026-10-21, รวมพลที่บริษัท/โรงงานก่อน) ─────────────────────────────
+// A time_clock token carries no site: the page works out the step from the day's order
+// (_shared/assembly-day.ts) and the GPS. Every write still goes through a geofenced RPC.
+type AssemblyLoc = { location_id: string; location_name: string; lat: number; lng: number }
+type PlannedDay = { assembly: AssemblyLoc; steps: DayStep[]; next: DayStep | null; coords: Map<string, { lat: number; lng: number } | null> }
+
+async function loadAssemblyDay(worker: { id: string; tenant_id: string }): Promise<PlannedDay | null> {
+  const today = bangkokToday()
+  const { data: asmRows, error: asmErr } = await admin.rpc('worker_assembly_location', { p_worker_id: worker.id, p_date: today })
+  if (asmErr) throw new Error(asmErr.message)
+  const assembly = (asmRows ?? [])[0] as AssemblyLoc | undefined
+  if (!assembly) return null
+  const [{ data: rows }, { data: checkins }] = await Promise.all([
+    admin.from('worker_assignments').select('site_id, shift, type, sites(name, lat, lng)')
+      .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('date', today)
+      .in('type', TODAY_SITE_TYPES).not('site_id', 'is', null),
+    admin.from('worker_checkins').select('site_id, checkin_location_id, is_assembly, checkin_at, checkout_at')
+      .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('date', today),
+  ])
+  const sites = todaysSites(
+    (rows ?? []).map((r: any) => ({ site_id: r.site_id, site_name: r.sites?.name ?? null, shift: r.shift, type: r.type })),
+    ((checkins ?? []) as any[]).filter((c) => c.site_id),
+  )
+  // Where each site step is geofenced: the site itself, or the factory for factory work.
+  const coords = new Map<string, { lat: number; lng: number } | null>()
+  for (const s of sites) {
+    if (s.atFactory) {
+      const loc = await resolveFactoryLocation(admin, worker.tenant_id, worker.id, s.siteId, today)
+      if (loc) s.siteName = `${loc.name} — งาน${s.siteName}`
+      coords.set(s.siteId, loc?.lat != null && loc?.lng != null ? { lat: Number(loc.lat), lng: Number(loc.lng) } : null)
+    } else {
+      const r = (rows ?? []).find((x: any) => x.site_id === s.siteId) as any
+      coords.set(s.siteId, r?.sites?.lat != null && r?.sites?.lng != null ? { lat: Number(r.sites.lat), lng: Number(r.sites.lng) } : null)
+    }
+  }
+  const asm = ((checkins ?? []) as any[]).find((c) => c.is_assembly && c.checkin_location_id === assembly.location_id)
+  const plan = planAssemblyDay(sites, asm ? { leave_at: asm.checkin_at, return_at: asm.checkout_at } : null, assembly.location_name)
+  return { assembly, ...plan, coords }
+}
+
+function stepCoords(day: PlannedDay, step: DayStep): { lat: number; lng: number } | null {
+  if (step.kind === 'assembly_leave' || step.kind === 'assembly_return') return { lat: Number(day.assembly.lat), lng: Number(day.assembly.lng) }
+  return day.coords.get(step.siteId as string) ?? null
+}
+
+function stepView(step: DayStep) {
+  return { kind: step.kind, siteId: step.siteId, done: step.done, ...stepLabel(step) }
+}
+
 async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ name: string }>> {
   const { data } = await admin
     .from('phase_task_workers')
@@ -281,6 +331,12 @@ Deno.serve(async (req) => {
         for (const it of items) if (it.categoryId) categoryMap.set(it.categoryId, it.categoryName)
         const categories = [...categoryMap.entries()].map(([id, name]) => ({ id, name }))
         return json({ actionType: 'material_request', workerName, categories, items, sites: mergeSiteLists(sitesRes.data, repairSites) })
+      }
+
+      if (tok.action_type === 'time_clock') {
+        const day = await loadAssemblyDay(worker)
+        if (!day) return json({ actionType: 'time_clock', workerName, reason: 'no_site' })
+        return json({ actionType: 'time_clock', workerName, next: day.next ? stepView(day.next) : null, steps: day.steps.map(stepView) })
       }
 
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
@@ -525,6 +581,42 @@ Deno.serve(async (req) => {
           }
         } catch (e) { console.error('web push failed', (e as Error).message) }
         return json({ ok: true, workerName })
+      }
+
+      if (tok.action_type === 'time_clock') {
+        const lat = Number(body?.lat)
+        const lng = Number(body?.lng)
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: 'missing_location' }, 400)
+        const day = await loadAssemblyDay(worker)
+        if (!day) return json({ error: 'no_site' }, 400)
+        if (!day.next) return json({ ok: false, message: 'วันนี้บันทึกครบทุกจุดแล้ว' })
+        const { data: radiusRow } = await admin.from('app_settings').select('value').eq('tenant_id', worker.tenant_id).eq('key', 'checkin_radius_m').maybeSingle()
+        const radius = Number(radiusRow?.value) || 200
+        const dist = (st: DayStep | null) => {
+          const c = st ? stepCoords(day, st) : null
+          return c ? distanceM(lat, lng, c.lat, c.lng) : null
+        }
+        const skip = skipStep(day)
+        const pick = chooseStepByGps({ next: day.next, nextDistance: dist(day.next), skip, skipDistance: dist(skip), radius })
+        if ('refused' in pick) {
+          const place = stepLabel(day.next).place
+          return json({ ok: false, message: `คุณอยู่ห่างจาก${place} ${Math.round(pick.distanceM)} เมตร ต้องอยู่ในระยะ ${Math.round(radius)} เมตรจึงจะบันทึกได้`, distanceM: pick.distanceM, radiusM: radius })
+        }
+        const step = pick.step
+        let rpc: { name: string; args: Record<string, unknown> }
+        if (step.kind === 'assembly_leave' || step.kind === 'assembly_return') {
+          rpc = { name: 'perform_assembly_tap_by_id', args: { p_worker_id: worker.id, p_step: step.kind === 'assembly_leave' ? 'leave' : 'return', p_lat: lat, p_lng: lng } }
+        } else {
+          rpc = { name: step.kind === 'site_arrive' ? 'perform_worker_checkin_by_id' : 'perform_worker_checkout_by_id', args: { p_worker_id: worker.id, p_site_id: step.siteId, p_lat: lat, p_lng: lng } }
+        }
+        const { data, error } = await admin.rpc(rpc.name, rpc.args)
+        const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
+        if (error || !result) return json({ error: error?.message ?? 'rpc_failed' }, 500)
+        if (!result.success) return json({ ok: false, message: result.message, distanceM: result.distance_m, radiusM: result.radius_m })
+        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
+        const openTasks = step.kind === 'site_arrive' ? await resolveOpenTasksForWorker(worker.id, worker.tenant_id) : []
+        const label = stepLabel(step)
+        return json({ ok: true, message: result.message, step: stepView({ ...step, done: true }), title: label.title, siteName: label.place, openTasks: openTasks.map(t => t.name) })
       }
 
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {

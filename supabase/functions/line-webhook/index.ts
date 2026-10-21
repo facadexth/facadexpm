@@ -115,6 +115,7 @@ import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { isWorkerDoneable, doneErrorReply } from '../_shared/lineTaskRules.ts'
 import { todaysSites, pickSiteForNow, sitesNeedingLinks, multiSiteReplyText, currentSite, shiftEmoji, shiftLabel, type TodaysSite, type Shift } from '../_shared/todays-sites.ts'
+import { planAssemblyDay, stepAction, assemblyLinkReplyText } from '../_shared/assembly-day.ts'
 import { pickTimeClockTarget, pickCheckinLocationFromRole, locationNextAction, locationLinkReplyText, locationTokenPayload, type CheckinLocation } from '../_shared/location-checkin.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
@@ -153,7 +154,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 // link usable for days.
 // siteId (check-in/out only): the site this link is for -- field-form uses it instead of
 // guessing, so a worker with 2+ sites today checks in where they actually are.
-async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out' | 'advance' | 'payslip', siteId?: string): Promise<string | null> {
+async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out' | 'advance' | 'payslip' | 'time_clock', siteId?: string): Promise<string | null> {
   const token = crypto.randomUUID().replace(/-/g, '')
   const { error } = await admin.from('line_deep_link_tokens').insert({
     tenant_id: tenantId, worker_id: workerId, action_type: actionType, token,
@@ -714,6 +715,40 @@ async function sendLocationLink(
   await sendLineReply(settings.channel_access_token, replyToken, locationLinkReplyText(actionType, location, link))
 }
 
+// The tenant's assembly location for this worker today, or null when today is not an assembly
+// day (worker_assembly_location: first site's assembly_mode, else the tenant default).
+async function loadAssemblyLocation(workerId: string): Promise<{ location_id: string; location_name: string } | null> {
+  const { data, error } = await admin.rpc('worker_assembly_location', { p_worker_id: workerId, p_date: bangkokToday() })
+  if (error) { logSafeError('worker_assembly_location failed', error); return null }
+  const row = (data ?? [])[0] as { location_id: string; location_name: string; lat: number; lng: number } | undefined
+  return row ?? null
+}
+
+// Every time-clock command on an assembly day sends ONE time_clock link (or the done note).
+async function sendAssemblyDayLink(
+  worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string,
+  sites: TodaysSite[], assembly: { location_id: string; location_name: string }, commandSettings: CommandSettingsByKey,
+) {
+  const { data: row } = await admin.from('worker_checkins').select('checkin_at, checkout_at')
+    .eq('worker_id', worker.id).eq('tenant_id', settings.tenant_id).eq('checkin_location_id', assembly.location_id)
+    .eq('date', bangkokToday()).eq('is_assembly', true).maybeSingle()
+  const plan = planAssemblyDay(sites, row ? { leave_at: row.checkin_at, return_at: row.checkout_at } : null, assembly.location_name)
+  if (!plan.next) {
+    await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+    return
+  }
+  if (!resolveEnabled(stepAction(plan.next.kind), commandSettings, 'dm')) {
+    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    return
+  }
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'time_clock')
+  if (!link) {
+    await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
+    return
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, assemblyLinkReplyText(plan.next, link))
+}
+
 // mode 'auto' = the Rich Menu เช็คอิน/เช็คเอาท์ button; 'check_in' / 'check_out' = the typed
 // commands (the router has already checked that the typed command is enabled).
 // No link throttle here: check-in/out links never had one (only เบิกของ/ขอลา/เบิกเงิน/สลิป do).
@@ -734,6 +769,14 @@ async function sendTimeClockLinks(
       return
     }
     await sendLineReply(settings.channel_access_token, replyToken, NO_SITE_TODAY_MESSAGE)
+    return
+  }
+
+  // Assembly day (2026-10-21, รวมพลที่บริษัท/โรงงานก่อน): one time_clock link whose page works
+  // out the step (leave assembly -> sites -> back). Off (the default) -> the code below, unchanged.
+  const assembly = await loadAssemblyLocation(worker.id)
+  if (assembly) {
+    await sendAssemblyDayLink(worker, settings, replyToken, sites, assembly, commandSettings)
     return
   }
 
