@@ -12,6 +12,7 @@ import { usePendingFocus } from '../hooks/usePendingFocus.js'
 import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
 import { autoShortName } from '../lib/siteShortName.js'
+import { ASSEMBLY_MODE_OPTIONS, assemblyModeField } from '../lib/siteAssemblyMode.js'
 import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, usePhaseTasks } from '../hooks/useSupabase.js'
 import GanttView from './sites/GanttView.jsx'
 import { summarizeTasks } from './sites/phaseTasksCalc.js'
@@ -103,6 +104,7 @@ export function siteFormToPayload(form) {
     notes:          form.notes || null,
     warranty_months: (() => { const n = parseInt(form.warranty_months, 10); return Number.isNaN(n) ? 12 : n })(),
     handover_date:  form.handover_date || null,
+    ...assemblyModeField(form),
     ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
   }
 }
@@ -126,6 +128,17 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // sites.assembly_mode is not in the site list view, so an edit form loads it on its own
+  // (assemblyModeField skips the column until it is loaded, so a save never clears it).
+  useEffect(() => {
+    if (pmMode || !initial?.id || initial.assembly_mode !== undefined) return
+    let cancelled = false
+    supabase.from('sites').select('assembly_mode').eq('id', initial.id).maybeSingle().then(({ data, error }) => {
+      if (!cancelled && !error) setForm(f => ({ ...f, assembly_mode: data?.assembly_mode ?? '' }))
+    })
+    return () => { cancelled = true }
+  }, [initial?.id, pmMode])
 
   // "ดึงพิกัดจากลิงก์" -- resolves a pasted Google Maps link (full or
   // shortened, e.g. maps.app.goo.gl/xxxx) into lat/lng via
@@ -281,6 +294,16 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
         <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: -6, marginBottom: 12 }}>
           ต้องตั้งพิกัดก่อน พนักงานจึงจะเช็คอินที่ไซท์นี้ได้ — ยืนที่ไซท์งานแล้วกดปุ่ม "ใช้ตำแหน่งปัจจุบัน" ง่ายที่สุด
         </p>
+        {!pmMode && (
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">จุดเริ่มงานของช่าง (ไซท์นี้)</label>
+            <select className="select" style={{ maxWidth: 280 }} value={form.assembly_mode ?? ''}
+              disabled={!isAdd && form.assembly_mode === undefined}
+              onChange={e => set('assembly_mode', e.target.value)}>
+              {ASSEMBLY_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        )}
         <div className="form-grid-3">
           <div>
             <label className="label">สถานะ</label>

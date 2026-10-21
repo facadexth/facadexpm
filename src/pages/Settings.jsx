@@ -13,6 +13,7 @@ import ChangelogModal from '../components/ChangelogModal.jsx'
 import LinePushSettings from '../components/LinePushSettings.jsx'
 import CustomerLineSettings from '../components/CustomerLineSettings.jsx'
 import WebPushSettings from '../components/WebPushSettings.jsx'
+import AssemblySettings from '../components/AssemblySettings.jsx'
 import TravelOriginSettings from '../components/TravelOriginSettings.jsx'
 import PhaseTemplateSettings from '../components/PhaseTemplateSettings.jsx'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -748,6 +749,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan, navSt
         )}
         {deleteLocationId && <ConfirmDialog title="ลบตำแหน่งเช็คอิน" message="ยืนยันการลบ?" onConfirm={handleDeleteLocation} onCancel={() => setDeleteLocationId(null)} />}
       </div>
+      <AssemblySettings locations={checkinLocations || []} />
       </>}
 
       {/* ── ลายเซ็นของฉัน -- ADMIN ขึ้นไป (WORKER เห็นแค่การ์ดรหัสผ่านด้านบน) ── */}

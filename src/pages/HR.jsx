@@ -21,6 +21,7 @@ import { isLeavePending } from '../lib/pendingRules.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { auditLog } from '../lib/audit.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
+import { CheckinDayTable, CheckinMonthSummary, OtFromCheckinSetting } from './hr/CheckinDays.jsx'
 import AttendanceGrid from './hr/AttendanceGrid.jsx'
 import WorkerPayFields from './hr/WorkerPayFields.jsx'
 import PayrollMonth from './hr/PayrollMonth.jsx'
@@ -711,6 +712,7 @@ export default function HR({ navState }) {
                   </span>
                 </span>
               </label>
+              <OtFromCheckinSetting />
             </div>
           )}
 
@@ -845,6 +847,10 @@ export default function HR({ navState }) {
           {loadingCheckins ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
           ) : (
+            <>
+            <CheckinDayTable from={checkinFrom} to={checkinTo} workerFilter={checkinWorkerFilter} workers={workers} />
+            <CheckinMonthSummary workers={workers} />
+            <div style={{ fontWeight: 700, fontSize: 13, margin: '4px 0 8px' }}>🧾 บันทึกการกดทั้งหมด</div>
             <div className="card">
               <CardTable map={HR_CHECKIN_MAP}>
                 <table>
@@ -863,7 +869,7 @@ export default function HR({ navState }) {
                     {checkins.map(c => (
                       <tr key={c.id}>
                         <td style={{ fontWeight: 600 }}>{c.workers?.nickname || c.workers?.name || '—'}</td>
-                        <td>{c.sites?.name || c.checkin_locations?.name || '—'}</td>
+                        <td>{c.sites?.name || (c.is_assembly ? `🏭 จุดรวมพล · ${c.checkin_locations?.name ?? ''}` : c.checkin_locations?.name) || '—'}</td>
                         <td style={{ fontSize: 12 }}>{new Date(`${c.date}T00:00:00Z`).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })}</td>
                         <td style={{ fontSize: 12 }}>{c.checkin_at ? new Date(c.checkin_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                         <td className="font-mono" style={{ fontSize: 12, color: 'var(--text3)' }}>{c.checkin_distance_m != null ? `${Math.round(c.checkin_distance_m)} ม.` : '—'}</td>
@@ -878,6 +884,7 @@ export default function HR({ navState }) {
                 </table>
               </CardTable>
             </div>
+            </>
           )}
         </div>
       )}
