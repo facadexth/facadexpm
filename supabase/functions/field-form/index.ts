@@ -100,7 +100,7 @@ async function loadPayslipMonths(tenantId: string, workerId: string): Promise<{ 
 async function loadToken(token: string) {
   const { data: tok } = await admin
     .from('line_deep_link_tokens')
-    .select('id, tenant_id, worker_id, action_type, expires_at, used_at, site_id')
+    .select('id, tenant_id, worker_id, action_type, expires_at, used_at, site_id, checkin_location_id')
     .eq('token', token)
     .maybeSingle()
   if (!tok) return { reason: 'not_found' as const }
@@ -189,6 +189,18 @@ async function checkinPlaceName(site: { id: string; name: string }, worker: { id
   return loc ? `${loc.name} — งาน${site.name}` : site.name
 }
 
+// A check-in/out token for a fixed check-in location (office admin with no site today,
+// 2026-10-21 -- issued by line-webhook's issueLocationFormLink). The location row must be
+// the worker's tenant's; whether this worker may clock THERE is re-checked inside the
+// perform_location_checkin_by_id/checkout RPCs (location_checkin_allowed), the same
+// user_roles rule the web's perform_location_checkin applies.
+async function resolveTokenLocation(tok: { checkin_location_id?: string | null }, worker: { tenant_id: string }): Promise<{ id: string; name: string } | null> {
+  if (!tok.checkin_location_id) return null
+  const { data } = await admin.from('checkin_locations').select('id, name')
+    .eq('id', tok.checkin_location_id).eq('tenant_id', worker.tenant_id).maybeSingle()
+  return data ?? null
+}
+
 async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ name: string }>> {
   const { data } = await admin
     .from('phase_task_workers')
@@ -272,6 +284,11 @@ Deno.serve(async (req) => {
       }
 
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
+        if (tok.checkin_location_id) {
+          const loc = await resolveTokenLocation(tok, worker)
+          if (!loc) return json({ actionType: tok.action_type, workerName, reason: 'no_site' })
+          return json({ actionType: tok.action_type, workerName, siteName: loc.name, placeKind: 'location' })
+        }
         const site = await resolveTokenSite(tok, worker)
         if (!site) return json({ actionType: tok.action_type, workerName, reason: 'no_site' })
         return json({ actionType: tok.action_type, workerName, siteName: await checkinPlaceName(site, worker) })
@@ -514,6 +531,37 @@ Deno.serve(async (req) => {
         const lat = Number(body?.lat)
         const lng = Number(body?.lng)
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: 'missing_location' }, 400)
+
+        // Fixed check-in location token (office admin, no site today): same GPS + radius
+        // rule, same worker_checkins table (keyed by checkin_location_id) as the web's
+        // LocationCheckinCard, via the service-role twin of its RPC.
+        if (tok.checkin_location_id) {
+          const loc = await resolveTokenLocation(tok, worker)
+          if (!loc) return json({ error: 'no_site' }, 400)
+          if (tok.action_type === 'check_in') {
+            // One open check-in at a time: an open SITE check-in must be closed first.
+            const { data: open, error: openErr } = await admin.from('worker_checkins')
+              .select('site_id, sites(name)')
+              .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('date', bangkokToday())
+              .not('checkin_at', 'is', null).is('checkout_at', null).not('site_id', 'is', null)
+              .limit(1)
+            if (openErr) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+            if (open && open.length) {
+              const openName = (open[0] as any).sites?.name ?? 'ไซท์ก่อนหน้า'
+              return json({ ok: false, message: `ยังไม่ได้เช็คเอาท์ที่ ${openName} — เช็คเอาท์ก่อนจึงจะเช็คอินที่ ${loc.name} ได้` })
+            }
+          }
+          const rpcName = tok.action_type === 'check_in' ? 'perform_location_checkin_by_id' : 'perform_location_checkout_by_id'
+          const { data, error } = await admin.rpc(rpcName, { p_worker_id: worker.id, p_location_id: loc.id, p_lat: lat, p_lng: lng })
+          const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
+          if (error || !result) return json({ error: error?.message ?? 'rpc_failed' }, 500)
+          if (!result.success) {
+            // Distance (or entitlement) rejection: token stays unused so the same link can be retried.
+            return json({ ok: false, message: result.message, distanceM: result.distance_m, radiusM: result.radius_m })
+          }
+          await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
+          return json({ ok: true, message: result.message, siteName: loc.name, placeKind: 'location', openTasks: [] })
+        }
 
         const site = await resolveTokenSite(tok, worker)
         if (!site) return json({ error: 'no_site' }, 400)

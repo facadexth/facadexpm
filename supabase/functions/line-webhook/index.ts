@@ -115,6 +115,7 @@ import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { isWorkerDoneable, doneErrorReply } from '../_shared/lineTaskRules.ts'
 import { todaysSites, pickSiteForNow, sitesNeedingLinks, multiSiteReplyText, currentSite, shiftEmoji, shiftLabel, type TodaysSite, type Shift } from '../_shared/todays-sites.ts'
+import { pickTimeClockTarget, pickCheckinLocationFromRole, locationNextAction, locationLinkReplyText, locationTokenPayload, type CheckinLocation } from '../_shared/location-checkin.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
@@ -160,6 +161,19 @@ async function issueFieldFormLink(tenantId: string, workerId: string, actionType
     ...(siteId ? { site_id: siteId } : {}),
   })
   if (error) { logSafeError('issueFieldFormLink insert failed', error); return null }
+  return `${APP_URL}/f/${token}`
+}
+
+// Same one-time link, for เช็คอิน/เช็คเอาท์ at a fixed check-in location (office admin with
+// no site today -- see _shared/location-checkin.ts). The token names the location in
+// checkin_location_id; field-form then calls perform_location_checkin_by_id/checkout.
+async function issueLocationFormLink(tenantId: string, workerId: string, actionType: 'check_in' | 'check_out', locationId: string): Promise<string | null> {
+  const token = crypto.randomUUID().replace(/-/g, '')
+  const { error } = await admin.from('line_deep_link_tokens').insert({
+    ...locationTokenPayload({ tenantId, workerId, actionType, locationId }), token,
+    expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+  })
+  if (error) { logSafeError('issueLocationFormLink insert failed', error); return null }
   return `${APP_URL}/f/${token}`
 }
 
@@ -643,6 +657,63 @@ async function sendMultiSiteLinks(
   await sendLineReply(settings.channel_access_token, replyToken, multiSiteReplyText(sites, links))
 }
 
+// The fixed check-in location this LINE worker may clock at when they have no site today:
+// the worker's own user_roles row (ADMIN/OWNER/PM; matched by workers.email =
+// user_roles.user_email, or the same line_user_id) with its assigned location, else the
+// tenant's role='office' location -- the same rule the web (useMyAssignedCheckinLocation +
+// perform_location_checkin) applies. Tenant-filtered on every read (service role).
+async function loadCheckinLocationForWorker(workerId: string, tenantId: string): Promise<CheckinLocation | null> {
+  const { data: w } = await admin.from('workers').select('email, line_user_id').eq('id', workerId).eq('tenant_id', tenantId).maybeSingle()
+  if (!w) return null
+  type RoleRow = { role: string | null; checkin_locations: CheckinLocation | null }
+  // Plain eq lookups (no .or() string built from an email): email first, then line_user_id.
+  const lookups: Array<['user_email' | 'line_user_id', string]> = []
+  if (w.email) lookups.push(['user_email', w.email as string])
+  if (w.line_user_id) lookups.push(['line_user_id', w.line_user_id as string])
+  let row: RoleRow | null = null
+  for (const [col, val] of lookups) {
+    const { data, error } = await admin.from('user_roles').select('role, checkin_locations(id, name)')
+      .eq('tenant_id', tenantId).eq(col, val).limit(1).maybeSingle()
+    if (error) { logSafeError('user_roles location lookup failed', error); return null }
+    if (data) { row = data as unknown as RoleRow; break }
+  }
+  if (!row) return null
+  const { data: office } = await admin.from('checkin_locations').select('id, name').eq('tenant_id', tenantId).eq('role', 'office').maybeSingle()
+  return pickCheckinLocationFromRole(row, office ?? null)
+}
+
+// The one link for a fixed-location day. Typed เช็คอิน/เช็คเอาท์ always send their own
+// link (as a single-site day does); the Rich Menu button follows the day's step from this
+// worker's own worker_checkins row at that location.
+async function sendLocationLink(
+  worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string,
+  location: CheckinLocation, mode: 'auto' | 'check_in' | 'check_out', commandSettings: CommandSettingsByKey,
+) {
+  let actionType: 'check_in' | 'check_out'
+  if (mode !== 'auto') {
+    actionType = mode
+  } else {
+    const { data: row } = await admin.from('worker_checkins').select('checkin_at, checkout_at')
+      .eq('worker_id', worker.id).eq('tenant_id', settings.tenant_id).eq('checkin_location_id', location.id).eq('date', bangkokToday()).maybeSingle()
+    const next = locationNextAction(row as { checkin_at: string | null; checkout_at: string | null } | null)
+    if (next === 'done') {
+      await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+      return
+    }
+    if (!resolveEnabled(next, commandSettings, 'dm')) {
+      await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+      return
+    }
+    actionType = next
+  }
+  const link = await issueLocationFormLink(settings.tenant_id, worker.id, actionType, location.id)
+  if (!link) {
+    await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
+    return
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, locationLinkReplyText(actionType, location, link))
+}
+
 // mode 'auto' = the Rich Menu เช็คอิน/เช็คเอาท์ button; 'check_in' / 'check_out' = the typed
 // commands (the router has already checked that the typed command is enabled).
 // No link throttle here: check-in/out links never had one (only เบิกของ/ขอลา/เบิกเงิน/สลิป do).
@@ -655,6 +726,13 @@ async function sendTimeClockLinks(
 ) {
   const sites = await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id)
   if (sites.length === 0) {
+    // No site today: an office admin with a fixed check-in location (2026-10-21) clocks
+    // there instead; anyone else keeps the existing "no work today" reply.
+    const target = pickTimeClockTarget(sites, await loadCheckinLocationForWorker(worker.id, settings.tenant_id))
+    if (target.kind === 'location') {
+      await sendLocationLink(worker, settings, replyToken, target.location, mode, commandSettings)
+      return
+    }
     await sendLineReply(settings.channel_access_token, replyToken, NO_SITE_TODAY_MESSAGE)
     return
   }

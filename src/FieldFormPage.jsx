@@ -25,6 +25,7 @@ import { downloadPDF } from './lib/pdf.js'
 import { MONTHS_TH } from './lib/payroll/period.js'
 import { removeBlockOrClear } from './lib/rowEditing.js'
 import { parseAdvanceAmount } from './lib/payroll/advanceRules.js'
+import { checkinPageLabels } from './lib/checkinLabels.js'
 
 const REASON_MESSAGES = {
   not_found: 'ไม่พบลิงก์นี้ — อาจพิมพ์ผิดหรือลิงก์ถูกลบไปแล้ว',
@@ -55,7 +56,7 @@ function geoErrorMessage(err) {
 
 // เช็คอิน/เช็คเอาท์: no form fields, just request GPS -> submit -> show
 // result. `phase`: 'requesting' | 'error' | 'submitting' | 'success' | 'rejected'.
-function CheckInFlow({ token, actionType, workerName, siteName }) {
+function CheckInFlow({ token, actionType, workerName, siteName, placeKind }) {
   const [phase, setPhase] = useState('requesting')
   const [message, setMessage] = useState('')
   const [distanceInfo, setDistanceInfo] = useState(null)
@@ -98,13 +99,14 @@ function CheckInFlow({ token, actionType, workerName, siteName }) {
 
   useEffect(() => { requestAndSubmit() }, [requestAndSubmit])
 
-  const title = actionType === 'check_in' ? '📍 เช็คอิน' : '📍 เช็คเอาท์'
+  // A fixed-location link (office admin, no site today) says the place in the title.
+  const labels = checkinPageLabels({ actionType, workerName, siteName, placeKind })
 
   return (
     <Shell>
-      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{title}</div>
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{labels.title}</div>
       <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 18 }}>
-        สวัสดีครับคุณ{workerName} — {siteName}
+        {labels.subtitle}
       </div>
 
       {(phase === 'requesting' || phase === 'submitting') && (
@@ -132,7 +134,7 @@ function CheckInFlow({ token, actionType, workerName, siteName }) {
           <div style={{ fontWeight: 700, marginBottom: 4 }}>{message}</div>
           {phase === 'rejected' && distanceInfo?.distanceM != null && (
             <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 12 }}>
-              ห่างจากไซท์งาน {Math.round(distanceInfo.distanceM)} เมตร (ต้องอยู่ในระยะ {Math.round(distanceInfo.radiusM)} เมตร)
+              {labels.farFrom} {Math.round(distanceInfo.distanceM)} เมตร (ต้องอยู่ในระยะ {Math.round(distanceInfo.radiusM)} เมตร)
             </div>
           )}
           <button type="button" className="btn btn-primary" onClick={requestAndSubmit}>🔄 ลองอีกครั้ง</button>
@@ -396,7 +398,7 @@ export default function FieldFormPage({ token }) {
   }
 
   if (state.actionType === 'check_in' || state.actionType === 'check_out') {
-    return <CheckInFlow token={token} actionType={state.actionType} workerName={state.workerName} siteName={state.siteName} />
+    return <CheckInFlow token={token} actionType={state.actionType} workerName={state.workerName} siteName={state.siteName} placeKind={state.placeKind} />
   }
 
   if (state.actionType === 'payslip') {
