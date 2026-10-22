@@ -218,6 +218,11 @@ function TimeClockFlow({ token, workerName, next, steps }) {
           บันทึก {next.title}
         </button>
       )}
+      {next?.kind === 'assembly_leave' && phase === 'ready' && (steps || []).some(st => st.kind === 'site_arrive') && (
+        <div style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', marginTop: 8 }}>
+          ลืมกดตอนออกจาก{next.place}? อยู่ที่{(steps.find(st => st.kind === 'site_arrive') || {}).place}แล้วกดได้เลย ระบบบันทึก "ถึง" ให้
+        </div>
+      )}
       {(phase === 'requesting' || phase === 'submitting') && (
         <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--text3)' }}>
           {phase === 'requesting' ? '⏳ กำลังขอตำแหน่งของคุณ... (อนุญาตให้เว็บใช้ตำแหน่งด้วยครับ)' : '⏳ กำลังบันทึก...'}
