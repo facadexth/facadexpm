@@ -104,4 +104,13 @@ describe('easy mode', () => {
     fireEvent.change(qtyInputs()[1], { target: { value: '26' } })
     expect(document.querySelector('[title="ตรงกับ BOQ และการ์ด"]')).toBeTruthy()
   })
+
+  it('shows the ตามความคืบหน้า mode button only when the site has BOQ rows', () => {
+    renderModal()
+    expect(screen.queryByText('ตามความคืบหน้า')).toBeNull()
+    cleanup()
+    pbData = { boqByQuotationItem: { qi1: { id: 'b1', unit: 'ชุด', planned_qty: 2 } }, splitsByBoq: {}, phases: [], cards: [], phaseDraws: [] }
+    renderModal()
+    expect(screen.getByText('ตามความคืบหน้า')).toBeTruthy()
+  })
 })

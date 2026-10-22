@@ -37,6 +37,7 @@ import PhoneFilters from '../components/PhoneFilters.jsx'
 import CardTable from '../components/CardTable.jsx'
 import { isCountUnit, checkLine, doneQty } from '../lib/progressBilling.js'
 import { useProgressBillingData } from '../hooks/useProgressBillingData.js'
+import ProgressBillingEditor, { buildProgressInvoiceRows } from './invoices/ProgressBillingEditor.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -44,6 +45,7 @@ const siteOpts = (sites) => (sites || []).map(s => ({
 
 const INV_STATUSES = ['unpaid', 'paid', 'void']
 const INV_STATUS_LABELS = { unpaid: '🕓 ยังไม่ชำระ', paid: '✅ ชำระแล้ว', void: '✕ ยกเลิก' }
+const BILLING_MODE_LABELS = { easy: 'ง่าย', advanced: 'ละเอียด', progress: 'ตามความคืบหน้า' }
 
 // One entry per quotation_item: { quotationItemId, description, unit,
 // unitPrice, totalQty, units: [{ id, unitIndex, unitQty, cumulativePct,
@@ -129,7 +131,7 @@ export function easyLineCheck({ line, qty, boq, splits, cards, priceMultiplier }
   return { level, reasons, hasBoq: true, unit, title: reasons.length ? reasons.map(x => titles[x]).join(' · ') : 'ตรงกับ BOQ และการ์ด' }
 }
 
-function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks }) {
+function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks, showProgress, progressEditor }) {
   // Raw in-progress text for the two number inputs below, keyed by line
   // (qty) and by `lineId:unitIndex` (per-unit %). Both inputs otherwise
   // display a value re-derived from the unit ledger on every render, which
@@ -202,7 +204,11 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks }) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         <button type="button" className={`btn btn-sm ${mode === 'easy' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onModeChange('easy')}>โหมดง่าย</button>
         <button type="button" className={`btn btn-sm ${mode === 'advanced' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onModeChange('advanced')}>โหมดละเอียด</button>
+        {showProgress && (
+          <button type="button" className={`btn btn-sm ${mode === 'progress' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onModeChange('progress')}>ตามความคืบหน้า</button>
+        )}
       </div>
+      {mode === 'progress' ? progressEditor : (<>
       {mode === 'advanced' && !lines.some(l => isCountable(l.totalQty) && l.units.length > 1) && (
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
           โหมดละเอียดแยก % รายชิ้นให้เฉพาะรายการที่มีจำนวน 2–20 ชิ้น (จำนวนเต็ม) ใบนี้ไม่มีรายการแบบนั้น หน้าจอจึงเหมือนโหมดง่าย
@@ -348,6 +354,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks }) {
       <div style={{ marginTop: 12, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
         รวมงวดนี้: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(subtotal)}</span> บาท
       </div>
+      </>)}
     </div>
   )
 }
@@ -363,6 +370,7 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const { data: depositTaxOffset } = useQuotationDepositTaxOffset(quotation.id, quotation.has_vat, quotation.price_includes_vat)
   const [lines, setLines] = useState(null)
   const [mode, setMode] = useState('easy')
+  const [progressValue, setProgressValue] = useState({ phaseIds: [], rows: {} })
   const [saving, setSaving] = useState(false)
   // วันออกเอกสาร -- separate from วันที่รับเงิน, which only gets set later
   // when the invoice is actually marked paid (see MarkPaidModal).
@@ -426,9 +434,26 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
     )
   }
 
-  const billedLines = lines.filter(l => drawQty(l.units) > 1e-9)
-  // Easy-mode checks per billed line; ⛔ (fraction of a count unit) blocks saving
   const priceMult = discountMultiplier(quotation)
+  const hasBoq = Object.keys(pbData?.boqByQuotationItem || {}).length > 0
+  const isProgress = mode === 'progress' && hasBoq
+  const progress = isProgress ? buildProgressInvoiceRows(lines, pbData, progressValue, priceMult) : null
+  // One shape for saving and totals, whatever the mode: { line, units, description, unit, unitPrice,
+  // unitPriceMaterial, unitPriceLabor, drawQty, lineTotal, phases }. Progress rows advance the
+  // quotation_item_units waterfall by their value (lineTotal / full unit price) so every mode stays
+  // consistent in value.
+  const saveLines = isProgress
+    ? progress.items.map(it => {
+      const l = lines.find(x => x.quotationItemId === it.quotationItemId)
+      return { ...it, line: l, units: waterfall(l.units, l.unitPrice > 0 ? it.lineTotal / l.unitPrice : 0) }
+    })
+    : lines.filter(l => drawQty(l.units) > 1e-9).map(l => ({
+      line: l, units: l.units, quotationItemId: l.quotationItemId, description: l.description, unit: l.unit,
+      unitPrice: l.unitPrice, unitPriceMaterial: l.unitPriceMaterial, unitPriceLabor: l.unitPriceLabor,
+      drawQty: drawQty(l.units), lineTotal: round2(drawAmount(l.units, l.unitPrice)), phases: [],
+    }))
+  const billedLines = isProgress ? [] : lines.filter(l => drawQty(l.units) > 1e-9)
+  // Easy-mode checks per billed line; ⛔ (fraction of a count unit) blocks saving
   const easyChecks = {}
   if (mode === 'easy') {
     for (const l of billedLines) {
@@ -444,7 +469,7 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   // (Fix 7): the header subtotal must equal the SUM of the line_totals
   // actually stored, or a printed invoice's line items visibly fail to add
   // up to its own total by a satang.
-  const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
+  const invoiceItemsForTotals = saveLines.map(s => ({ line_total: s.lineTotal }))
   // ทุกตัวเลขของการ์ดสรุปและช่อง "กรอกยอดที่ต้องการเรียกเก็บ" มาจากสูตรเดียวกัน (lib/invoiceNet.js)
   const rawDrawn = invoiceItemsForTotals.reduce((s, it) => s + it.line_total, 0)
   // หัก ณ ที่จ่ายใช้ค่าของไซท์เสมอ (ไม่มีช่องกรอกเอง) 0 = ไม่หัก
@@ -460,7 +485,7 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const deposit = calc.dep
   const isSplit = quotation.pricing_mode === 'split'
   const materialLabor = isSplit
-    ? sumMaterialLabor(billedLines.map(l => ({ draw_qty: drawQty(l.units), unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor })))
+    ? sumMaterialLabor(saveLines.map(s => ({ draw_qty: s.drawQty, unit_price_material: s.unitPriceMaterial, unit_price_labor: s.unitPriceLabor })))
     : null
   // ยอดที่จะได้รับจริง ณ ตอนนี้ (หลัง VAT, หัก ณ ที่จ่าย, ประกันผลงาน และมัดจำที่เลือกไว้) -- โชว์ให้เห็นผลหลังเติมอัตโนมัติ
   const achievedNet = calc.net
@@ -485,7 +510,7 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   }
 
   const handleSave = async () => {
-    if (!billedLines.length) { alert('กรุณาเลือกอย่างน้อย 1 รายการ'); return }
+    if (!saveLines.length) { alert('กรุณาเลือกอย่างน้อย 1 รายการ'); return }
     setSaving(true)
     // Captured so the catch below can name the orphan: the invoices row is
     // written before its items/draws, so a mid-loop failure leaves a real,
@@ -496,6 +521,8 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         quotation_id: quotation.id, site_id: quotation.site_id, date,
         has_vat: quotation.has_vat, price_includes_vat: quotation.price_includes_vat,
         subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
+        // one invoice = one mode, set here and never updated
+        billing_mode: isProgress ? 'progress' : mode === 'advanced' ? 'advanced' : 'easy',
         // สืบมาจากใบเสนอราคาต้นทาง (หมวด VAT ตรงกันอยู่แล้วเพราะ has_vat มาจาก
         // quotation เดียวกัน) เปลี่ยนได้ทีหลังจากตัว InvoiceDocumentModal เอง
         bank_account_id: quotation.bank_account_id || null,
@@ -514,22 +541,26 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
       // glued item_description row (below) needs sort_order to keep
       // counting up across both, not restart per item.
       let nextSortOrder = 0
-      for (const l of billedLines) {
-        const lineDrawQty = drawQty(l.units)
-        // Waterfall-derived floats, unlike a user-typed decimal, are not
-        // guaranteed to land on a clean 2-decimal value -- round before
-        // persisting so the stored line/draw amounts can't drift from the
-        // invoice's own already-rounded subtotal.
-        const lineAmount = round2(drawAmount(l.units, l.unitPrice))
+      for (const sl of saveLines) {
+        const l = sl.line
+        // lineTotal is already round2'd (waterfall-derived floats are not
+        // guaranteed to land on a clean 2-decimal value) so the stored
+        // line/draw amounts can't drift from the invoice's own subtotal.
         const { data: invoiceItem, error: itemError } = await supabase.from('invoice_items').insert({
-          invoice_id: invoice.id, quotation_item_id: l.quotationItemId,
-          description: l.description, unit: l.unit, unit_price: l.unitPrice,
-          unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor,
-          draw_qty: lineDrawQty, line_total: lineAmount, sort_order: nextSortOrder++,
+          invoice_id: invoice.id, quotation_item_id: sl.quotationItemId,
+          description: sl.description, unit: sl.unit, unit_price: sl.unitPrice,
+          unit_price_material: sl.unitPriceMaterial, unit_price_labor: sl.unitPriceLabor,
+          draw_qty: sl.drawQty, line_total: sl.lineTotal, sort_order: nextSortOrder++,
         }).select().single()
         if (itemError) throw itemError
 
-        for (const u of l.units) {
+        if (sl.phases.length) {
+          const { error: phError } = await supabase.from('invoice_item_phases')
+            .insert(sl.phases.map(ph => ({ ...ph, invoice_item_id: invoiceItem.id })))
+          if (phError) throw phError
+        }
+
+        for (const u of sl.units) {
           if (u.target === u.cumulativePct) continue
           const drawAmt = round2((u.target - u.cumulativePct) / 100 * u.unitQty * l.unitPrice)
           const { error: drawError } = await supabase.from('invoice_item_draws').insert({
@@ -594,7 +625,9 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <input type="date" className="input" style={{ maxWidth: 200 }} value={date} onChange={e => setDate(e.target.value)} />
         </div>
 
-        <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} checks={easyChecks} />
+        <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} checks={easyChecks}
+          showProgress={hasBoq}
+          progressEditor={<ProgressBillingEditor lines={lines} data={pbData} priceMultiplier={priceMult} value={progressValue} onChange={setProgressValue} />} />
         <InvoiceTotalsCard
           calc={calc} hasVat={quotation.has_vat} isSplit={isSplit} materialLabor={materialLabor}
           showDeposit={showDepositBox} choice={depositChoice} siteDepositPct={siteDepositPct}
@@ -631,7 +664,7 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
-        <button type="button" className="btn btn-primary" disabled={saving || easyBlocked} onClick={handleSave}>
+        <button type="button" className="btn btn-primary" disabled={saving || easyBlocked || (isProgress && (progress.blocked || !saveLines.length))} onClick={handleSave}>
           {saving ? '⏳...' : '✅ สร้างใบแจ้งหนี้'}
         </button>
       </div>
@@ -1273,6 +1306,11 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   return (
     <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
+        {BILLING_MODE_LABELS[invoice.billing_mode] && (
+          <div style={{ marginBottom: 8 }}>
+            <span className="badge" style={{ fontSize: 11 }}>โหมด: {BILLING_MODE_LABELS[invoice.billing_mode]}</span>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           {INVOICE_TITLE_OPTIONS.map(o => (
             <button key={o.value} type="button" className={`btn btn-sm ${titleVariant === o.value ? 'btn-primary' : 'btn-ghost'}`}
