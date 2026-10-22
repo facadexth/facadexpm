@@ -100,13 +100,14 @@ export function buildProgressInvoiceRows(lines, data, value, priceMultiplier) {
     if (st.check.level === 'block') blocked = true
     if (weight <= 0 || qty <= 0) continue
 
-    const raw = progressLineAmount({ qty, unitPrice: l.unitPrice, weightPct: weight })
+    // the printed line must read qty x unit price = total, so the unit price is rounded first
+    const basePrice = round2(l.unitPrice * weight / 100)
+    const raw = round2(qty * basePrice)
     const lineTotal = Math.min(raw, remainingValue)
     st.lineTotal = lineTotal
     // when the remaining-value cap cuts the amount, scale qty, prices and phases by the same ratio
     const ratio = raw > 0 && lineTotal < raw ? lineTotal / raw : 1
     const drawQty = ratio < 1 ? round2(qty * ratio) : qty
-    const basePrice = round2(l.unitPrice * weight / 100)
     let unitPrice = basePrice
     if (round2(unitPrice * drawQty) !== lineTotal && drawQty > 0) unitPrice = round2(lineTotal / drawQty)
     // material/labor follow the unit price (qty already carries the cap ratio)

@@ -54,7 +54,9 @@ describe('buildProgressInvoiceRows', () => {
 
   it('bills composite ผลิต only, qty 20', () => {
     const r = buildProgressInvoiceRows(lines, data, { phaseIds: [], rows: { qW: { phaseIds: ['pP'] } } }, PM)
-    expect(r.items[0]).toMatchObject({ drawQty: 20, lineTotal: 14217.84, description: 'ผนัง (ผลิต 20%)' })
+    expect(r.items[0]).toMatchObject({ drawQty: 20, unitPrice: 710.89, lineTotal: 14217.8, description: 'ผนัง (ผลิต 20%)' })
+    // printed line reads qty x unit price = total
+    expect(Math.round(r.items[0].drawQty * r.items[0].unitPrice * 100) / 100).toBe(r.items[0].lineTotal)
   })
 
   it('blocks a line whose card has no quantity', () => {
