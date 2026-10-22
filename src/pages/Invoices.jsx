@@ -35,6 +35,8 @@ import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, 
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
 import PhoneFilters from '../components/PhoneFilters.jsx'
 import CardTable from '../components/CardTable.jsx'
+import { isCountUnit, checkLine, doneQty } from '../lib/progressBilling.js'
+import { useProgressBillingData } from '../hooks/useProgressBillingData.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -55,7 +57,7 @@ function buildLineState(quotationItems, unitsByQuotationItem, priceMultiplier) {
     }))
     return {
       quotationItemId: qi.id, description: qi.description, unit: qi.unit,
-      unitPrice: round2(qi.unit_price * priceMultiplier), totalQty: qi.quantity, checked: true, units,
+      unitPrice: round2(qi.unit_price * priceMultiplier), baseUnitPrice: qi.unit_price, totalQty: qi.quantity, checked: true, units,
       // Carries the source quotation item's material/labor split forward
       // (scaled by the same discount multiplier as unitPrice) so a split
       // quotation's invoices -- and the receipt/tax-invoice printed from
@@ -86,7 +88,49 @@ function discountMultiplier(quotation) {
   return totals.subtotal / rawTotal
 }
 
-function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
+// Easy-mode check of one line against the site's BOQ + cards (spec rule 6: no %, value = qty x
+// unit price). Unit comes from the line's BOQ (fallback: quotation item unit). Without a BOQ row
+// only the whole-number rule applies. Easy mode has no phase picker, so:
+//  - billedPct is 100 (the line bills whole units)
+//  - phaseWeightPct = Σ split pct of the phases whose cards show done > 0
+//  - cardDoneQty = the smallest done qty among those phases (units delivered in every one of them)
+//  - card_no_qty only blocks progress mode, so it is dropped here
+export function easyLineCheck({ line, qty, boq, splits, cards, priceMultiplier }) {
+  const unit = boq?.unit ?? line.unit
+  let w = 0
+  let card = null
+  if (boq) {
+    for (const s of splits || []) {
+      const d = doneQty(cards, boq.id, s.phase_id)
+      if (d == null || d <= 0) continue
+      w += Number(s.pct) || 0
+      card = card == null ? d : Math.min(card, d)
+    }
+  }
+  const r = checkLine({
+    unit, qty, unitPrice: line.unitPrice,
+    boqQty: boq ? boq.planned_qty : null,
+    boqUnitPrice: line.baseUnitPrice ?? null, priceMultiplier,
+    billedPct: 100, phaseWeightPct: w, cardDoneQty: card,
+  })
+  const reasons = r.reasons.filter(x => x !== 'card_no_qty')
+  if (!boq) {
+    const own = reasons.filter(x => x === 'fraction_count_unit')
+    return { level: own.length ? 'block' : 'ok', reasons: own, hasBoq: false, unit }
+  }
+  const level = reasons.includes('fraction_count_unit') ? 'block' : reasons.length ? 'warn' : 'ok'
+  const titles = {
+    fraction_count_unit: `งาน${unit}ต้องเป็นจำนวนเต็ม`,
+    price_mismatch: 'ราคาต่อหน่วยไม่ตรงกับ BOQ',
+    qty_is_pct_of_boq: `ปริมาณเท่ากับ ${boq.planned_qty} × ${w}% อาจใช้ % ของปริมาณ`,
+    qty_not_card: `ปริมาณไม่ตรงกับการ์ด (${card ?? 0})`,
+    weight_mismatch: `การ์ดแสดงงานเสร็จ ${w}% ของน้ำหนัก`,
+    no_weight: 'ยังไม่มีงานที่เสร็จในการ์ด',
+  }
+  return { level, reasons, hasBoq: true, unit, title: reasons.length ? reasons.map(x => titles[x]).join(' · ') : 'ตรงกับ BOQ และการ์ด' }
+}
+
+function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks }) {
   // Raw in-progress text for the two number inputs below, keyed by line
   // (qty) and by `lineId:unitIndex` (per-unit %). Both inputs otherwise
   // display a value re-derived from the unit ledger on every render, which
@@ -178,6 +222,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
           const lineAmount = drawAmount(l.units, l.unitPrice)
           const showAdvanced = mode === 'advanced' && isCountable(l.totalQty) && l.units.length > 1
           const isMixed = l.units.length > 1 && l.units.some(u => u.cumulativePct !== l.units[0].cumulativePct)
+          const chk = mode === 'easy' ? checks?.[l.quotationItemId] : null
 
           if (fullyBilled) {
             return (
@@ -193,8 +238,8 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
           }
 
           return (
-            <div key={l.quotationItemId} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 100px', gap: 8, alignItems: 'center' }}>
+            <div key={l.quotationItemId} data-line={l.quotationItemId} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: chk?.hasBoq ? '28px 1fr 90px 100px 20px' : '28px 1fr 90px 100px', gap: 8, alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: 'var(--text3)' }}>{no + 1}</span>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{l.description}</div>
@@ -222,8 +267,8 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                       return next
                     })} />
                 )}
-                {showAdvanced ? (
-                  <span className="font-mono" style={{ fontWeight: 700, textAlign: 'right' }}>{fmt(lineAmount)}</span>
+                {showAdvanced || mode === 'easy' ? (
+                  <span className="font-mono" style={{ fontWeight: 700, textAlign: 'right', color: mode === 'easy' && drawQty(l.units) > 1e-9 ? 'var(--accent)' : undefined }}>{fmt(round2(lineAmount))}</span>
                 ) : (
                   <input type="number" min="0" max={remaining * l.unitPrice} step="any"
                     className="input input-sm font-mono" title="กรอกจำนวนเงินที่ต้องการเรียกเก็บสำหรับรายการนี้"
@@ -242,7 +287,15 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                       return next
                     })} />
                 )}
+                {chk?.hasBoq && (
+                  <span title={chk.title} style={{ textAlign: 'center' }}>{chk.level === 'block' ? '⛔' : chk.level === 'warn' ? '⚠️' : '✅'}</span>
+                )}
               </div>
+              {chk?.reasons.includes('fraction_count_unit') && (
+                <div style={{ marginLeft: 36, marginTop: 4, fontSize: 12, color: 'var(--danger, #c0392b)' }}>
+                  <span>{`งาน${chk.unit}ต้องเป็นจำนวนเต็ม`}</span> <span>— เก็บบางส่วนใช้โหมดละเอียด</span>
+                </div>
+              )}
               {!showAdvanced && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, marginLeft: 36, fontSize: 11, color: 'var(--text3)' }}>
                   <input type="checkbox" checked={l.checked} onChange={e => toggleChecked(l.quotationItemId, e.target.checked)} />
@@ -300,7 +353,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
   )
 }
 
-function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
+export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const { hasModuleAccess } = useTenant()
   const items = quotation.quotation_items || []
   const { data: unitsByQuotationItem, loading: unitsLoading, error: unitsError } = useQuotationItemUnits(quotation.id, items)
@@ -339,6 +392,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const siteDepositPct = Number(site?.default_deposit_pct) || 0
   const depositChoice = useDepositChoiceState(siteDepositPct)
   const [showTargetCard, setShowTargetCard] = useState(false)
+  const { data: pbData } = useProgressBillingData(quotation.site_id, quotation.id)
 
   useEffect(() => {
     if (unitsByQuotationItem && !lines) {
@@ -374,6 +428,19 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   }
 
   const billedLines = lines.filter(l => drawQty(l.units) > 1e-9)
+  // Easy-mode checks per billed line; ⛔ (fraction of a count unit) blocks saving
+  const priceMult = discountMultiplier(quotation)
+  const easyChecks = {}
+  if (mode === 'easy') {
+    for (const l of billedLines) {
+      const boq = pbData?.boqByQuotationItem?.[l.quotationItemId] || null
+      easyChecks[l.quotationItemId] = easyLineCheck({
+        line: l, qty: round2(drawQty(l.units)), boq,
+        splits: boq ? pbData.splitsByBoq?.[boq.id] : null, cards: pbData?.cards, priceMultiplier: priceMult,
+      })
+    }
+  }
+  const easyBlocked = Object.values(easyChecks).some(c => c.level === 'block')
   // round2 here for the same reason handleSave rounds before persisting
   // (Fix 7): the header subtotal must equal the SUM of the line_totals
   // actually stored, or a printed invoice's line items visibly fail to add
@@ -409,7 +476,8 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
     const target = solveRawForNet(net, netParams, totalOpenValue)
     const pct = Math.min(1, target / totalOpenValue)
 
-    setMode('easy')
+    // fills fractional draws, which easy mode no longer allows for count units
+    setMode('advanced')
     setLines(lines.map(l => {
       const remaining = openQty(l.units)
       if (remaining <= 0) return l
@@ -527,7 +595,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <input type="date" className="input" style={{ maxWidth: 200 }} value={date} onChange={e => setDate(e.target.value)} />
         </div>
 
-        <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
+        <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} checks={easyChecks} />
         <InvoiceTotalsCard
           calc={calc} hasVat={quotation.has_vat} isSplit={isSplit} materialLabor={materialLabor}
           showDeposit={showDepositBox} choice={depositChoice} siteDepositPct={siteDepositPct}
@@ -564,7 +632,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
-        <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>
+        <button type="button" className="btn btn-primary" disabled={saving || easyBlocked} onClick={handleSave}>
           {saving ? '⏳...' : '✅ สร้างใบแจ้งหนี้'}
         </button>
       </div>
