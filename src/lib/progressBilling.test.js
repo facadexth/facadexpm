@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isCountUnit, phaseWeight, deliveredBefore, doneQty, progressLineAmount, checkLine } from './progressBilling.js'
+import { isCountUnit, phaseWeight, deliveredBefore, doneQty, progressLineAmount, checkLine, legacyDeliveredQty } from './progressBilling.js'
 
 describe('progressBilling', () => {
   it('plan cases', () => {
@@ -37,5 +37,23 @@ describe('progressBilling', () => {
     expect(r.level).toBe('warn')
     expect(r.reasons).toEqual(expect.arrayContaining(['price_mismatch', 'no_weight']))
     expect(checkLine({ unit:'ตร.ม.', qty:4, unitPrice:100, boqQty:10, boqUnitPrice:100, priceMultiplier:1, billedPct:50, phaseWeightPct:50, cardDoneQty:6 }).reasons).toEqual(['qty_not_card'])
+  })
+})
+
+describe('legacyDeliveredQty', () => {
+  const order = (...pcts) => pcts.map((pct, i) => ({ phase_id: 'p' + i, pct }))
+  it('AD1 billed 80% with 40/40/10/10 -> ผลิต and ติดตั้ง fully delivered', () => {
+    const po = order(40, 40, 10, 10)
+    expect(legacyDeliveredQty({ billedFraction: 0.8, phaseOrder: po, phaseId: 'p0', boqQty: 1 })).toBe(1)
+    expect(legacyDeliveredQty({ billedFraction: 0.8, phaseOrder: po, phaseId: 'p1', boqQty: 1 })).toBe(1)
+    expect(legacyDeliveredQty({ billedFraction: 0.8, phaseOrder: po, phaseId: 'p2', boqQty: 1 })).toBe(0)
+  })
+  it('composite 26 with 20/60/10/10', () => {
+    const po = order(20, 60, 10, 10)
+    expect(legacyDeliveredQty({ billedFraction: 0.8, phaseOrder: po, phaseId: 'p0', boqQty: 26 })).toBe(26)
+    expect(legacyDeliveredQty({ billedFraction: 0.8, phaseOrder: po, phaseId: 'p1', boqQty: 26 })).toBe(26)
+    expect(legacyDeliveredQty({ billedFraction: 0.5, phaseOrder: po, phaseId: 'p0', boqQty: 26 })).toBe(26)
+    expect(legacyDeliveredQty({ billedFraction: 0.5, phaseOrder: po, phaseId: 'p1', boqQty: 26 })).toBe(13)
+    expect(legacyDeliveredQty({ billedFraction: 0, phaseOrder: po, phaseId: 'p0', boqQty: 26 })).toBe(0)
   })
 })

@@ -75,3 +75,22 @@ export function checkLine({ unit, qty, unitPrice, boqQty, boqUnitPrice, priceMul
     : reasons.length ? 'warn' : 'ok'
   return { level, reasons }
 }
+
+// qty of (item, phase) already covered by easy/advanced billing. Earlier billing (billedFraction
+// of the item's value) is assumed to have used up the phases in sort order: a phase with weight w
+// and cumulative weight c before it is delivered for clamp((f*100 - c) / w, 0, 1) of the BOQ qty.
+export function legacyDeliveredQty({ billedFraction, phaseOrder, phaseId, boqQty }) {
+  const f = Number(billedFraction) || 0
+  if (f <= 0) return 0
+  let c = 0
+  for (const p of phaseOrder || []) {
+    const w = Number(p.pct) || 0
+    if (p.phase_id === phaseId) {
+      if (w <= 0) return 0
+      const frac = Math.min(1, Math.max(0, (f * 100 - c) / w))
+      return round2((Number(boqQty) || 0) * frac)
+    }
+    c += w
+  }
+  return 0
+}

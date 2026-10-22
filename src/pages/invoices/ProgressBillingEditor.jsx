@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { round2 } from '../../lib/depositCalc.js'
 import { openQty } from '../../lib/invoiceCalc.js'
-import { phaseWeight, deliveredBefore, doneQty, progressLineAmount, checkLine } from '../../lib/progressBilling.js'
+import { phaseWeight, deliveredBefore, doneQty, progressLineAmount, checkLine, legacyDeliveredQty } from '../../lib/progressBilling.js'
 
 const REASON_TEXT = {
   fraction_count_unit: 'ต้องเป็นจำนวนเต็ม',
@@ -13,6 +13,7 @@ const REASON_TEXT = {
   price_mismatch: 'ราคาต่อหน่วยไม่ตรงกับ BOQ',
   qty_not_card: 'จำนวนน้อยกว่าที่การ์ดแสดง',
   no_weight: 'ยังไม่ได้ตั้ง weight',
+  weight_over_100: 'weight รวมเกิน 100%',
 }
 
 const sortPhaseIds = (ids, phases) => {
@@ -47,8 +48,14 @@ export function buildProgressInvoiceRows(lines, data, value, priceMultiplier) {
     status[l.quotationItemId] = st
     if (!phaseIds.length) continue
 
-    const weight = phaseWeight(splits, phaseIds)
+    const rawWeight = phaseWeight(splits, phaseIds)
+    const weight = Math.min(100, rawWeight)
     st.weight = weight
+    // earlier easy/advanced billing counts as delivered, phases used up in sort order
+    const totalQty = (l.units || []).reduce((s, u) => s + (Number(u.unitQty) || 0), 0)
+    const billedFraction = totalQty > 0 ? 1 - openQty(l.units) / totalQty : 0
+    const phaseOrder = sortPhaseIds(splits.map(s => s.phase_id), phases)
+      .map(pid => ({ phase_id: pid, pct: Number(splits.find(s => s.phase_id === pid)?.pct) || 0 }))
     let available = null
     let doneMin = null
     for (const pid of phaseIds) {
@@ -59,7 +66,8 @@ export function buildProgressInvoiceRows(lines, data, value, priceMultiplier) {
         st.blockedCard = st.blockedCard || card?.name || phaseName(pid)
         continue
       }
-      const free = Math.max(0, done - deliveredBefore(data.phaseDraws, boq.id, pid))
+      const legacy = legacyDeliveredQty({ billedFraction, phaseOrder, phaseId: pid, boqQty: boq.planned_qty })
+      const free = Math.max(0, done - deliveredBefore(data.phaseDraws, boq.id, pid) - legacy)
       available = available == null ? free : Math.min(available, free)
       doneMin = doneMin == null ? done : Math.min(doneMin, done)
     }
@@ -79,26 +87,46 @@ export function buildProgressInvoiceRows(lines, data, value, priceMultiplier) {
       boqUnitPrice: l.baseUnitPrice ?? null, priceMultiplier,
       billedPct: weight, phaseWeightPct: weight, cardDoneQty: available,
     })
+    if (rawWeight > 100) {
+      st.check = { level: st.check.level === 'block' ? 'block' : 'warn', reasons: [...st.check.reasons, 'weight_over_100'] }
+    }
     if (st.check.level === 'block') blocked = true
     if (weight <= 0 || qty <= 0) continue
 
-    const lineTotal = Math.min(progressLineAmount({ qty, unitPrice: l.unitPrice, weightPct: weight }), remainingValue)
+    const raw = progressLineAmount({ qty, unitPrice: l.unitPrice, weightPct: weight })
+    const lineTotal = Math.min(raw, remainingValue)
     st.lineTotal = lineTotal
+    // when the remaining-value cap cuts the amount, scale qty, prices and phases by the same ratio
+    const ratio = raw > 0 && lineTotal < raw ? lineTotal / raw : 1
+    const drawQty = ratio < 1 ? round2(qty * ratio) : qty
+    const basePrice = round2(l.unitPrice * weight / 100)
+    let unitPrice = basePrice
+    if (round2(unitPrice * drawQty) !== lineTotal && drawQty > 0) unitPrice = round2(lineTotal / drawQty)
+    // material/labor follow the unit price (qty already carries the cap ratio)
+    const priceRatio = basePrice > 0 ? unitPrice / basePrice : 1
+    // weights above 100 are capped: shrink each phase's pct proportionally
+    const wScale = rawWeight > 0 ? weight / rawWeight : 0
     const pctOf = pid => Number(splits.find(s => s.phase_id === pid)?.pct) || 0
-    const scale = (m) => (m != null ? round2(m * weight / 100) : null)
+    const scale = (m) => (m != null ? round2(m * weight / 100 * priceRatio) : null)
+    const phaseIdsPaid = phaseIds.filter(pid => pctOf(pid) > 0)
+    // amounts last; the satang remainder goes on the last phase so Σ === lineTotal
+    let acc = 0
+    const phaseRows = phaseIdsPaid.map((pid, i) => {
+      const amount = i === phaseIdsPaid.length - 1 ? round2(lineTotal - acc)
+        : round2(progressLineAmount({ qty, unitPrice: l.unitPrice, weightPct: pctOf(pid) * wScale }) * ratio)
+      acc = round2(acc + amount)
+      return { boq_item_id: boq.id, phase_id: pid, qty: drawQty, weight_pct: pctOf(pid), amount }
+    })
     items.push({
       quotationItemId: l.quotationItemId,
       description: `${l.description} (${phaseIds.map(phaseName).join(' + ')} ${weight}%)`,
       unit,
-      unitPrice: round2(l.unitPrice * weight / 100),
+      unitPrice,
       unitPriceMaterial: scale(l.unitPriceMaterial),
       unitPriceLabor: scale(l.unitPriceLabor),
-      drawQty: qty,
+      drawQty,
       lineTotal,
-      phases: phaseIds.filter(pid => pctOf(pid) > 0).map(pid => ({
-        boq_item_id: boq.id, phase_id: pid, qty, weight_pct: pctOf(pid),
-        amount: progressLineAmount({ qty, unitPrice: l.unitPrice, weightPct: pctOf(pid) }),
-      })),
+      phases: phaseRows,
     })
   }
   return { items, blocked, status }

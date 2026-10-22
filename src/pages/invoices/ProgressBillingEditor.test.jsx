@@ -74,10 +74,64 @@ describe('buildProgressInvoiceRows', () => {
     expect(lower.items[0].drawQty).toBe(5)
   })
 
-  it('caps the amount at the remaining value of the item', () => {
-    const partly = lines.map(l => l.quotationItemId === 'qAD1' ? { ...l, units: [unit('u1', 1, 50)] } : l)
-    const r = buildProgressInvoiceRows(partly, data, { phaseIds: [], rows: { qAD1: { phaseIds: ['pP', 'pI'] } } }, PM)
-    expect(r.items[0].lineTotal).toBe(20500)
+  it('caps the amount at the remaining value and scales qty, prices and phases to match', () => {
+    const l1 = [{ quotationItemId: 'qX', description: 'X', unit: 'ตร.ม.', unitPrice: 1000, baseUnitPrice: 1000,
+      unitPriceMaterial: 600, unitPriceLabor: 400, totalQty: 5, units: [unit('ux', 5)] }]
+    const d = { ...data, boqByQuotationItem: { qX: { id: 'bX', unit: 'ตร.ม.', planned_qty: 6 } },
+      splitsByBoq: { bX: [{ phase_id: 'pP', pct: 30 }, { phase_id: 'pI', pct: 70 }] },
+      cards: [
+        { boq_item_id: 'bX', phase_id: 'pP', done_qty: 6, planned_qty: 6, progress_mode: 'quantity' },
+        { boq_item_id: 'bX', phase_id: 'pI', done_qty: 6, planned_qty: 6, progress_mode: 'quantity' },
+      ] }
+    const r = buildProgressInvoiceRows(l1, d, { phaseIds: [], rows: { qX: { phaseIds: ['pP', 'pI'] } } }, PM)
+    const it = r.items[0]
+    expect(it.lineTotal).toBe(5000)
+    expect(it.drawQty).toBe(5)
+    expect(Math.round(it.unitPrice * it.drawQty * 100) / 100).toBe(5000)
+    expect(it.unitPriceMaterial).toBe(600)
+    expect(it.unitPriceLabor).toBe(400)
+    expect(it.phases.reduce((s, p) => s + p.amount, 0)).toBeCloseTo(5000, 6)
+    expect(it.phases.map(p => p.qty)).toEqual([5, 5])
+    expect(it.phases.map(p => p.amount)).toEqual([1500, 3500])
+  })
+
+  it('phase amounts put the satang remainder on the last phase', () => {
+    const l1 = [{ quotationItemId: 'qX', description: 'X', unit: 'ตร.ม.', unitPrice: 33.33, baseUnitPrice: 33.33, totalQty: 1, units: [unit('ux', 1)] }]
+    const d = { ...data, boqByQuotationItem: { qX: { id: 'bX', unit: 'ตร.ม.', planned_qty: 1 } },
+      splitsByBoq: { bX: [{ phase_id: 'pP', pct: 33.33 }, { phase_id: 'pI', pct: 33.33 }, { phase_id: 'pH', pct: 33.34 }] },
+      cards: ['pP', 'pI', 'pH'].map(p => ({ boq_item_id: 'bX', phase_id: p, done_qty: 1, planned_qty: 1, progress_mode: 'quantity' })) }
+    const it = buildProgressInvoiceRows(l1, d, { phaseIds: [], rows: { qX: { phaseIds: ['pP', 'pI', 'pH'] } } }, PM).items[0]
+    expect(Math.round(it.phases.reduce((s, p) => s + p.amount, 0) * 100) / 100).toBe(it.lineTotal)
+  })
+
+  it('earlier easy/advanced billing counts as delivered, in phase order', () => {
+    const splits = { bAD1: [{ phase_id: 'pP', pct: 40 }, { phase_id: 'pI', pct: 40 }, { phase_id: 'pH', pct: 20 }] }
+    const billed = lines.map(l => l.quotationItemId === 'qAD1' ? { ...l, units: [unit('u1', 1, 80)] } : l)
+    const d = { ...data, splitsByBoq: { ...data.splitsByBoq, ...splits },
+      cards: [...data.cards, { boq_item_id: 'bAD1', phase_id: 'pH', done_qty: 1, planned_qty: 1, progress_mode: 'quantity' }] }
+    const r = buildProgressInvoiceRows(billed, d, { phaseIds: [], rows: { qAD1: { phaseIds: ['pP', 'pI'] } } }, PM)
+    expect(r.items).toHaveLength(0)
+    expect(r.status.qAD1.available).toBe(0)
+    const h = buildProgressInvoiceRows(billed, d, { phaseIds: [], rows: { qAD1: { phaseIds: ['pH'] } } }, PM)
+    expect(h.items[0]).toMatchObject({ drawQty: 1, lineTotal: 8200 })
+  })
+
+  it('composite billed 50% (20/60): ผลิต fully delivered, ติดตั้ง half', () => {
+    const billed = lines.map(l => l.quotationItemId === 'qW' ? { ...l, units: [unit('u2', 26, 50)] } : l)
+    const d = { ...data, cards: data.cards.map(c => c.boq_item_id === 'bW' ? { ...c, done_qty: 26 } : c) }
+    const p = buildProgressInvoiceRows(billed, d, { phaseIds: [], rows: { qW: { phaseIds: ['pP'] } } }, PM)
+    expect(p.status.qW.available).toBe(0)
+    const i = buildProgressInvoiceRows(billed, d, { phaseIds: [], rows: { qW: { phaseIds: ['pI'] } } }, PM)
+    expect(i.status.qW.available).toBe(13)
+  })
+
+  it('warns and caps when the weight is over 100', () => {
+    const d = { ...data, splitsByBoq: { ...data.splitsByBoq, bAD1: [{ phase_id: 'pP', pct: 70 }, { phase_id: 'pI', pct: 50 }] } }
+    const r = buildProgressInvoiceRows(lines, d, { phaseIds: [], rows: { qAD1: { phaseIds: ['pP', 'pI'] } } }, PM)
+    expect(r.status.qAD1.check.reasons).toContain('weight_over_100')
+    expect(r.status.qAD1.check.level).toBe('warn')
+    expect(r.status.qAD1.weight).toBe(100)
+    expect(r.items[0].lineTotal).toBe(41000)
   })
 
   it('uses header phases when a row has no override', () => {
