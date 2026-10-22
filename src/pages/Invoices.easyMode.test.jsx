@@ -58,7 +58,7 @@ describe('easy mode', () => {
     renderModal()
     untickAll()
     fireEvent.change(qtyInputs()[0], { target: { value: '0.8' } })
-    expect(screen.getByText('งานชุดต้องเป็นจำนวนเต็ม')).toBeTruthy()
+    expect(screen.getByText('ต้องเป็นจำนวนเต็ม (หน่วย ชุด)')).toBeTruthy()
     expect(screen.getByText('✅ สร้างใบแจ้งหนี้').closest('button').disabled).toBe(true)
   })
 
@@ -86,5 +86,22 @@ describe('easy mode', () => {
     untickAll()
     fireEvent.change(qtyInputs()[1], { target: { value: '20.8' } })
     expect(document.querySelector('[title="ปริมาณเท่ากับ 26 × 80% อาจใช้ % ของปริมาณ"]')).toBeTruthy()
+  })
+
+  it('shows no weight/card warnings in easy mode (full qty, phases partly done)', () => {
+    pbData = {
+      boqByQuotationItem: { qi2: { id: 'b2', unit: 'ตร.ม.', planned_qty: 26, code: 'A' } },
+      splitsByBoq: { b2: [{ phase_id: 'p1', pct: 20 }, { phase_id: 'p2', pct: 80 }] },
+      phases: [{ id: 'p1' }, { id: 'p2' }],
+      cards: [
+        { boq_item_id: 'b2', phase_id: 'p1', done_qty: 10, planned_qty: 26, progress_mode: 'quantity' },
+        { boq_item_id: 'b2', phase_id: 'p2', done_qty: 0, planned_qty: 26, progress_mode: 'quantity' },
+      ],
+      phaseDraws: [],
+    }
+    renderModal()
+    untickAll()
+    fireEvent.change(qtyInputs()[1], { target: { value: '26' } })
+    expect(document.querySelector('[title="ตรงกับ BOQ และการ์ด"]')).toBeTruthy()
   })
 })

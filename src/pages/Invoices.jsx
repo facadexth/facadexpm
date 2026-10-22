@@ -94,7 +94,7 @@ function discountMultiplier(quotation) {
 //  - billedPct is 100 (the line bills whole units)
 //  - phaseWeightPct = Σ split pct of the phases whose cards show done > 0
 //  - cardDoneQty = the smallest done qty among those phases (units delivered in every one of them)
-//  - card_no_qty only blocks progress mode, so it is dropped here
+//  - only fraction_count_unit / qty_is_pct_of_boq / price_mismatch are shown here
 export function easyLineCheck({ line, qty, boq, splits, cards, priceMultiplier }) {
   const unit = boq?.unit ?? line.unit
   let w = 0
@@ -113,19 +113,18 @@ export function easyLineCheck({ line, qty, boq, splits, cards, priceMultiplier }
     boqUnitPrice: line.baseUnitPrice ?? null, priceMultiplier,
     billedPct: 100, phaseWeightPct: w, cardDoneQty: card,
   })
-  const reasons = r.reasons.filter(x => x !== 'card_no_qty')
+  // easy mode bills whole units with no %, so weight/card checks are not its concern
+  const EASY_REASONS = ['fraction_count_unit', 'qty_is_pct_of_boq', 'price_mismatch']
+  const reasons = r.reasons.filter(x => EASY_REASONS.includes(x))
   if (!boq) {
     const own = reasons.filter(x => x === 'fraction_count_unit')
     return { level: own.length ? 'block' : 'ok', reasons: own, hasBoq: false, unit }
   }
   const level = reasons.includes('fraction_count_unit') ? 'block' : reasons.length ? 'warn' : 'ok'
   const titles = {
-    fraction_count_unit: `งาน${unit}ต้องเป็นจำนวนเต็ม`,
+    fraction_count_unit: `ต้องเป็นจำนวนเต็ม (หน่วย ${unit})`,
     price_mismatch: 'ราคาต่อหน่วยไม่ตรงกับ BOQ',
     qty_is_pct_of_boq: `ปริมาณเท่ากับ ${boq.planned_qty} × ${w}% อาจใช้ % ของปริมาณ`,
-    qty_not_card: `ปริมาณไม่ตรงกับการ์ด (${card ?? 0})`,
-    weight_mismatch: `การ์ดแสดงงานเสร็จ ${w}% ของน้ำหนัก`,
-    no_weight: 'ยังไม่มีงานที่เสร็จในการ์ด',
   }
   return { level, reasons, hasBoq: true, unit, title: reasons.length ? reasons.map(x => titles[x]).join(' · ') : 'ตรงกับ BOQ และการ์ด' }
 }
@@ -293,7 +292,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks }) {
               </div>
               {chk?.reasons.includes('fraction_count_unit') && (
                 <div style={{ marginLeft: 36, marginTop: 4, fontSize: 12, color: 'var(--danger, #c0392b)' }}>
-                  <span>{`งาน${chk.unit}ต้องเป็นจำนวนเต็ม`}</span> <span>— เก็บบางส่วนใช้โหมดละเอียด</span>
+                  <span>{`ต้องเป็นจำนวนเต็ม (หน่วย ${chk.unit})`}</span> <span>— เก็บบางส่วนใช้โหมดละเอียด</span>
                 </div>
               )}
               {!showAdvanced && (
