@@ -53,7 +53,14 @@ export function buildProgressInvoiceRows(lines, data, value, priceMultiplier) {
     st.weight = weight
     // earlier easy/advanced billing counts as delivered, phases used up in sort order
     const totalQty = (l.units || []).reduce((s, u) => s + (Number(u.unitQty) || 0), 0)
-    const billedFraction = totalQty > 0 ? 1 - openQty(l.units) / totalQty : 0
+    // quotation_item_units also carries value billed by earlier progress invoices; that part is
+    // already in phaseDraws, so only the rest counts as easy/advanced ("legacy") billing.
+    const progressValue = (data.phaseDraws || [])
+      .filter(d => d.boq_item_id === boq.id && d.invoice_status !== 'void')
+      .reduce((s, d) => s + (Number(d.amount) || 0), 0)
+    const totalValue = totalQty * l.unitPrice
+    const billedFraction = totalQty > 0 && totalValue > 0
+      ? Math.max(0, 1 - openQty(l.units) / totalQty - progressValue / totalValue) : 0
     const phaseOrder = sortPhaseIds(splits.map(s => s.phase_id), phases)
       .map(pid => ({ phase_id: pid, pct: Number(splits.find(s => s.phase_id === pid)?.pct) || 0 }))
     let available = null

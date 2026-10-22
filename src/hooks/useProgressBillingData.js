@@ -48,13 +48,13 @@ export async function fetchProgressBillingData(siteId, quotationId) {
 
   let phaseDraws = []
   if (boqIds.length) {
-    const draws = await fetchIn('invoice_item_phases', 'id, invoice_item_id, boq_item_id, phase_id, qty', 'boq_item_id', boqIds)
+    const draws = await fetchIn('invoice_item_phases', 'id, invoice_item_id, boq_item_id, phase_id, qty, amount', 'boq_item_id', boqIds)
     const items = draws.length ? await fetchIn('invoice_items', 'id, invoice_id', 'id', [...new Set(draws.map(d => d.invoice_item_id))]) : []
     const invoices = items.length ? await fetchIn('invoices', 'id, status', 'id', [...new Set(items.map(i => i.invoice_id))]) : []
     const invOfItem = new Map(items.map(i => [i.id, i.invoice_id]))
     const statusOf = new Map(invoices.map(i => [i.id, i.status]))
     phaseDraws = draws.map(d => ({
-      boq_item_id: d.boq_item_id, phase_id: d.phase_id, qty: d.qty,
+      boq_item_id: d.boq_item_id, phase_id: d.phase_id, qty: d.qty, amount: d.amount,
       invoice_status: statusOf.get(invOfItem.get(d.invoice_item_id)) ?? null,
     }))
   }

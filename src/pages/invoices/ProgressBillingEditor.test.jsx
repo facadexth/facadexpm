@@ -74,6 +74,15 @@ describe('buildProgressInvoiceRows', () => {
     expect(lower.items[0].drawQty).toBe(5)
   })
 
+  it('a second progress invoice does not count the first one twice (units + phase draws)', () => {
+    const firstAmount = 5687.14 // 8 m2 x 3554.46 x 20%
+    const pct = firstAmount / (26 * 3554.46) * 100
+    const ls = lines.map(l => l.quotationItemId === 'qW' ? { ...l, units: [unit('u2', 26, pct)] } : l)
+    const d = { ...data, phaseDraws: [{ boq_item_id: 'bW', phase_id: 'pP', qty: 8, amount: firstAmount, invoice_status: 'paid' }] }
+    const r = buildProgressInvoiceRows(ls, d, { phaseIds: [], rows: { qW: { phaseIds: ['pP'] } } }, PM)
+    expect(r.items[0].drawQty).toBe(12)
+  })
+
   it('caps the amount at the remaining value and scales qty, prices and phases to match', () => {
     const l1 = [{ quotationItemId: 'qX', description: 'X', unit: 'ตร.ม.', unitPrice: 1000, baseUnitPrice: 1000,
       unitPriceMaterial: 600, unitPriceLabor: 400, totalQty: 5, units: [unit('ux', 5)] }]
