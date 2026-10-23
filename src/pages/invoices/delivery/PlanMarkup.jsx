@@ -5,11 +5,11 @@ export function pinLabel(taskId, cardOrder = []) {
   return i >= 0 ? String(i + 1) : '•'
 }
 
-export default function PlanMarkup({ plan, src, marks = [], colourFor = () => '#9ca3af', cardOrder = [], imgRef, children, onPointerDown, onPointerMove, onPointerUp, style }) {
+export default function PlanMarkup({ plan, src, marks = [], colourFor = () => '#9ca3af', cardOrder = [], imgRef, children, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, style }) {
   const url = src ?? plan?.url ?? plan?.signedUrl
   return (
     <div style={{ position: 'relative', width: '100%', lineHeight: 0, touchAction: onPointerDown ? 'none' : undefined, ...style }}
-      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <img ref={imgRef} src={url} alt={plan?.title || 'แบบแปลน'} draggable={false}
         style={{ width: '100%', height: 'auto', display: 'block', userSelect: 'none' }} />
       <svg viewBox="0 0 1 1" preserveAspectRatio="none" data-testid="plan-svg"
@@ -20,16 +20,20 @@ export default function PlanMarkup({ plan, src, marks = [], colourFor = () => '#
             return <rect key={m.id || i} data-kind="rect" x={m.x} y={m.y} width={m.w} height={m.h}
               fill={c} fillOpacity={0.35} stroke={c} strokeWidth={2} vectorEffect="non-scaling-stroke" />
           }
-          return (
-            <g key={m.id || i} data-kind="pin">
-              <ellipse cx={m.x} cy={m.y} rx={0.018} ry={0.024} fill={c} stroke="#fff" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-              <text x={m.x} y={m.y} fontSize={0.025} textAnchor="middle" dominantBaseline="central" fill="#fff"
-                style={{ fontWeight: 700 }}>{pinLabel(m.task_id ?? m.taskId, cardOrder)}</text>
-            </g>
-          )
+          return null
         })}
         {children}
       </svg>
+      {/* Pins are HTML so they stay round at any aspect ratio (the SVG above is stretched). */}
+      {marks.map((m, i) => m.kind === 'rect' ? null : (
+        <span key={'pin' + (m.id || i)} data-kind="pin" style={{
+          position: 'absolute', left: `${m.x * 100}%`, top: `${m.y * 100}%`, transform: 'translate(-50%,-50%)',
+          width: 22, height: 22, borderRadius: '50%', boxSizing: 'border-box', border: '2px solid #fff',
+          background: colourFor(m.task_id ?? m.taskId ?? null), color: '#fff', fontSize: 12, fontWeight: 700,
+          lineHeight: '18px', textAlign: 'center', pointerEvents: 'none',
+          WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
+        }}>{pinLabel(m.task_id ?? m.taskId, cardOrder)}</span>
+      ))}
     </div>
   )
 }

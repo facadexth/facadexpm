@@ -33,14 +33,16 @@ export default function PlanMarkupEditor({ siteId, tenantId, plans = [], marksBy
   const [dirty, setDirty] = useState(false)
   const imgRef = useRef(null)
   const fileRef = useRef(null)
+  const tried = useRef(new Set()) // plan ids whose signed URL was already requested (no retry loop)
   const plan = plans.find(p => p.id === activeId) || null
   const cardOrder = cards.map(c => c.taskId)
 
   useEffect(() => { if (!activeId && plans[0]) setActiveId(plans[0].id) }, [plans, activeId])
   useEffect(() => { setMarks(marksByPlan[activeId] || []); setDirty(false); setPending(null) }, [activeId, marksByPlan])
   useEffect(() => {
-    const need = plans.filter(p => !p.url && !urls[p.id] && p.file_path)
+    const need = plans.filter(p => !p.url && p.file_path && !tried.current.has(p.id))
     if (!need.length) return
+    need.forEach(p => tried.current.add(p.id))
     let off = false
     Promise.all(need.map(async p => {
       const { data } = await supabase.storage.from('site-drawings').createSignedUrl(p.file_path, 3600)
@@ -55,7 +57,10 @@ export default function PlanMarkupEditor({ siteId, tenantId, plans = [], marksBy
     setDirty(true)
   }
   const down = e => {
-    if (!imgRef.current || pending != null) return
+    const img = imgRef.current
+    if (!img || pending != null) return
+    const box = img.getBoundingClientRect()
+    if (!box.width || !box.height) return // not loaded yet (height 0) or hidden
     const p = pointToFraction(e, imgRef.current)
     if (tool === 'pin') { addMark({ kind: 'pin', x: p.x, y: p.y }); return }
     e.currentTarget.setPointerCapture?.(e.pointerId)
@@ -66,6 +71,7 @@ export default function PlanMarkupEditor({ siteId, tenantId, plans = [], marksBy
     const p = pointToFraction(e, imgRef.current)
     setDrag(d => ({ ...d, x1: p.x, y1: p.y }))
   }
+  const cancel = () => setDrag(null)
   const up = e => {
     if (!drag || !imgRef.current) return
     const p = pointToFraction(e, imgRef.current)
@@ -124,7 +130,7 @@ export default function PlanMarkupEditor({ siteId, tenantId, plans = [], marksBy
             <button type="button" style={{ ...btn(false), marginLeft: 'auto', background: dirty ? '#f97316' : '#fff', color: dirty ? '#fff' : '#111827' }} disabled={busy || !dirty} onClick={save}>บันทึก</button>
           </div>
           <PlanMarkup plan={plan} src={plan.url || urls[plan.id]} marks={marks} colourFor={colourFor} cardOrder={cardOrder}
-            imgRef={imgRef} onPointerDown={down} onPointerMove={move} onPointerUp={up}>{dragRect}</PlanMarkup>
+            imgRef={imgRef} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>{dragRect}</PlanMarkup>
           <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0', display: 'grid', gap: 6 }}>
             {marks.map((m, i) => (
               <li key={m.id || 'n' + i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, outline: pending === i ? '2px solid #f97316' : 'none', borderRadius: 6, padding: 2 }}>
@@ -139,7 +145,7 @@ export default function PlanMarkupEditor({ siteId, tenantId, plans = [], marksBy
               </li>
             ))}
           </ul>
-          {pending != null && <p style={{ fontSize: 13, color: '#f97316', margin: '4px 0 0' }}>เลือกการ์ดของเครื่องหมายใหม่</p>}
+          {pending != null && <p style={{ fontSize: 13, color: '#f97316', margin: '4px 0 0' }}>เลือกการ์ดของจุดนี้ก่อน</p>}
         </>
       )}
     </div>

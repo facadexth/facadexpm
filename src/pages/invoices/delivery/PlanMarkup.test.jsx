@@ -46,10 +46,22 @@ describe('PlanMarkup', () => {
     expect(container.querySelector('rect').getAttribute('fill')).toBe('#16a34a')
     expect(container.querySelector('rect').getAttribute('fill-opacity')).toBe('0.35')
     const pins = container.querySelectorAll('[data-kind="pin"]')
-    expect(pins[0].querySelector('ellipse').getAttribute('fill')).toBe('#f97316')
+    expect(pins[0].style.background).toBe('rgb(249, 115, 22)')
     expect(pins[0].textContent).toBe('1')
-    expect(pins[1].querySelector('ellipse').getAttribute('fill')).toBe('#9ca3af')
+    expect(pins[1].style.background).toBe('rgb(156, 163, 175)')
     expect(pins[1].textContent).toBe('•')
+  })
+})
+
+describe('PlanMarkup pins', () => {
+  it('pin is placed by percentage and has a fixed px size', () => {
+    const { container } = render(<PlanMarkup plan={plan} marks={[{ kind: 'pin', x: 0.25, y: 0.75, task_id: null }]} />)
+    const pin = container.querySelector('[data-kind="pin"]')
+    expect(pin.tagName).toBe('SPAN')
+    expect(pin.style.left).toBe('25%')
+    expect(pin.style.top).toBe('75%')
+    expect(pin.style.width).toBe('22px')
+    expect(pin.style.height).toBe('22px')
   })
 })
 
@@ -85,6 +97,43 @@ describe('PlanMarkupEditor', () => {
     const m = saveMarksMock.mock.calls[0][1][0]
     expect(m).toMatchObject({ kind: 'rect', x: 0.75, y: 0.5, w: 0.25, h: 0.5 })
     expect(m.x + m.w).toBeLessThanOrEqual(1)
+  })
+
+  it('failed signed URL is not re-requested on re-render', async () => {
+    const spy = vi.fn(async () => ({ data: null, error: { message: 'x' } }))
+    const { supabase } = await import('../../../lib/supabase.js')
+    const orig = supabase.storage.from
+    supabase.storage.from = () => ({ createSignedUrl: spy })
+    try {
+      const p2 = { id: 'p2', title: 'B', file_path: 'a/b.png' }
+      const props = { siteId: 's1', tenantId: 'tn', plans: [p2], marksByPlan: {}, cards, colourFor: () => '#000' }
+      const r = render(<PlanMarkupEditor {...props} />)
+      await waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+      r.rerender(<PlanMarkupEditor {...props} />)
+      r.rerender(<PlanMarkupEditor {...props} plans={[{ ...p2 }]} />)
+      await new Promise(res => setTimeout(res, 30))
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally { supabase.storage.from = orig }
+  })
+
+  it('press on a zero-size image is ignored; pointercancel clears drag', () => {
+    const { img } = mount()
+    img.getBoundingClientRect = () => sized(0, 0)
+    fireEvent.pointerDown(img.parentElement, { clientX: 10, clientY: 10, pointerId: 1 })
+    img.getBoundingClientRect = () => sized(400, 300)
+    expect(document.querySelectorAll('rect').length).toBe(0)
+    fireEvent.pointerDown(img.parentElement, { clientX: 10, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(img.parentElement, { clientX: 200, clientY: 200, pointerId: 1 })
+    expect(document.querySelectorAll('rect').length).toBe(1)
+    fireEvent.pointerCancel(img.parentElement, { pointerId: 1 })
+    expect(document.querySelectorAll('rect').length).toBe(0)
+  })
+
+  it('new mark shows the pick-card hint', () => {
+    const { img } = mount()
+    fireEvent.click(screen.getByText('หมุด'))
+    fireEvent.pointerDown(img.parentElement, { clientX: 20, clientY: 20, pointerId: 1 })
+    expect(screen.getByText('เลือกการ์ดของจุดนี้ก่อน')).toBeTruthy()
   })
 
   it('delete mark removes it', () => {
