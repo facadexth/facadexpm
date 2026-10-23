@@ -36,6 +36,15 @@ describe('buildReportRows', () => {
     expect(row(rows, 'p2').this).toBe(0)
   })
 
+  it('legacy amount above the done phases spills into the next phases, not onto the done one', () => {
+    // live IN2610-002: only ผลิต (p1, 2600) done, invoice bills 13000 → p1 full, rest to p2
+    const c = [cards[0], { ...cards[1], done_qty: 0 }]
+    const { rows } = buildReportRows({ ...base, cards: c, invoiceItems: [item('it1', 13000)], itemPhases: [] })
+    expect(row(rows, 'p1')).toMatchObject({ this: 2600, remaining: 0 })
+    expect(row(rows, 'p2')).toMatchObject({ this: 10400, remaining: 0 })
+    expect(row(rows, 'p1').reasons).not.toContain('over_billed')
+  })
+
   it('legacy split respects what earlier invoices billed per phase', () => {
     const { rows } = buildReportRows({ ...base,
       earlierItems: [item('e1', 2600)],

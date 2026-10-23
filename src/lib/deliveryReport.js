@@ -97,12 +97,32 @@ function allocate(items, phaseRows, boqByQi, splitsByBoq, phases, cards, valueMa
       continue
     }
     const splits = sortedSplits(splitsByBoq?.[boq.id], phases)
-    let target = splits.filter(s => phaseHasDone(cards, boq.id, s.phase_id))
-    if (!target.length) target = splits
-    const rooms = target.map(s => {
+    const roomOf = s => {
       const k = `${boq.id}|${s.phase_id}`
       return Math.max(0, round2((valueMap.get(k) || 0) - (billed.get(k) || 0)))
-    })
+    }
+    let target = splits.filter(s => phaseHasDone(cards, boq.id, s.phase_id))
+    if (!target.length) target = splits
+    const rooms = target.map(roomOf)
+    const targetRoom = round2(rooms.reduce((a, b) => a + b, 0))
+    // More than the done phases can take: fill them, then the other phases in phase order,
+    // so the bill is not piled onto one phase beyond its value.
+    if (target.length < splits.length && targetRoom > 0 && amount > targetRoom) {
+      let left = round2(amount - targetRoom)
+      const parts = new Map(target.map((s, i) => [s, rooms[i]]))
+      for (const s of splits) {
+        if (left <= 0) break
+        if (parts.has(s)) continue
+        const take = Math.min(left, roomOf(s))
+        if (take > 0) { parts.set(s, take); left = round2(left - take) }
+      }
+      if (left > 0) {
+        const last = [...parts.keys()].pop()
+        parts.set(last, round2(parts.get(last) + left))
+      }
+      for (const s of splits) if (parts.has(s)) add(`${boq.id}|${s.phase_id}`, parts.get(s), null)
+      continue
+    }
     const parts = splitByRoom(amount, target, rooms)
     target.forEach((s, i) => add(`${boq.id}|${s.phase_id}`, parts[i], null))
   }
