@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Easy mode: quantity only (no per-line amount input), whole numbers for count units,
+// Easy mode: quantity or baht amount per line, whole numbers for typed count-unit qty,
 // and a ✅/⚠️/⛔ check icon per line when the site has BOQ rows.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, cleanup, fireEvent, screen } from '@testing-library/react'
@@ -42,16 +42,25 @@ const quotation = {
 }
 
 const renderModal = () => render(<CreateInvoiceModal quotation={quotation} site={{}} onClose={() => {}} onSaved={() => {}} />)
-const qtyInputs = () => screen.getAllByRole('spinbutton').filter(i => i.closest('[data-line]'))
+const qtyInputs = () => screen.getAllByRole('spinbutton').filter(i => i.closest('[data-line]') && i.classList.contains('num-spin'))
+const amtInputs = () => [...document.querySelectorAll('[title="กรอกจำนวนเงินที่ต้องการเรียกเก็บสำหรับรายการนี้"]')]
 const untickAll = () => fireEvent.click(screen.getByLabelText('เลือกทั้งหมด'))
 
 afterEach(() => { cleanup(); pbData = null })
 
 describe('easy mode', () => {
-  it('has no per-line amount input; the amount is text', () => {
+  it('keeps the per-line amount input next to qty', () => {
     renderModal()
-    expect(document.querySelector('[title="กรอกจำนวนเงินที่ต้องการเรียกเก็บสำหรับรายการนี้"]')).toBeNull()
+    expect(amtInputs()).toHaveLength(2)
     expect(qtyInputs()).toHaveLength(2)
+  })
+
+  it('a baht amount giving a fraction of a ชุด is allowed (no block)', () => {
+    renderModal()
+    untickAll()
+    fireEvent.change(amtInputs()[0], { target: { value: '800' } })
+    expect(screen.queryByText(/ต้องเป็นจำนวนเต็ม/)).toBeNull()
+    expect(screen.getByText('✅ สร้างใบแจ้งหนี้').closest('button').disabled).toBe(false)
   })
 
   it('blocks a fractional qty on a ชุด line', () => {

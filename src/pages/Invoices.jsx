@@ -120,9 +120,9 @@ export function easyLineCheck({ line, qty, boq, splits, cards, priceMultiplier }
   const reasons = r.reasons.filter(x => EASY_REASONS.includes(x))
   if (!boq) {
     const own = reasons.filter(x => x === 'fraction_count_unit')
-    return { level: own.length ? 'block' : 'ok', reasons: own, hasBoq: false, unit }
+    return { level: own.length ? (line.byAmount ? 'warn' : 'block') : 'ok', reasons: own, hasBoq: false, unit }
   }
-  const level = reasons.includes('fraction_count_unit') ? 'block' : reasons.length ? 'warn' : 'ok'
+  const level = reasons.includes('fraction_count_unit') && !line.byAmount ? 'block' : reasons.length ? 'warn' : 'ok'
   const titles = {
     fraction_count_unit: `ต้องเป็นจำนวนเต็ม (หน่วย ${unit})`,
     price_mismatch: 'ราคาต่อหน่วยไม่ตรงกับ BOQ',
@@ -160,13 +160,13 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks, showP
   const toggleChecked = (qiId, checked) => {
     clearDrafts()
     setLine(qiId, l => ({
-      ...l, checked, units: checked ? waterfall(l.units, openQty(l.units)) : l.units,
+      ...l, checked, byAmount: false, units: checked ? waterfall(l.units, openQty(l.units)) : l.units,
     }))
   }
   const setQty = (qiId, qty) => setLine(qiId, l => {
     const max = openQty(l.units)
     const clamped = Math.max(0, Math.min(max, qty))
-    return { ...l, units: waterfall(l.units, clamped) }
+    return { ...l, byAmount: false, units: waterfall(l.units, clamped) }
   })
   // กรอกจำนวนเงิน (บาท) ที่ต้องการเรียกเก็บสำหรับรายการนี้โดยตรง แทนที่จะต้อง
   // แปลงเป็นจำนวนหน่วยเอง -- ตัวเลือกนี้อยู่แยกจาก "กรอกยอดที่ต้องการเรียกเก็บ"
@@ -177,7 +177,8 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks, showP
     const max = openQty(l.units)
     const qty = l.unitPrice > 0 ? amount / l.unitPrice : 0
     const clamped = Math.max(0, Math.min(max, qty))
-    return { ...l, units: waterfall(l.units, clamped) }
+    // a baht amount may land on a fraction of a set: allowed, shown as ⚠️ only
+    return { ...l, byAmount: true, units: waterfall(l.units, clamped) }
   })
   const setUnitTarget = (qiId, unitIndex, target) => setLine(qiId, l => ({
     ...l,
@@ -272,7 +273,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks, showP
                       return next
                     })} />
                 )}
-                {showAdvanced || mode === 'easy' ? (
+                {showAdvanced ? (
                   <span className="font-mono" style={{ fontWeight: 700, textAlign: 'right', color: mode === 'easy' && drawQty(l.units) > 1e-9 ? 'var(--accent)' : undefined }}>{fmt(round2(lineAmount))}</span>
                 ) : (
                   <input type="number" min="0" max={remaining * l.unitPrice} step="any"
@@ -296,7 +297,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks, showP
                   <span title={chk.title} style={{ textAlign: 'center' }}>{chk.level === 'block' ? '⛔' : chk.level === 'warn' ? '⚠️' : '✅'}</span>
                 )}
               </div>
-              {chk?.reasons.includes('fraction_count_unit') && (
+              {chk?.level === 'block' && chk.reasons.includes('fraction_count_unit') && (
                 <div style={{ marginLeft: 36, marginTop: 4, fontSize: 12, color: 'var(--danger, #c0392b)' }}>
                   <span>{`ต้องเป็นจำนวนเต็ม (หน่วย ${chk.unit})`}</span> <span>— เก็บบางส่วนใช้โหมดละเอียด</span>
                 </div>
@@ -500,12 +501,11 @@ export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
     const target = solveRawForNet(net, netParams, totalOpenValue)
     const pct = Math.min(1, target / totalOpenValue)
 
-    // fills fractional draws, which easy mode no longer allows for count units
-    setMode('advanced')
+    setMode('easy')
     setLines(lines.map(l => {
       const remaining = openQty(l.units)
       if (remaining <= 0) return l
-      return { ...l, checked: false, units: waterfall(l.units, remaining * pct) }
+      return { ...l, checked: false, byAmount: true, units: waterfall(l.units, remaining * pct) }
     }))
   }
 
