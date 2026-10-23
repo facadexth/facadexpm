@@ -106,4 +106,32 @@ describe('useDeliveryReport', () => {
     expect(newId.slice(3, 4)).toEqual(['id'])
     expect(newId[4]).toMatch(/^new/)
   })
+  it('reportId other than current loads that report\'s cards, prev task ids, site', async () => {
+    Object.assign(tables, {
+      invoices: [
+        { id: 'cur', invoice_number: 'IN2', invoice_date: '2026-09-10', quotation_id: 'q1', site_id: 's1', status: 'sent' },
+        { id: 'a', invoice_number: 'IN1', invoice_date: '2026-09-01', quotation_id: 'q1', status: 'paid' },
+      ],
+      invoice_items: [], invoice_item_phases: [], quotations: [{ id: 'q1' }], quotation_items: [], phase_tasks: [],
+      site_drawings: [], line_site_photos: [], sites: [{ id: 's1', name: 'SOAP' }],
+      delivery_reports: [
+        { id: 'old', invoice_id: 'cur', status: 'replaced', report_number: 'DR-1' },
+        { id: 'new', invoice_id: 'cur', status: 'issued', replaces_id: 'old', report_number: 'DR-2' },
+        { id: 'ea', invoice_id: 'a', status: 'signed' },
+        { id: 'ev', invoice_id: 'a', status: 'void' },
+      ],
+      delivery_report_cards: [
+        { id: 'c-old', report_id: 'old', task_id: 't-old' }, { id: 'c-new', report_id: 'new', task_id: 't-new' },
+        { id: 'c-ea', report_id: 'ea', task_id: 't-prev' }, { id: 'c-ev', report_id: 'ev', task_id: 't-void' },
+      ],
+    })
+    const d = await fetchDeliveryReport('cur', 'old')
+    expect(d.report.id).toBe('old')
+    expect(d.cards.map(c => c.id)).toEqual(['c-old'])
+    expect(d.replacedBy.report_number).toBe('DR-2')
+    expect(d.prevTaskIds).toEqual(['t-prev'])
+    expect(d.site.name).toBe('SOAP')
+    const d2 = await fetchDeliveryReport('cur')
+    expect(d2.cards.map(c => c.id)).toEqual(['c-new'])
+  })
 })

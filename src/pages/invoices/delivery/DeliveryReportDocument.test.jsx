@@ -24,7 +24,7 @@ const report = { id: 'r1', report_number: 'DR2610-001', date: '2026-10-23', stat
 function makeData(over = {}) {
   return {
     invoice: { id: 'inv1', invoice_number: 'IN2610-004' },
-    reports: [report], current: report, rows: [],
+    reports: [report], current: report, report, replacedBy: null, prevTaskIds: [], site: { name: 'SOAP OPERA' }, rows: [],
     totals: { contract: 100, prev: 20, this: 30, remaining: 50 },
     cards: [], tasks: [], phases: [], photosByTask: {}, plans: [], marksByPlan: {},
     ...over,
@@ -38,6 +38,23 @@ describe('DeliveryReportDocument', () => {
     render(<DeliveryReportDocumentModal invoiceId="inv1" reportId="r1" onClose={() => {}} />)
     expect(screen.getAllByText(/DR2610-001/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/อ้างอิงใบแจ้งหนี้ IN2610-004/).length).toBeGreaterThan(0)
+  })
+
+  it('replaced report shows banner and site name', () => {
+    hookData = makeData({ replacedBy: { id: 'r2', report_number: 'DR2610-002' } })
+    render(<DeliveryReportDocumentModal invoiceId="inv1" reportId="r1" onClose={() => {}} />)
+    expect(screen.getAllByText(/ฉบับนี้ถูกแทนด้วย DR2610-002/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('SOAP OPERA').length).toBeGreaterThan(0)
+  })
+
+  it('long description is clipped; signature moves to own page after a full card page', () => {
+    hookData = makeData({
+      rows: [{ key: 'k', description: 'ก'.repeat(200), value: 0, prev: 0, this: 0, remaining: 0 }],
+      cards: [{ id: 'c1', task_id: null, card_title: 'A', photo_ids: [], caption: 'x'.repeat(150) }],
+    })
+    render(<DeliveryReportDocumentModal invoiceId="inv1" reportId="r1" onClose={() => {}} />)
+    expect(screen.getByTitle('ก'.repeat(200)).textContent.length).toBe(90)
+    expect(screen.getAllByText(/หน้า \d+ \/ 3/).length).toBe(3)
   })
 
   it('bar widths match totals', () => {

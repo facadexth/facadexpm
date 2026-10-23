@@ -41,7 +41,7 @@ export function earlierInvoicesOf(invoices, current) {
     .sort(cmpInvoice)
 }
 
-export async function fetchDeliveryReport(invoiceId) {
+export async function fetchDeliveryReport(invoiceId, reportId = null) {
   if (!invoiceId) return null
   const [invoice] = await fetchAllRows(() => supabase.from('invoices')
     .select('id, invoice_number, invoice_date, quotation_id, site_id, status').eq('id', invoiceId).order('id', { ascending: true }))
@@ -93,8 +93,24 @@ export async function fetchDeliveryReport(invoiceId) {
   })
 
   const current = reports.find(r => r.status !== 'replaced' && r.status !== 'void') || null
-  const reportCards = current
-    ? await fetchAllRows(() => supabase.from('delivery_report_cards').select('*').eq('report_id', current.id).order('sort_order', { ascending: true }))
+  // The requested report (defaults to current): its cards are what the document prints.
+  const report = (reportId && reports.find(r => r.id === reportId)) || current
+  const replacedBy = report ? reports.find(r => r.replaces_id === report.id) || null : null
+  const reportCards = report
+    ? await fetchAllRows(() => supabase.from('delivery_report_cards').select('*').eq('report_id', report.id).order('sort_order', { ascending: true }))
+    : []
+
+  // "Delivered before" on plans = cards in issued/signed reports of the earlier invoices.
+  const earlierReports = earlierIds.length
+    ? (await fetchIn('delivery_reports', 'id, invoice_id, status', 'invoice_id', earlierIds)).filter(r => r.status === 'issued' || r.status === 'signed')
+    : []
+  const earlierCards = earlierReports.length
+    ? await fetchIn('delivery_report_cards', 'id, report_id, task_id', 'report_id', earlierReports.map(r => r.id))
+    : []
+  const prevTaskIds = [...new Set(earlierCards.map(c => c.task_id).filter(Boolean))]
+
+  const [site] = siteId
+    ? await fetchAllRows(() => supabase.from('sites').select('*').eq('id', siteId).order('id', { ascending: true }))
     : []
 
   const taskIds = tasks.map(t => t.id)
@@ -109,14 +125,14 @@ export async function fetchDeliveryReport(invoiceId) {
   for (const m of marks) (marksByPlan[m.plan_id] ||= []).push(m)
 
   return {
-    invoice, reports, current, rows, totals,
+    invoice, reports, current, report, replacedBy, prevTaskIds, site: site || null, rows, totals,
     cards: reportCards, tasks, phases: pb?.phases || [],
     photosByTask, plans, marksByPlan,
   }
 }
 
-export function useDeliveryReport(invoiceId) {
-  return useQuery(() => fetchDeliveryReport(invoiceId), [invoiceId])
+export function useDeliveryReport(invoiceId, reportId = null) {
+  return useQuery(() => fetchDeliveryReport(invoiceId, reportId), [invoiceId, reportId])
 }
 
 // Insert-then-remove: capture old ids, insert the new rows, then remove only the old ids, so a

@@ -1,6 +1,7 @@
 // A4 document for a delivery report (รายงานส่งงาน, DR). Plan B task 6.
 // Page 1 summary table + 3-colour bar, then one page per site plan, then card blocks
-// (2 per page, up to 4 photos each), signature block at the end.
+// (1 or 2 per page by size, up to 4 photos each), signature block at the end (own page when the
+// last card page is over ~60% full). Pagination is by simple size estimates, not DOM measurement.
 // Pages use fixed mm heights like WorkPhotosDocumentModal (Invoices.jsx): 270mm, not 277mm,
 // so html2pdf.js page-break padding never adds an empty page.
 import { useEffect, useMemo, useState } from 'react'
@@ -14,29 +15,36 @@ import RowActionsMenu from '../../../components/RowActionsMenu.jsx'
 import PlanMarkup from './PlanMarkup.jsx'
 
 const PAGE_HEIGHT_MM = 270
-const ROWS_PER_PAGE = 22
-const CARDS_PER_PAGE = 2
+const ROWS_PER_PAGE = 14
+const DESC_MAX = 90
+const clip = (t, n) => { const x = String(t ?? ''); return x.length > n ? x.slice(0, n - 1) + '…' : x }
 const thDate = d => (d ? new Date(d).toLocaleDateString('th-TH') : '')
 const pct = (n, total) => (total ? Math.round(n / total * 1000) / 10 : 0)
-const DONE = new Set(['done', 'completed'])
 
 async function signUrls(bucket, paths) {
   if (!paths.length) return {}
-  const { data } = await supabase.storage.from(bucket).createSignedUrls(paths, 3600)
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrls(paths, 3600)
+  if (error) throw error
   const out = {}
   ;(data || []).forEach((d, i) => { if (d?.signedUrl) out[paths[i]] = d.signedUrl })
   return out
 }
 
+// Card size in page units (a page holds 2): >2 photos or a long caption takes a whole page.
+function cardUnits(c, shownCount) {
+  return shownCount > 2 || String(c.caption || '').length > 120 ? 2 : 1
+}
+
 export function DeliveryReportDocument({ data, report, tenant, urls = {}, receipt = null, signatureUrl = null, elementId = 'dr-doc' }) {
-  const { invoice, rows = [], totals = {}, cards = [], tasks = [], phases = [], photosByTask = {}, plans = [], marksByPlan = {}, reports = [] } = data
+  const { invoice, rows = [], totals = {}, cards = [], tasks = [], phases = [], photosByTask = {}, plans = [], marksByPlan = {}, reports = [], replacedBy = null, site = null } = data
   const taskById = new Map(tasks.map(t => [t.id, t]))
   const phaseName = new Map(phases.map(p => [p.id, p.name]))
   const replaced = report?.replaces_id ? reports.find(r => r.id === report.replaces_id) : null
 
-  // Plan colours: cards of this report = orange; other cards already done = green; rest grey.
+  // Plan colours: this report's cards = orange; cards of issued/signed reports of earlier
+  // invoices (from the hook) = green; rest grey.
   const thisTaskIds = new Set(cards.map(c => c.task_id).filter(Boolean))
-  const prevTaskIds = new Set(tasks.filter(t => DONE.has(t.status) && !thisTaskIds.has(t.id)).map(t => t.id))
+  const prevTaskIds = new Set((data.prevTaskIds || []).filter(id => !thisTaskIds.has(id)))
   const colourFor = id => markColour(id, { prevTaskIds, thisTaskIds })
   const cardOrder = cards.map(c => c.task_id)
 
@@ -48,14 +56,28 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
   const rowPages = []
   for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) rowPages.push(rows.slice(i, i + ROWS_PER_PAGE))
   if (!rowPages.length) rowPages.push([])
+  const shownPhotos = c => {
+    const task = c.task_id ? taskById.get(c.task_id) : null
+    if (!task) return []
+    const byId = new Map((photosByTask[task.id] || []).map(p => [p.id, p]))
+    return (c.photo_ids || []).map(id => byId.get(id)).filter(p => p && urls[p.photo_path]).slice(0, 4)
+  }
   const cardPages = []
-  for (let i = 0; i < cards.length; i += CARDS_PER_PAGE) cardPages.push(cards.slice(i, i + CARDS_PER_PAGE))
-  if (!cardPages.length) cardPages.push([])
+  let cur = null
+  cards.forEach((c, i) => {
+    const u = cardUnits(c, shownPhotos(c).length)
+    if (!cur || cur.units + u > 2) { cur = { items: [], units: 0 }; cardPages.push(cur) }
+    cur.items.push({ c, n: i + 1 })
+    cur.units += u
+  })
+  // Signature goes on the last card page only when that page is at most ~60% full (1 small card).
+  const sigOwnPage = !cardPages.length || cardPages[cardPages.length - 1].units / 2 > 0.6
 
   const pages = [
     ...rowPages.map((r, i) => ({ kind: 'table', rows: r, last: i === rowPages.length - 1 })),
     ...plans.map(p => ({ kind: 'plan', plan: p })),
-    ...cardPages.map((c, i) => ({ kind: 'cards', cards: c, offset: i * CARDS_PER_PAGE, last: i === cardPages.length - 1 })),
+    ...cardPages.map((p, i) => ({ kind: 'cards', items: p.items, sig: !sigOwnPage && i === cardPages.length - 1 })),
+    ...(sigOwnPage ? [{ kind: 'cards', items: [], sig: true }] : []),
   ]
 
   const header = (title, n) => (
@@ -71,25 +93,31 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
         <div style={{ fontWeight: 800, fontSize: 12 }}>รายงานส่งงาน {report?.report_number || ''}</div>
         <div>อ้างอิงใบแจ้งหนี้ {invoice?.invoice_number}</div>
         {replaced && <div>แทนฉบับ {replaced.report_number}</div>}
-        {data.siteName && <div>{data.siteName}</div>}
+        {site?.name && <div>{site.name}</div>}
         <div>{thDate(report?.date)}</div>
         <div style={{ color: '#9296a8' }}>หน้า {n} / {pages.length}</div>
       </div>
     </div>
   )
+  const banner = replacedBy && (
+    <div data-testid="dr-replaced" style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5', borderRadius: 4, padding: '1.5mm 3mm', fontSize: 11, fontWeight: 800, marginBottom: '3mm', textAlign: 'center' }}>
+      ฉบับนี้ถูกแทนด้วย {replacedBy.report_number}
+    </div>
+  )
+  const withBanner = (title, n) => <>{header(title, n)}{banner}</>
 
   const td = { padding: '1mm 1.5mm', borderBottom: '1px solid #eee' }
   const num = { ...td, textAlign: 'right', whiteSpace: 'nowrap' }
 
   return (
-    <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', background: '#fff', color: '#17181f', width: '190mm' }}>
+    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', background: '#fff', color: '#17181f', width: '190mm' }}>
       {pages.map((pg, idx) => (
         <div key={idx} style={{
           height: `${PAGE_HEIGHT_MM}mm`, boxSizing: 'border-box', padding: '6mm 8mm', display: 'flex', flexDirection: 'column', overflow: 'hidden',
           pageBreakAfter: idx < pages.length - 1 ? 'always' : 'auto', breakAfter: idx < pages.length - 1 ? 'page' : 'auto',
         }}>
           {pg.kind === 'table' && <>
-            {header('สรุปการส่งงาน (บาท ก่อน VAT)', idx + 1)}
+            {withBanner('สรุปการส่งงาน (บาท ก่อน VAT)', idx + 1)}
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
               <thead><tr style={{ background: '#f4f3ff' }}>
                 {['รายการ', 'เฟส', 'หน่วย', 'ปริมาณ', 'ราคา/หน่วย', 'weight', 'มูลค่า', 'ส่งก่อนหน้า', 'งวดนี้', 'คงเหลือ'].map(h => <th key={h} style={{ ...td, textAlign: 'left' }}>{h}</th>)}
@@ -97,7 +125,7 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
               <tbody>
                 {pg.rows.map(r => (
                   <tr key={r.key}>
-                    <td style={td}>{r.description}</td>
+                    <td style={td} title={r.description}>{clip(r.description, DESC_MAX)}</td>
                     <td style={td}>{r.phaseName || '–'}</td>
                     <td style={td}>{r.unit || '–'}</td>
                     <td style={num}>{r.qty ?? '–'}</td>
@@ -130,7 +158,7 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
           </>}
 
           {pg.kind === 'plan' && <>
-            {header(`ตำแหน่งงานที่ส่ง · ${pg.plan.title || ''}`, idx + 1)}
+            {withBanner(`ตำแหน่งงานที่ส่ง · ${pg.plan.title || ''}`, idx + 1)}
             <div style={{ border: '1px solid #e4e6ef', borderRadius: 3 }}>
               <PlanMarkup plan={pg.plan} src={urls[pg.plan.file_path]} marks={marksByPlan[pg.plan.id] || []} colourFor={colourFor} cardOrder={cardOrder} />
             </div>
@@ -141,15 +169,14 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
           </>}
 
           {pg.kind === 'cards' && <>
-            {header('รูปงานที่ส่ง', idx + 1)}
-            {pg.cards.map((c, i) => {
+            {withBanner(pg.items.length ? 'รูปงานที่ส่ง' : 'การรับมอบงาน', idx + 1)}
+            {pg.items.map(({ c, n }) => {
               const task = c.task_id ? taskById.get(c.task_id) : null
-              const photoById = new Map((task ? photosByTask[task.id] || [] : []).map(p => [p.id, p]))
-              const shown = task ? (c.photo_ids || []).map(id => photoById.get(id)).filter(p => p && urls[p.photo_path]).slice(0, 4) : []
+              const shown = shownPhotos(c)
               return (
-                <div key={c.id || i} style={{ marginBottom: '4mm' }}>
+                <div key={c.id || n} style={{ marginBottom: '4mm' }}>
                   <div style={{ fontSize: 11, fontWeight: 800 }}>
-                    {pg.offset + i + 1}. {c.card_title}{!task && ' (การ์ดถูกลบ)'}
+                    {n}. {c.card_title}{!task && ' (การ์ดถูกลบ)'}
                   </div>
                   {task && <div style={{ fontSize: 9, color: '#6a6f85' }}>เฟส {phaseName.get(task.phase_id) || '–'}</div>}
                   {shown.length > 0 && (
@@ -161,12 +188,12 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
                       ))}
                     </div>
                   )}
-                  {c.caption && <div style={{ fontSize: 9.5, marginTop: '1mm' }}>คำอธิบาย: {c.caption}</div>}
+                  {c.caption && <div style={{ fontSize: 9.5, marginTop: '1mm' }}>คำอธิบาย: {clip(c.caption, 400)}</div>}
                 </div>
               )
             })}
             <div style={{ flex: 1 }} />
-            {pg.last && (
+            {pg.sig && (
               <div>
                 <div style={{ fontSize: 11, fontWeight: 800 }}>การรับมอบงาน</div>
                 <div style={{ fontSize: 10, marginBottom: '4mm' }}>ผู้ว่าจ้างได้ตรวจรับงานตามรายการข้างต้นแล้ว</div>
@@ -196,11 +223,13 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
 }
 
 // Props: invoiceId (the hook is keyed by invoice) + reportId (defaults to the current report).
-// Cards come from the hook, which loads them for the current report only.
-export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClose, onRequestSign, siteName }) {
+// The hook loads the requested report's cards (defaults to the current report).
+// Print: root has className="printable-document" so index.css @media print shows only it (as Invoices.jsx).
+export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClose, onRequestSign }) {
   const { tenant } = useTenant()
-  const { data, loading, error } = useDeliveryReport(invoiceId)
-  const report = data ? (data.reports || []).find(r => r.id === reportId) || data.current : null
+  const { data, loading, error } = useDeliveryReport(invoiceId, reportId)
+  const report = data?.report ?? null
+  const [loadErr, setLoadErr] = useState(false)
   const [urls, setUrls] = useState({})
   const [receipt, setReceipt] = useState(null)
   const [signatureUrl, setSignatureUrl] = useState(null)
@@ -221,7 +250,7 @@ export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClo
     let alive = true
     Promise.all([signUrls('line-site-photos', photoPaths), signUrls('site-drawings', planPaths)])
       .then(([a, b]) => { if (alive) setUrls({ ...a, ...b }) })
-      .catch(() => {})
+      .catch(() => { if (alive) setLoadErr(true) })
     return () => { alive = false }
   }, [photoPaths, planPaths])
 
@@ -234,10 +263,11 @@ export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClo
       if (!alive || !r) return
       setReceipt(r)
       if (r.signature_path) {
-        const { data: s } = await supabase.storage.from('document-receipts').createSignedUrl(r.signature_path, 3600)
+        const { data: s, error: e } = await supabase.storage.from('document-receipts').createSignedUrl(r.signature_path, 3600)
+        if (e) throw e
         if (alive) setSignatureUrl(s?.signedUrl || null)
       }
-    })().catch(() => {})
+    })().catch(() => { if (alive) setLoadErr(true) })
     return () => { alive = false }
   }, [receiptId])
 
@@ -253,9 +283,10 @@ export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClo
       <div className="modal-body" style={{ maxHeight: '70vh', overflow: 'auto' }}>
         {loading && !data && <div>กำลังโหลด…</div>}
         {error && <div style={{ color: '#dc2626' }}>{String(error.message || error)}</div>}
+        {loadErr && <div style={{ color: '#b45309', fontSize: 12, marginBottom: 8 }}>โหลดรูป/ลายเซ็นไม่สำเร็จ</div>}
         {data && !report && <div>ยังไม่มีรายงานส่งงาน</div>}
         {data && report && (
-          <DeliveryReportDocument data={{ ...data, siteName }} report={report} tenant={tenant} urls={urls}
+          <DeliveryReportDocument data={data} report={report} tenant={tenant} urls={urls}
             receipt={receipt} signatureUrl={signatureUrl} elementId={elementId} />
         )}
       </div>
