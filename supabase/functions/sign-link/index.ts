@@ -312,9 +312,12 @@ Deno.serve(async (req) => {
     if (link.document_type === 'delivery_report') {
       const { data: dr } = await admin.from('delivery_reports').select('status').eq('id', link.document_id).maybeSingle()
       if (canMarkSigned(dr)) {
-        await admin.from('delivery_reports').update({
+        const { data: upd, error: updErr } = await admin.from('delivery_reports').update({
           status: 'signed', signed_at: new Date().toISOString(), signed_receipt_id: receipt.id,
-        }).eq('id', link.document_id).in('status', ['draft', 'issued'])
+        }).eq('id', link.document_id).in('status', ['draft', 'issued']).select('id')
+        if (updErr || !upd?.length) console.warn('sign-link: delivery report not marked signed', { linkId, reportId: link.document_id, error: updErr?.message })
+      } else {
+        console.warn('sign-link: delivery report not draft/issued at sign time', { linkId, reportId: link.document_id, status: dr?.status })
       }
     }
 

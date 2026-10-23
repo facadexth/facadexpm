@@ -10,12 +10,17 @@ vi.mock('../../../hooks/useDeliveryReport.js', () => ({
   useDeliveryReport: () => ({ data: null, loading: false, error: null }),
 }))
 vi.mock('../../../hooks/useBackToClose.js', () => ({ useBackToClose: () => {} }))
-vi.mock('../../../lib/supabase.js', () => ({ supabase: {} }))
+const sb = { inserts: 0, uploads: 0 }
+vi.mock('../../../lib/supabase.js', () => ({ supabase: {
+  auth: { getSession: async () => ({ data: { session: { user: { email: 'a@b' } } } }) },
+  storage: { from: () => ({ upload: async () => { sb.uploads++; return { error: null } }, remove: async () => ({}) }) },
+  from: () => ({ insert: async () => { sb.inserts++; return { error: null } } }),
+} }))
 vi.mock('../../../components/DocumentReceiptModal.jsx', () => ({
   default: ({ documentType, onSaved }) => <button onClick={() => onSaved({ id: 'rcpt1' })}>save-{documentType}</button>,
 }))
 vi.mock('../../../components/SignLinkModal.jsx', () => ({
-  default: ({ documentType, documentId }) => <div>link-{documentType}-{documentId}</div>,
+  default: ({ documentType, documentId, onClose }) => <div>link-{documentType}-{documentId}<button onClick={onClose}>close-link</button></div>,
 }))
 
 import SignChooser from './SignChooser.jsx'
@@ -46,5 +51,43 @@ describe('SignChooser', () => {
     fireEvent.click(screen.getByText(/ส่งลิงก์ให้ลูกค้า/))
     await waitFor(() => screen.getByText('link-delivery_report-r9'))
     expect(issued).not.toHaveBeenCalled()
+  })
+
+  it('device path: status update fails -> retry re-runs only the status update', async () => {
+    let saves = 0
+    signed.mockRejectedValueOnce(new Error('boom'))
+    render(<SignChooser report={{ id: 'r1', status: 'issued' }} tenantId="t1" onClose={() => {}} />)
+    fireEvent.click(screen.getByText(/เซ็นบนเครื่องนี้/))
+    const save = await screen.findByText('save-delivery_report')
+    save.addEventListener('click', () => { saves++ })
+    fireEvent.click(save)
+    const retry = await screen.findByText('ลองบันทึกสถานะอีกครั้ง')
+    expect(screen.getByText('boom')).toBeTruthy()
+    fireEvent.click(retry)
+    await waitFor(() => expect(signed).toHaveBeenCalledTimes(2))
+    expect(signed.mock.calls[1]).toEqual(['r1', 'rcpt1'])
+    expect(saves).toBe(1)
+  })
+
+  it('closing the remote link modal does not call onSigned', async () => {
+    const onSigned = vi.fn(); const onClose = vi.fn()
+    render(<SignChooser report={{ id: 'r9', status: 'issued' }} tenantId="t1" onClose={onClose} onSigned={onSigned} />)
+    fireEvent.click(screen.getByText(/ส่งลิงก์ให้ลูกค้า/))
+    fireEvent.click(await screen.findByText('close-link'))
+    expect(onClose).toHaveBeenCalled(); expect(onSigned).not.toHaveBeenCalled()
+  })
+
+  it('paper path: status update fails -> retry does not re-upload or re-insert', async () => {
+    signed.mockRejectedValueOnce(new Error('boom'))
+    render(<SignChooser report={{ id: 'r1', status: 'issued' }} tenantId="t1" onClose={() => {}} />)
+    fireEvent.click(screen.getByText(/พิมพ์แล้วเซ็นบนกระดาษ/))
+    fireEvent.change(await screen.findByPlaceholderText('ชื่อผู้เซ็นรับ'), { target: { value: 'สมชาย' } })
+    const f = new File(['x'], 'a.jpg', { type: 'image/jpeg' })
+    fireEvent.change(screen.getByLabelText('แนบรูปใบที่เซ็นแล้ว'), { target: { files: [f] } })
+    fireEvent.click(screen.getByText('บันทึกว่าเซ็นแล้ว'))
+    fireEvent.click(await screen.findByText('ลองบันทึกสถานะอีกครั้ง'))
+    await waitFor(() => expect(signed).toHaveBeenCalledTimes(2))
+    expect(sb.uploads).toBe(1); expect(sb.inserts).toBe(1)
+    expect(signed.mock.calls[0][1]).toBe(signed.mock.calls[1][1])
   })
 })

@@ -19,6 +19,8 @@ export default function SignChooser({ report, tenantId, onClose, onSigned, onPri
   const [busy, setBusy] = useState(false)
   const [signerName, setSignerName] = useState('')
   const [file, setFile] = useState(null)
+  // Receipt already saved but the report status update failed: retry only the status update.
+  const [savedReceiptId, setSavedReceiptId] = useState(null)
   const title = `รายงานส่งงาน ${report?.report_number || ''}`
 
   const start = async m => {
@@ -29,14 +31,29 @@ export default function SignChooser({ report, tenantId, onClose, onSigned, onPri
     } catch (e) { setErr(e.message || String(e)) }
   }
 
+  // Never throws: on failure keep the receipt id and show the retry view.
   const finishSigned = async receiptId => {
-    await markDeliveryReportSigned(report.id, receiptId)
+    setSavedReceiptId(receiptId)
+    setErr('')
+    try {
+      await markDeliveryReportSigned(report.id, receiptId)
+    } catch (e) {
+      setErr(e.message || String(e))
+      setMode('retry')
+      return
+    }
     onSigned?.()
     onClose()
   }
 
+  const retryStatus = async () => {
+    setBusy(true)
+    try { await finishSigned(savedReceiptId) } finally { setBusy(false) }
+  }
+
   const savePaper = async () => {
     if (!file || !signerName.trim()) return
+    if (savedReceiptId) return retryStatus()
     setBusy(true); setErr('')
     let path = null
     try {
@@ -62,13 +79,19 @@ export default function SignChooser({ report, tenantId, onClose, onSigned, onPri
       onClose={onClose} onSaved={async r => finishSigned(r.id)} />
   }
   if (mode === 'remote') {
-    return <SignLinkModal documentType="delivery_report" documentId={report.id} onClose={() => { onSigned?.(); onClose() }} />
+    return <SignLinkModal documentType="delivery_report" documentId={report.id} onClose={onClose} />
   }
 
   return (
     <Modal title={`ให้ลูกค้าเซ็น — ${title}`} onClose={onClose} maxWidth={480}>
       <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
-        {mode !== 'paper' && <>
+        {mode === 'retry' && <>
+          <div style={{ fontSize: 13 }}>บันทึกลายเซ็นแล้ว แต่เปลี่ยนสถานะรายงานเป็น "เซ็นแล้ว" ไม่สำเร็จ</div>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={retryStatus}>
+            {busy ? 'กำลังบันทึก…' : 'ลองบันทึกสถานะอีกครั้ง'}
+          </button>
+        </>}
+        {mode !== 'paper' && mode !== 'retry' && <>
           <button type="button" className="btn btn-ghost" onClick={() => start('paper')}>🖨 พิมพ์แล้วเซ็นบนกระดาษ</button>
           <button type="button" className="btn btn-ghost" onClick={() => start('device')}>✍️ เซ็นบนเครื่องนี้</button>
           <button type="button" className="btn btn-ghost" onClick={() => start('remote')}>🔗 ส่งลิงก์ให้ลูกค้า</button>
