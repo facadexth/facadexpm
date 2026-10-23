@@ -57,8 +57,24 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
 
   // Phases with 0% weight and nothing billed are all zeros: leave them off the paper.
   const shownRows = rows.filter(r => r.value || r.prev || r.this || r.remaining)
+  // Grouped by phase (site phase order), each group led by a subtotal line; rows with no phase
+  // (no-BOQ lines) go last under "อื่น ๆ". A group header counts as one table line.
+  const phaseOrder = new Map(phases.map((p, i) => [p.id, i]))
+  const groups = new Map()
+  for (const r of shownRows) {
+    const k = r.phaseId ?? '_other'
+    if (!groups.has(k)) groups.set(k, { key: `g|${k}`, name: r.phaseId ? (r.phaseName || phaseName.get(r.phaseId) || '–') : 'อื่น ๆ', rows: [] })
+    groups.get(k).rows.push(r)
+  }
+  const sumOf = (rs, f) => rs.reduce((a, r) => a + (Number(r[f]) || 0), 0)
+  const lines = [...groups.entries()]
+    .sort(([a], [b]) => (a === '_other' ? 1e9 : phaseOrder.get(a) ?? 1e8) - (b === '_other' ? 1e9 : phaseOrder.get(b) ?? 1e8))
+    .flatMap(([, g], gi) => [
+      { group: true, key: g.key, n: gi + 1, name: g.name, value: sumOf(g.rows, 'value'), prev: sumOf(g.rows, 'prev'), this: sumOf(g.rows, 'this'), remaining: sumOf(g.rows, 'remaining') },
+      ...g.rows,
+    ])
   const rowPages = []
-  for (let i = 0; i < shownRows.length; i += ROWS_PER_PAGE) rowPages.push(shownRows.slice(i, i + ROWS_PER_PAGE))
+  for (let i = 0; i < lines.length; i += ROWS_PER_PAGE) rowPages.push(lines.slice(i, i + ROWS_PER_PAGE))
   if (!rowPages.length) rowPages.push([])
   const shownPhotos = c => {
     const task = c.task_id ? taskById.get(c.task_id) : null
@@ -124,13 +140,20 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
             {withBanner('สรุปการส่งงาน (บาท ก่อน VAT)', idx + 1)}
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
               <thead><tr style={{ background: '#f4f3ff' }}>
-                {['รายการ', 'เฟส', 'หน่วย', 'ปริมาณ', 'ราคา/หน่วย', 'weight', 'มูลค่า', 'ส่งก่อนหน้า', 'งวดนี้', 'คงเหลือ'].map(h => <th key={h} style={{ ...td, textAlign: 'left' }}>{h}</th>)}
+                {['เฟส / รายการ', 'หน่วย', 'ปริมาณ', 'ราคา/หน่วย', 'weight', 'มูลค่า', 'ส่งก่อนหน้า', 'งวดนี้', 'คงเหลือ'].map(h => <th key={h} style={{ ...td, textAlign: 'left' }}>{h}</th>)}
               </tr></thead>
               <tbody>
-                {pg.rows.map(r => (
+                {pg.rows.map(r => r.group ? (
+                  <tr key={r.key} style={{ background: '#f4f1ea', fontWeight: 800 }}>
+                    <td style={td} colSpan={5}>{r.n}. {r.name}</td>
+                    <td style={num}>{fmt(r.value)}</td>
+                    <td style={num}>{fmt(r.prev)}</td>
+                    <td style={num}>{fmt(r.this)}</td>
+                    <td style={num}>{fmt(r.remaining)}</td>
+                  </tr>
+                ) : (
                   <tr key={r.key}>
-                    <td style={td} title={r.description}>{clip(r.description, DESC_MAX)}</td>
-                    <td style={td}>{r.phaseName || '–'}</td>
+                    <td style={{ ...td, paddingLeft: '4mm' }} title={r.description}>{clip(r.description, DESC_MAX)}</td>
                     <td style={td}>{r.unit || '–'}</td>
                     <td style={num}>{r.qty ?? '–'}</td>
                     <td style={num}>{fmt(r.unitPrice)}</td>
@@ -143,8 +166,8 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
                 ))}
               </tbody>
               {pg.last && <tfoot style={{ fontWeight: 700 }}>
-                <tr><td style={td} colSpan={6}>รวม</td><td style={num}>{fmt(contract)}</td><td style={num}>{fmt(totals.prev)}</td><td style={num}>{fmt(totals.this)}</td><td style={num}>{fmt(totals.remaining)}</td></tr>
-                <tr><td style={td} colSpan={6}>% ของสัญญา</td><td style={num}>100%</td><td style={num}>{prevPct}%</td><td style={num}>{thisPct}%</td><td style={num}>{remPct}%</td></tr>
+                <tr><td style={td} colSpan={5}>รวม</td><td style={num}>{fmt(contract)}</td><td style={num}>{fmt(totals.prev)}</td><td style={num}>{fmt(totals.this)}</td><td style={num}>{fmt(totals.remaining)}</td></tr>
+                <tr><td style={td} colSpan={5}>% ของสัญญา</td><td style={num}>100%</td><td style={num}>{prevPct}%</td><td style={num}>{thisPct}%</td><td style={num}>{remPct}%</td></tr>
               </tfoot>}
             </table>
             {pg.last && <>

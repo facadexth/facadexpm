@@ -72,6 +72,23 @@ describe('DeliveryReportDocument', () => {
     expect(screen.getAllByText(/หน้า \d+ \/ 3/).length).toBe(3)
   })
 
+  it('table is grouped by phase in site phase order with subtotals; no-phase rows last', () => {
+    hookData = makeData({
+      phases: [{ id: 'p1', name: 'วงกบและบาน' }, { id: 'p2', name: 'กระจก' }],
+      rows: [
+        { key: 'x', description: 'MISC', phaseId: null, value: 7, prev: 0, this: 7, remaining: 0 },
+        { key: 'b', description: 'W2-GLASS', phaseId: 'p2', phaseName: 'กระจก', value: 30, prev: 0, this: 10, remaining: 20 },
+        { key: 'a', description: 'W1-FRAME', phaseId: 'p1', phaseName: 'วงกบและบาน', value: 40, prev: 0, this: 40, remaining: 0 },
+        { key: 'c', description: 'W2-FRAME', phaseId: 'p1', phaseName: 'วงกบและบาน', value: 60, prev: 0, this: 20, remaining: 40 },
+      ],
+    })
+    const { container } = render(<DeliveryReportDocumentModal invoiceId="inv1" reportId="r1" onClose={() => {}} />)
+    const firsts = [...document.querySelectorAll('tbody tr')].map(tr => tr.cells[0].textContent)
+    expect(firsts).toEqual(['1. วงกบและบาน', 'W1-FRAME', 'W2-FRAME', '2. กระจก', 'W2-GLASS', '3. อื่น ๆ', 'MISC'])
+    const head = [...document.querySelectorAll('tbody tr')][0]
+    expect([...head.cells].slice(1).map(c => c.textContent)).toEqual(['100', '0', '60', '40'])
+  })
+
   it('bar widths match totals', () => {
     hookData = makeData()
     render(<DeliveryReportDocumentModal invoiceId="inv1" reportId="r1" onClose={() => {}} />)
