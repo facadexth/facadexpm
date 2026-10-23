@@ -25,12 +25,12 @@ function check(error) {
   if (error) throw new Error(error.message || String(error))
 }
 
-const invKey = inv => [String(inv.invoice_date ?? ''), String(inv.invoice_number ?? '')]
+// By (invoice_date, invoice_number). When either date is missing, fall back to the number only
+// rather than sorting the undated invoice before everything.
 function cmpInvoice(a, b) {
-  const [ad, an] = invKey(a)
-  const [bd, bn] = invKey(b)
-  if (ad !== bd) return ad < bd ? -1 : 1
-  return an.localeCompare(bn, undefined, { numeric: true })
+  const ad = a.invoice_date, bd = b.invoice_date
+  if (ad && bd && ad !== bd) return ad < bd ? -1 : 1
+  return String(a.invoice_number ?? '').localeCompare(String(b.invoice_number ?? ''), undefined, { numeric: true })
 }
 
 // Earlier invoices of the same quotation: non-void, strictly before `current` by (date, number), ascending.
@@ -119,16 +119,29 @@ export function useDeliveryReport(invoiceId) {
   return useQuery(() => fetchDeliveryReport(invoiceId), [invoiceId])
 }
 
+// Insert-then-remove: capture old ids, insert the new rows, then remove only the old ids, so a
+// failed insert leaves the existing rows untouched. Errors (incl. the signed-report lock) rethrown.
+async function replaceRows(table, parentCol, parentId, rows) {
+  const old = await fetchAllRows(() => supabase.from(table).select('id').eq(parentCol, parentId).order('id', { ascending: true }))
+  let inserted = []
+  if (rows.length) {
+    const { data, error } = await supabase.from(table).insert(rows).select()
+    check(error)
+    inserted = data || []
+  }
+  if (old.length) {
+    const { error } = await supabase.from(table).delete().in('id', old.map(r => r.id))
+    check(error)
+  }
+  return inserted
+}
+
 async function replaceCards(reportId, cards) {
-  const { error: delError } = await supabase.from('delivery_report_cards').delete().eq('report_id', reportId)
-  check(delError)
-  if (!cards?.length) return
   const rows = cards.map((c, i) => ({
     report_id: reportId, task_id: c.taskId ?? null, card_title: c.cardTitle,
     photo_ids: c.photoIds || [], caption: c.caption ?? null, sort_order: i,
   }))
-  const { error } = await supabase.from('delivery_report_cards').insert(rows)
-  check(error)
+  await replaceRows('delivery_report_cards', 'report_id', reportId, rows)
 }
 
 async function insertReport(fields) {
@@ -159,20 +172,33 @@ export async function reissueDeliveryReport(oldReport, draft) {
     invoice_id: oldReport.invoice_id, site_id: oldReport.site_id, replaces_id: oldReport.id,
     phase_ids: draft.phaseIds || [], note: draft.note ?? null, status: 'draft', date: bangkokTodayIso(),
   })
-  await replaceCards(report.id, draft.cards)
-  const { error } = await supabase.from('delivery_reports').update({ status: 'replaced' }).eq('id', oldReport.id)
-  check(error)
+  try {
+    await replaceCards(report.id, draft.cards)
+    const { data, error } = await supabase.from('delivery_reports').update({ status: 'replaced' }).eq('id', oldReport.id).select()
+    check(error)
+    if (!data?.length) throw new Error('เปลี่ยนสถานะรายงานเดิมไม่สำเร็จ')
+  } catch (e) {
+    // roll back the new draft (its cards cascade) so a retry doesn't leave a second draft
+    const { error: rbErr } = await supabase.from('delivery_reports').delete().eq('id', report.id)
+    if (rbErr) console.error('reissue rollback failed for', report.id, rbErr)
+    throw e
+  }
   return report
 }
 
-export async function markDeliveryReportIssued(id) {
-  const { error } = await supabase.from('delivery_reports').update({ status: 'issued' }).eq('id', id)
+async function updateOne(id, fields) {
+  const { data, error } = await supabase.from('delivery_reports').update(fields).eq('id', id).select()
   check(error)
+  if (!data?.length) throw new Error('บันทึกไม่สำเร็จ (ไม่มีสิทธิ์หรือรายงานถูกล็อก)')
+  return data[0]
 }
 
-export async function markSignedSeen(id) {
-  const { error } = await supabase.from('delivery_reports').update({ signed_seen_at: new Date().toISOString() }).eq('id', id)
-  check(error)
+export function markDeliveryReportIssued(id) {
+  return updateOne(id, { status: 'issued' })
+}
+
+export function markSignedSeen(id) {
+  return updateOne(id, { signed_seen_at: new Date().toISOString() })
 }
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -237,14 +263,9 @@ export async function uploadSiteDrawing({ siteId, tenantId, file }) {
 }
 
 export async function saveSiteDrawingMarks(planId, marks) {
-  const { error: delError } = await supabase.from('site_drawing_marks').delete().eq('plan_id', planId)
-  check(delError)
-  if (!marks?.length) return []
-  const rows = marks.map(m => ({
+  const rows = (marks || []).map(m => ({
     plan_id: planId, task_id: m.task_id ?? m.taskId ?? null, kind: m.kind,
     x: m.x, y: m.y, w: m.w ?? null, h: m.h ?? null, label: m.label ?? null,
   }))
-  const { data, error } = await supabase.from('site_drawing_marks').insert(rows).select()
-  check(error)
-  return data
+  return replaceRows('site_drawing_marks', 'plan_id', planId, rows)
 }
