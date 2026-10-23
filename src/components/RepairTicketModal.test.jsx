@@ -49,7 +49,7 @@ describe('ConflictBox', () => {
     ] }} workerIds={['w1', 'w2']} nameOf={nameOf} onOverwrite={() => {}} onCancel={() => {}} />)
     expect(screen.getByRole('alert').textContent).toContain('ช่างมีงานอื่นในวันที่')
     expect(screen.getByText('• ต้น — กะเช้า: FX-2026-013 SOAP OPERA')).toBeTruthy()
-    expect(screen.getByText('• บอย — กะบ่าย: leave')).toBeTruthy()
+    expect(screen.getByText('• บอย — กะบ่าย: ลา')).toBeTruthy()
     expect(screen.getByText('เขียนทับ แล้วบันทึกนัด').disabled).toBe(false)
   })
   it('checked-in conflict is listed separately and disables เขียนทับ until unticked', () => {
@@ -59,6 +59,16 @@ describe('ConflictBox', () => {
     expect(screen.getByText('เขียนทับ แล้วบันทึกนัด').disabled).toBe(true)
     rerender(<ConflictBox conflicts={{ date: '2099-11-10', list }} workerIds={[]} nameOf={nameOf} onOverwrite={() => {}} onCancel={() => {}} />)
     expect(screen.getByText('เขียนทับ แล้วบันทึกนัด').disabled).toBe(false)
+    expect(screen.queryByText('เช็คอินแล้ว — ย้ายไม่ได้')).toBeNull()
+    expect(screen.queryByText('• ต้น — กะเช้า: FX-1 A')).toBeNull()
+  })
+  it('leave types use the Thai labels, unknown types fall back to the raw value', () => {
+    render(<ConflictBox conflicts={{ date: '2099-11-10', list: [
+      { worker_id: 'w1', shift: 'morning', type: 'leave_sick', label: 'leave_sick', checked_in: false },
+      { worker_id: 'w2', shift: 'morning', type: 'weird', label: 'weird', checked_in: false },
+    ] }} workerIds={['w1', 'w2']} nameOf={nameOf} onOverwrite={() => {}} onCancel={() => {}} />)
+    expect(screen.getByText('• ต้น — กะเช้า: ลาป่วย')).toBeTruthy()
+    expect(screen.getByText('• บอย — กะเช้า: weird')).toBeTruthy()
   })
   it('ยกเลิก calls onCancel', () => {
     const onCancel = vi.fn()

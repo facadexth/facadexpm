@@ -24,6 +24,7 @@ import { planRepairAssignments, repairShifts } from '../lib/repairAssign.js'
 import { uploadRepairPhotos, REPAIR_BUCKET } from '../lib/repairUpload.js'
 import { invokeRepairPush, customerPushDefault } from '../lib/repairPush.js'
 import { releasesCrew, removeFutureUnconfirmedCrew } from '../lib/repairCrew.js'
+import { OTHER_TYPE_LABEL } from '../pages/assign/lineExport.js'
 
 const SIGNED_URL_SECONDS = 3600
 const PILL_STEPS = ['pending_review', 'received', 'scheduled', 'in_progress', 'done']
@@ -119,9 +120,12 @@ const conflictBtn = { minHeight: 44, flex: '1 1 180px' }
 // Crew already busy on the chosen date (schedule_repair_ticket returned conflicts). เขียนทับ re-calls the RPC
 // with p_overwrite; a checked-in conflict cannot be moved, so เขียนทับ stays disabled while that worker is ticked.
 export function ConflictBox({ conflicts, workerIds, nameOf, busy, onOverwrite, onCancel }) {
-  const line = (c) => `• ${nameOf(c.worker_id)} — กะ${SHIFT_TH[c.shift] || c.shift}: ${c.label || c.type || 'งานอื่น'}`
-  const movable = conflicts.list.filter((c) => !c.checked_in)
-  const checkedIn = conflicts.list.filter((c) => c.checked_in)
+  const jobOf = (c) => (c.type && c.type !== 'site' ? (OTHER_TYPE_LABEL[c.type] || c.type) : (c.label || 'งานอื่น'))
+  const line = (c) => `• ${nameOf(c.worker_id)} — กะ${SHIFT_TH[c.shift] || c.shift}: ${jobOf(c)}`
+  // A worker unticked since the save drops out of the box.
+  const shown = conflicts.list.filter((c) => workerIds.includes(c.worker_id))
+  const movable = shown.filter((c) => !c.checked_in)
+  const checkedIn = shown.filter((c) => c.checked_in)
   const blocked = checkedIn.some((c) => workerIds.includes(c.worker_id))
   return (
     <div role="alert" style={{ border: '1px solid var(--orange, #dd6b20)', background: 'rgba(221,107,32,0.1)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>

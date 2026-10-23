@@ -204,7 +204,7 @@ BEGIN
 
   -- 2. overwrite -> replaced, overwritten = 2
   EXECUTE 'SET LOCAL role authenticated';
-  res := schedule_repair_ticket(tk.id, tk.status, v_d, TIME '09:00', 2, ARRAY[v_wa, v_wb], ARRAY['morning'], true);
+  res := schedule_repair_ticket(tk.id, tk.status, v_d, TIME '09:00', 2, ARRAY[v_wa, v_wb], ARRAY['morning'], false, p_overwrite => true);
   EXECUTE 'RESET ROLE';
   ok := (res->>'ok')::boolean AND (res->>'overwritten')::int = 2 AND jsonb_array_length(res->'removed') = 2
     AND (res->>'inserted')::int = 2
@@ -224,7 +224,7 @@ BEGIN
   INSERT INTO worker_assignments (tenant_id, worker_id, site_id, date, shift, type, confirmed_at)
   VALUES (tk.tenant_id, v_wa, v_s2, v_d, 'evening', 'site', now());
   EXECUTE 'SET LOCAL role authenticated';
-  res := schedule_repair_ticket(tk.id, tk.status, v_d, TIME '09:00', 8, ARRAY[v_wa, v_wb], ARRAY['morning', 'evening'], true);
+  res := schedule_repair_ticket(tk.id, tk.status, v_d, TIME '09:00', 8, ARRAY[v_wa, v_wb], ARRAY['morning', 'evening'], false, p_overwrite => true);
   EXECUTE 'RESET ROLE';
   ok := NOT (res->>'ok')::boolean AND (res->>'blocked_checked_in')::boolean
     AND EXISTS (SELECT 1 FROM jsonb_array_elements(res->'conflicts') c WHERE c->>'worker_id' = v_wa::text AND c->>'shift' = 'evening' AND (c->>'checked_in')::boolean)
