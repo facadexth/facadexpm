@@ -27,7 +27,7 @@ const OPEN = OPEN_REPAIR_STATUSES
 const MOVES: Record<RepairStatus, RepairStatus[]> = {
   pending_review: ['received', 'declined'],
   received: ['scheduled', 'declined'],
-  scheduled: ['in_progress', 'received'],
+  scheduled: ['in_progress', 'received', 'done'],
   in_progress: ['done', 'scheduled'],
   done: ['in_progress'],
   declined: [],

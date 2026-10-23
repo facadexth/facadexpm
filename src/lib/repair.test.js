@@ -57,14 +57,14 @@ describe('labels and rules', () => {
   })
   it('canMove allowed', () => {
     const ok = [['pending_review', 'received'], ['pending_review', 'declined'], ['received', 'scheduled'],
-      ['received', 'declined'], ['scheduled', 'in_progress'], ['scheduled', 'received'],
+      ['received', 'declined'], ['scheduled', 'in_progress'], ['scheduled', 'received'], ['scheduled', 'done'],
       ['in_progress', 'done'], ['in_progress', 'scheduled'], ['done', 'in_progress']]
     for (const [a, b] of ok) expect(canMove(a, b), `${a}->${b}`).toBe(true)
   })
   it('canMove full matrix: everything else false', () => {
     const all = ['pending_review', 'received', 'scheduled', 'in_progress', 'done', 'declined']
     const ok = new Set(['pending_review>received', 'pending_review>declined', 'received>scheduled', 'received>declined',
-      'scheduled>in_progress', 'scheduled>received', 'in_progress>done', 'in_progress>scheduled', 'done>in_progress'])
+      'scheduled>in_progress', 'scheduled>received', 'scheduled>done', 'in_progress>done', 'in_progress>scheduled', 'done>in_progress'])
     let falses = 0
     for (const a of all) for (const b of all) {
       const exp = ok.has(`${a}>${b}`)

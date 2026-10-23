@@ -68,14 +68,16 @@ const STAMP = { received: 'received_at', in_progress: 'started_at', done: 'done_
 // repair_tickets update for a board move (ruling R22). The target time is stamped only on a
 // forward move along REPAIR_STEPS, when leaving pending_review, or on ไม่รับ (terminal).
 // A backward move changes the status only, so the first received_at / started_at stay;
-// reopening a done ticket also clears done_at.
-export function movePatch(from, to, nowIso) {
+// reopening a done ticket also clears done_at. Closing straight from นัดเข้า (scheduled -> done) also stamps
+// started_at when the ticket has none (pass the ticket as `prev`; without it started_at is stamped).
+export function movePatch(from, to, nowIso, prev = null) {
   const p = { status: to }
   const fi = REPAIR_STEPS.indexOf(from)
   const ti = REPAIR_STEPS.indexOf(to)
   const forward = from === 'pending_review' || to === 'declined' || (fi >= 0 && ti > fi)
   if (forward) {
     if (STAMP[to]) p[STAMP[to]] = nowIso
+    if (from === 'scheduled' && to === 'done' && !prev?.started_at) p.started_at = nowIso
   } else if (from === 'done') {
     p.done_at = null
   }

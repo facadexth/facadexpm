@@ -114,6 +114,36 @@ function MediaTiles({ items, urls, onOpenImage, onAdd, adding }) {
   )
 }
 
+const conflictBtn = { minHeight: 44, flex: '1 1 180px' }
+
+// Crew already busy on the chosen date (schedule_repair_ticket returned conflicts). เขียนทับ re-calls the RPC
+// with p_overwrite; a checked-in conflict cannot be moved, so เขียนทับ stays disabled while that worker is ticked.
+export function ConflictBox({ conflicts, workerIds, nameOf, busy, onOverwrite, onCancel }) {
+  const line = (c) => `• ${nameOf(c.worker_id)} — กะ${SHIFT_TH[c.shift] || c.shift}: ${c.label || c.type || 'งานอื่น'}`
+  const movable = conflicts.list.filter((c) => !c.checked_in)
+  const checkedIn = conflicts.list.filter((c) => c.checked_in)
+  const blocked = checkedIn.some((c) => workerIds.includes(c.worker_id))
+  return (
+    <div role="alert" style={{ border: '1px solid var(--orange, #dd6b20)', background: 'rgba(221,107,32,0.1)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+      <div style={{ fontWeight: 700 }}>ช่างมีงานอื่นในวันที่ {formatThaiDate(conflicts.date)} อยู่แล้ว</div>
+      {movable.map((c) => <div key={`${c.worker_id}|${c.shift}`} style={{ overflowWrap: 'anywhere' }}>{line(c)}</div>)}
+      {checkedIn.length > 0 && (
+        <>
+          <div style={{ fontWeight: 700, color: 'var(--red)' }}>เช็คอินแล้ว — ย้ายไม่ได้</div>
+          {checkedIn.map((c) => <div key={`ci|${c.worker_id}|${c.shift}`} style={{ overflowWrap: 'anywhere' }}>{line(c)}</div>)}
+          {blocked && <div style={{ fontSize: 12, color: 'var(--red)' }}>เอาช่างที่เช็คอินแล้วออกจากทีมก่อน แล้วกดเขียนทับ</div>}
+        </>
+      )}
+      <div>กด "เขียนทับ" เพื่อย้ายช่างมางานซ่อมนี้ งานเดิมของกะนั้นจะถูกถอนออก</div>
+      <div style={{ fontSize: 12, color: 'var(--text3)' }}>ช่างที่เช็คอินงานเดิมไปแล้ว จะไม่ถูกย้าย (ต้องเอาออกเอง)</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-warning" style={{ ...conflictBtn, fontWeight: 700 }} disabled={busy || blocked} onClick={onOverwrite}>เขียนทับ แล้วบันทึกนัด</button>
+        <button type="button" className="btn btn-ghost" style={conflictBtn} disabled={busy} onClick={onCancel}>ยกเลิก (เลือกช่างใหม่)</button>
+      </div>
+    </div>
+  )
+}
+
 export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const { role, isAtLeast } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'repairs')
@@ -135,6 +165,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const [lightbox, setLightbox] = useState(null) // signed image URL
   const [confirmMove, setConfirmMove] = useState(null) // target status
   const [confirmResend, setConfirmResend] = useState(false)
+  const [conflicts, setConflicts] = useState(null) // { date, list } from schedule_repair_ticket, waiting for เขียนทับ
 
   // form
   const [formReady, setFormReady] = useState(false)
@@ -304,9 +335,11 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
 
   // Ruling R28: one atomic RPC (lock ticket, conflict check, diff own rows keeping check-ins, update ticket).
   // The shifts come from the tested repairShifts; the push runs after the save and never undoes it.
-  const saveSchedule = async () => {
+  // overwrite = true (เขียนทับ, like Assign): the crew's other rows in those shifts are removed and replaced,
+  // except checked-in ones, which still come back as conflicts.
+  const saveSchedule = async (overwrite = false) => {
     if (!canSchedule) return
-    setError(''); setNotice(null)
+    setError(''); setNotice(null); setConflicts(null)
     if (!date) { setError('กรุณาเลือกวันที่เข้า'); return }
     if (date < today) { setError('วันที่เข้าต้องไม่ก่อนวันนี้'); return }
     if (!/^\d{2}:\d{2}$/.test(start)) { setError('กรุณาระบุเวลาเริ่ม'); return }
@@ -320,20 +353,17 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     try {
       const { data, error: e } = await supabase.rpc('schedule_repair_ticket', {
         p_ticket: t.id, p_expected_status: t.status, p_date: date, p_start: start, p_hours: hrs,
-        p_worker_ids: crewIds, p_shifts: shifts, p_notify: wantPush,
+        p_worker_ids: crewIds, p_shifts: shifts, p_notify: wantPush, p_overwrite: overwrite,
       })
       if (e) throw e
       if (!data?.ok) {
-        const lines = (data?.conflicts || []).map((c) => {
-          const who = workerById[c.worker_id] ? workerLabel(workerById[c.worker_id]) : (crewNames[c.worker_id] || 'ช่าง')
-          return `• ${who} — กะ${SHIFT_TH[c.shift] || c.shift} มีงานอื่นอยู่แล้ว`
-        })
-        setError(`ช่างติดงานอื่นวันที่ ${formatThaiDate(date)} ยังไม่ได้บันทึกอะไร:\n${lines.join('\n')}\nเอาช่างออก หรือเปลี่ยนวัน/เวลา แล้วบันทึกใหม่`)
+        setConflicts({ date, list: data?.conflicts || [] })
         return
       }
       setChanged(true)
       const crewCount = new Set(rows.map((r) => r.worker_id)).size
-      const saved = `บันทึกนัด ${formatThaiDate(date)} ${start}${hasCrew ? ` · ช่าง ${crewCount} คน` : ''} แล้ว`
+      const over = Number(data?.overwritten) > 0 ? ` · ถอนจากงานเดิม ${Number(data.overwritten)} กะ` : ''
+      const saved = `บันทึกนัด ${formatThaiDate(date)} ${start}${hasCrew ? ` · ช่าง ${crewCount} คน` : ''} แล้ว${over}`
       if (wantPush) {
         const push = await invokeRepairPush('schedule', t.id)
         setNotice({ kind: push.kind, text: `${saved} · ${push.text}` })
@@ -356,7 +386,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     if (!fixNote.trim()) { setError('กรุณากรอก "สิ่งที่แก้ไข" ก่อนปิดงาน'); return }
     setBusy(true)
     try {
-      await guardedUpdate({ fix_note: fixNote.trim(), ...movePatch(t.status, 'done', new Date().toISOString()) })
+      await guardedUpdate({ fix_note: fixNote.trim(), ...movePatch(t.status, 'done', new Date().toISOString(), t) })
       setChanged(true)
       if (sendReport) {
         const push = await invokeRepairPush('report', t.id, !!t.reported_at)
@@ -547,14 +577,17 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                     <span style={{ fontSize: 12, color: 'var(--text3)' }}>(ลูกค้าเห็นรายละเอียด สิ่งที่แก้ไข และรูปก่อน/หลังซ่อม)</span>
                   </label>
                 )}
-                {showClose && !closeAllowed && (
-                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                    ปิดงานได้เมื่อสถานะเป็น "{REPAIR_STATUS.in_progress}" — {status === 'received' ? 'นัดวันก่อน แล้วกด "เริ่มซ่อม"' : 'กด "เริ่มซ่อม" ด้านบนก่อน'}
-                  </div>
+                {showClose && !closeAllowed && status === 'received' && (
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>นัดวันก่อน แล้วปิดงานได้</div>
                 )}
               </>
             )}
 
+            {conflicts && (
+              <ConflictBox conflicts={conflicts} workerIds={workerIds} busy={busy}
+                nameOf={(id) => (workerById[id] ? workerLabel(workerById[id]) : (crewNames[id] || 'ช่าง'))}
+                onOverwrite={() => saveSchedule(true)} onCancel={() => setConflicts(null)} />
+            )}
             {notice && <div className={`alert ${NOTICE_CLASS[notice.kind] || 'alert-info'}`}>{notice.text}</div>}
             {error && <div className="alert alert-error" style={{ whiteSpace: 'pre-line' }}>{error}</div>}
           </>
@@ -563,13 +596,13 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       <div className="modal-footer" style={{ flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-ghost" disabled={busy || !!uploading} onClick={handleClose}>ปิด</button>
         {t && canSchedule && (
-          <button type="button" className="btn btn-ghost" style={{ borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }} disabled={busy || !!uploading || !formReady || tenantLoading} onClick={saveSchedule}>
+          <button type="button" className="btn btn-ghost" style={{ borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }} disabled={busy || !!uploading || !formReady || tenantLoading} onClick={() => saveSchedule(false)}>
             {busy ? 'กำลังบันทึก...' : notifyAllowed && notify ? 'บันทึกนัด + แจ้งลูกค้า' : 'บันทึกนัด'}
           </button>
         )}
         {t && showClose && (
           <button type="button" className="btn btn-success" disabled={busy || !!uploading || !closeAllowed} onClick={closeTicket}
-            title={closeAllowed ? '' : `ต้องเป็นสถานะ "${REPAIR_STATUS.in_progress}" ก่อน`}>
+            title={closeAllowed ? '' : 'นัดวันก่อน แล้วปิดงานได้'}>
             {sendReport ? 'ปิดงาน (เสร็จ) + ส่งรายงาน' : 'ปิดงาน (เสร็จ)'}
           </button>
         )}
