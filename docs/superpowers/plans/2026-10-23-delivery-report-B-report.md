@@ -4,7 +4,7 @@
 
 **Goal:** From any invoice, build a signed รายงานส่งงาน (DR+YYMM-NNN): a detailed delivered-before / this-งวด / remaining table, marked-up site plans, card photo blocks and a customer signature (paper, this device, or remote link).
 
-**Architecture:** New tables `delivery_reports`, `delivery_report_cards`, `site_plans`, `site_plan_marks`. Pure maths in `src/lib/deliveryReport.js`; one data hook; UI split into a picker (editor), a plan-markup editor and an A4 document under `src/pages/invoices/delivery/`. Signing reuses `document_receipts`, `DocumentReceiptModal`, `SignLinkModal` and the `sign-link` edge function with a new document type `delivery_report`.
+**Architecture:** New tables `delivery_reports`, `delivery_report_cards`, `site_drawings`, `site_drawing_marks`. Pure maths in `src/lib/deliveryReport.js`; one data hook; UI split into a picker (editor), a plan-markup editor and an A4 document under `src/pages/invoices/delivery/`. Signing reuses `document_receipts`, `DocumentReceiptModal`, `SignLinkModal` and the `sign-link` edge function with a new document type `delivery_report`.
 
 **Tech Stack:** React 18 + Vite, Supabase (Postgres, RLS, Storage, Deno edge functions), vitest + @testing-library/react (jsdom), existing `src/lib/pdf.js` (`downloadPDF`), `src/lib/photoUpload.js` (`uploadSitePhoto`).
 
@@ -45,15 +45,15 @@
 - Produces tables:
   - `delivery_reports(id uuid pk, tenant_id, invoice_id uuid not null → invoices on delete cascade, site_id uuid not null → sites, report_number text, date date not null default (now() at time zone 'Asia/Bangkok')::date, status text not null default 'draft' check in ('draft','issued','signed','replaced','void'), replaces_id uuid null → delivery_reports, phase_ids uuid[] not null default '{}', note text, signed_receipt_id uuid null → document_receipts, signed_at timestamptz, signed_seen_at timestamptz, created_by uuid default auth.uid(), created_at timestamptz default now())`
   - `delivery_report_cards(id, tenant_id, report_id → delivery_reports cascade, task_id uuid null → phase_tasks on delete set null, card_title text not null, photo_ids uuid[] not null default '{}', caption text, sort_order int not null default 0)` — `card_title` snapshot so a deleted card still prints.
-  - `site_plans(id, tenant_id, site_id → sites cascade, title text not null, file_path text not null, mime text not null, width int, height int, sort_order int default 0, created_at)`
-  - `site_plan_marks(id, tenant_id, plan_id → site_plans cascade, task_id uuid null → phase_tasks on delete set null, kind text check in ('rect','pin'), x numeric, y numeric, w numeric, h numeric, label text)` — x/y/w/h are 0–1 fractions (CHECK between 0 and 1).
+  - `site_drawings(id, tenant_id, site_id → sites cascade, title text not null, file_path text not null, mime text not null, width int, height int, sort_order int default 0, created_at)`
+  - `site_drawing_marks(id, tenant_id, plan_id → site_drawings cascade, task_id uuid null → phase_tasks on delete set null, kind text check in ('rect','pin'), x numeric, y numeric, w numeric, h numeric, label text)` — x/y/w/h are 0–1 fractions (CHECK between 0 and 1).
   - trigger `trg_delivery_report_number` BEFORE INSERT → `generate_delivery_report_number()`.
   - trigger `trg_delivery_report_locked` BEFORE UPDATE OR DELETE on `delivery_reports` and `delivery_report_cards`: when the (parent) report has `status = 'signed'`, allow only the update that sets `status = 'replaced'`; otherwise RAISE 'รายงานที่เซ็นแล้วแก้ไม่ได้ กรุณาออกฉบับใหม่'.
   - widen both `document_type` CHECKs on `document_receipts` and `document_receipt_links` to include `'delivery_report'`.
-  - storage bucket `site-plans` (private), policies mirroring `invoice-photos` (path first segment = tenant id).
+  - storage bucket `site-drawings` (private), policies mirroring `invoice-photos` (path first segment = tenant id).
   - `pending_counts()` gains key `delivery_report_signed` = count of reports with `status='signed' AND signed_seen_at IS NULL` for the tenant. Copy the latest body from `2026-10-04-03-pending-counts-no-invoices.sql` and add one key; keep every other key identical.
 
-- [ ] **Step 1: Write the dry-run script** — wraps the migration body, then asserts: (a) two inserts in October 2026 for one tenant get `DR2610-001`, `DR2610-002`; another tenant gets `DR2610-001`; (b) setting a report `signed` then updating `note` raises the lock message; updating `status='replaced'` succeeds; (c) `site_plan_marks` insert with `x = 1.2` fails; (d) `pending_counts()` contains key `delivery_report_signed`. End with `ROLLBACK`.
+- [ ] **Step 1: Write the dry-run script** — wraps the migration body, then asserts: (a) two inserts in October 2026 for one tenant get `DR2610-001`, `DR2610-002`; another tenant gets `DR2610-001`; (b) setting a report `signed` then updating `note` raises the lock message; updating `status='replaced'` succeeds; (c) `site_drawing_marks` insert with `x = 1.2` fails; (d) `pending_counts()` contains key `delivery_report_signed`. End with `ROLLBACK`.
 - [ ] **Step 2: Write the migration** (idempotent: `IF NOT EXISTS`, `to_regclass` guards like `2026-10-22-02-invoice-progress-mode.sql`; `ON DELETE` clauses through `format(... 'DEL'||'ETE')`).
 - [ ] **Step 3: Hand both files to the controller.** The controller runs the dry-run on CHANG and reports. Do NOT apply. Expected: every assertion passes, final ROLLBACK.
 - [ ] **Step 4: Commit** `feat(dr): delivery report schema`.
@@ -99,7 +99,7 @@
   - `saveDeliveryReport({ reportId|null, invoiceId, siteId, phaseIds, note, cards: [{ taskId, cardTitle, photoIds, caption }] }) → report` — insert or update; replaces all `delivery_report_cards` of the report (delete-then-insert in that order; on insert error throw).
   - `reissueDeliveryReport(oldReport, draft) → newReport` — inserts new with `replaces_id`, then sets old `status='replaced'`.
   - `markDeliveryReportIssued(id)`, `markSignedSeen(id)`.
-  - `uploadSitePlan({ siteId, tenantId, file }) → plan` (bucket `site-plans`, path `${tenantId}/${siteId}/${Date.now()}-${safeName}`; PDF: render page 1 to PNG with pdf.js already used by the app if present, else reject PDF with "รองรับเฉพาะรูปภาพ" — check `package.json` for `pdfjs-dist` first and say which in the report); `saveSitePlanMarks(planId, marks[])`.
+  - `uploadSiteDrawing({ siteId, tenantId, file }) → plan` (bucket `site-drawings`, path `${tenantId}/${siteId}/${Date.now()}-${safeName}`; PDF: render page 1 to PNG with pdf.js already used by the app if present, else reject PDF with "รองรับเฉพาะรูปภาพ" — check `package.json` for `pdfjs-dist` first and say which in the report); `saveSiteDrawingMarks(planId, marks[])`.
 - [ ] **Step 1: Tests** with a mocked `supabase` (pattern from `src/pages/Invoices.easyMode.test.jsx` mocks): `earlier invoices are filtered to same quotation, non-void, before this one` (feed 4 invoices, assert which ids reach `buildReportRows` via a spy); `saveDeliveryReport replaces cards`; `reissue marks old replaced after inserting new`.
 - [ ] **Step 2:** run → FAIL. **Step 3:** implement. **Step 4:** run → PASS.
 - [ ] **Step 5: Commit** `feat(dr): data hook`.
@@ -123,7 +123,7 @@
 - Create: `src/pages/invoices/delivery/PlanMarkupEditor.jsx`, `…/PlanMarkup.jsx` (read-only SVG overlay used by editor and document), tests for both.
 
 **Interfaces:**
-- Consumes: `uploadSitePlan`, `saveSitePlanMarks` (Task 3), `markColour` (Task 2).
+- Consumes: `uploadSiteDrawing`, `saveSiteDrawingMarks` (Task 3), `markColour` (Task 2).
 - Produces: `<PlanMarkup plan marks colourFor={(taskId) => string} />` — `<img>` with absolutely positioned `<svg viewBox="0 0 1 1" preserveAspectRatio="none">`; rect = translucent fill (opacity .35) + stroke; pin = circle with number label (index of its card in the report's card order, else "•").
 - Editor: plan list for the site (reused every งวด — spec 9) + "＋ แบบแปลน"; tools "สี่เหลี่ยม" (drag) and "หมุด" (click); each new mark asks which card (select from report cards); delete mark; "บันทึก". Coordinates = pointer position ÷ the image's rendered `getBoundingClientRect()` size, clamped 0–1.
 - [ ] **Step 1: Tests:** `marks survive resize` (render PlanMarkup at 400×300 and 800×600; the rect's SVG attributes are identical); `click with pin tool at (200,150) on 400×300 image stores x 0.5 y 0.5`; `colour follows colourFor`; `multi-page PDF rejected with รองรับ PDF หน้าเดียว` (only if PDF path is implemented in Task 3).
