@@ -44,11 +44,29 @@ function phaseHasDone(cards, boqId, phaseId) {
   if (d != null) return d > 0
   // cards without quantity: count as done when any matching card is marked done
   return (cards || []).some(c => c.boq_item_id === boqId && c.phase_id === phaseId
-    && (c.status === 'done' || c.is_done === true))
+    && c.status === 'done')
 }
 
 // amounts per (boqId|phaseId) and per no-BOQ quotation item, for a set of invoice items
-function allocate(items, phaseRows, boqByQi, splitsByBoq, phases, cards) {
+// Legacy split: fill each target phase's unbilled room (value - already billed) in proportion to
+// that room; any excess beyond total room is spread by weight. Remainder on the last phase.
+function splitByRoom(amount, splits, rooms) {
+  const totalRoom = rooms.reduce((a, b) => a + b, 0)
+  if (totalRoom <= 0) return splitByWeight(amount, splits)
+  let parts
+  if (amount <= totalRoom) {
+    parts = rooms.map(r => round2(amount * r / totalRoom))
+  } else {
+    const extra = splitByWeight(round2(amount - totalRoom), splits)
+    parts = rooms.map((r, i) => round2(r + (extra[i] || 0)))
+  }
+  const diff = round2(amount - parts.reduce((a, b) => a + b, 0))
+  parts[parts.length - 1] = round2(parts[parts.length - 1] + diff)
+  return parts
+}
+
+// billed: running Map key -> amount billed so far (shared across earlier then current items)
+function allocate(items, phaseRows, boqByQi, splitsByBoq, phases, cards, valueMap, billed) {
   const byPhase = new Map() // key -> { amount, qty }
   const noBoq = new Map()   // quotation item id (or item id) -> { item, amount }
   const rowsByItem = new Map()
@@ -59,6 +77,7 @@ function allocate(items, phaseRows, boqByQi, splitsByBoq, phases, cards) {
   const add = (key, amount, qty) => {
     const cur = byPhase.get(key) || { amount: 0, qty: 0, hasQty: false }
     cur.amount = round2(cur.amount + amount)
+    billed.set(key, round2((billed.get(key) || 0) + amount))
     if (qty != null) { cur.qty = round2(cur.qty + num(qty)); cur.hasQty = true }
     byPhase.set(key, cur)
   }
@@ -80,7 +99,11 @@ function allocate(items, phaseRows, boqByQi, splitsByBoq, phases, cards) {
     const splits = sortedSplits(splitsByBoq?.[boq.id], phases)
     let target = splits.filter(s => phaseHasDone(cards, boq.id, s.phase_id))
     if (!target.length) target = splits
-    const parts = splitByWeight(amount, target)
+    const rooms = target.map(s => {
+      const k = `${boq.id}|${s.phase_id}`
+      return Math.max(0, round2((valueMap.get(k) || 0) - (billed.get(k) || 0)))
+    })
+    const parts = splitByRoom(amount, target, rooms)
     target.forEach((s, i) => add(`${boq.id}|${s.phase_id}`, parts[i], null))
   }
   return { byPhase, noBoq }
@@ -90,8 +113,6 @@ export function buildReportRows({ invoice, invoiceItems, itemPhases, earlierItem
   boqByQuotationItem, splitsByBoq, phases, cards }) {
   void invoice
   const phaseName = new Map((phases || []).map(p => [p.id, p.name]))
-  const cur = allocate(invoiceItems, itemPhases, boqByQuotationItem, splitsByBoq, phases, cards)
-  const prev = allocate(earlierItems, earlierItemPhases, boqByQuotationItem, splitsByBoq, phases, cards)
 
   const itemByQi = new Map()
   for (const it of [...(invoiceItems || []), ...(earlierItems || [])]) {
@@ -101,6 +122,21 @@ export function buildReportRows({ invoice, invoiceItems, itemPhases, earlierItem
 
   const boqEntries = Object.entries(boqByQuotationItem || {})
     .sort(([, a], [, b]) => String(a.code ?? '').localeCompare(String(b.code ?? ''), undefined, { numeric: true }))
+
+  const lineInfo = new Map()
+  const valueMap = new Map()
+  for (const [qiId, boq] of boqEntries) {
+    const item = thisItemByQi.get(qiId) || itemByQi.get(qiId)
+    const unitPrice = num(item?.unit_price ?? boq.unit_price)
+    const qty = num(boq.planned_qty)
+    const splits = sortedSplits(splitsByBoq?.[boq.id], phases)
+    const vals = phaseValues(qty, unitPrice, splits)
+    splits.forEach((s, i) => valueMap.set(`${boq.id}|${s.phase_id}`, vals[i]))
+    lineInfo.set(qiId, { item, unitPrice, qty, splits, vals })
+  }
+  const billed = new Map()
+  const prev = allocate(earlierItems, earlierItemPhases, boqByQuotationItem, splitsByBoq, phases, cards, valueMap, billed)
+  const cur = allocate(invoiceItems, itemPhases, boqByQuotationItem, splitsByBoq, phases, cards, valueMap, billed)
 
   const rows = []
   const finish = row => {
@@ -112,11 +148,7 @@ export function buildReportRows({ invoice, invoiceItems, itemPhases, earlierItem
   }
 
   for (const [qiId, boq] of boqEntries) {
-    const item = thisItemByQi.get(qiId) || itemByQi.get(qiId)
-    const unitPrice = num(item?.unit_price ?? boq.unit_price)
-    const qty = num(boq.planned_qty)
-    const splits = sortedSplits(splitsByBoq?.[boq.id], phases)
-    const vals = phaseValues(qty, unitPrice, splits)
+    const { item, unitPrice, qty, splits, vals } = lineInfo.get(qiId)
     splits.forEach((s, i) => {
       const key = `${boq.id}|${s.phase_id}`
       const c = cur.byPhase.get(key)

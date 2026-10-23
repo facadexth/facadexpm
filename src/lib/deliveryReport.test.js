@@ -36,6 +36,33 @@ describe('buildReportRows', () => {
     expect(row(rows, 'p2').this).toBe(0)
   })
 
+  it('legacy split respects what earlier invoices billed per phase', () => {
+    const { rows } = buildReportRows({ ...base,
+      earlierItems: [item('e1', 2600)],
+      earlierItemPhases: [{ invoice_item_id: 'e1', boq_item_id: 'b1', phase_id: 'p1', qty: 26, weight_pct: 20, amount: 2600 }],
+      invoiceItems: [item('it2', 10400)], itemPhases: [] })
+    expect(row(rows, 'p1')).toMatchObject({ prev: 2600, this: 0, remaining: 0 })
+    expect(row(rows, 'p1').reasons).not.toContain('over_billed')
+    expect(row(rows, 'p2')).toMatchObject({ this: 10400, remaining: 0 })
+  })
+
+  it('legacy split with no done cards spreads over all phases by weight', () => {
+    const { rows } = buildReportRows({ ...base, cards: [], invoiceItems: [item('it1', 1000)], itemPhases: [] })
+    expect(row(rows, 'p1').this).toBe(200)
+    expect(row(rows, 'p2').this).toBe(800)
+  })
+
+  it('earlier invoice with phase rows and a plain line: prev not double counted', () => {
+    const { rows, totals } = buildReportRows({ ...base,
+      earlierItems: [item('e1', 2600), { id: 'e2', quotation_item_id: 'qz', unit_price: 500, line_total: 500, description: 'misc' }],
+      earlierItemPhases: [{ invoice_item_id: 'e1', boq_item_id: 'b1', phase_id: 'p1', qty: 26, weight_pct: 20, amount: 2600 }],
+      invoiceItems: [], itemPhases: [] })
+    expect(row(rows, 'p1').prev).toBe(2600)
+    expect(row(rows, 'p2').prev).toBe(0)
+    expect(rows.find(r => r.phaseId === null).prev).toBe(500)
+    expect(totals.prev).toBe(3100)
+  })
+
   it('no-BOQ line', () => {
     const { rows } = buildReportRows({ ...base, boqByQuotationItem: {},
       invoiceItems: [{ id: 'x', quotation_item_id: 'qz', unit_price: 5000, line_total: 5000 }], itemPhases: [] })
