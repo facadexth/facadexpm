@@ -1,0 +1,250 @@
+// Delivery report (รายงานส่งงาน, DR) data hook + writes. Plan B task 3.
+// Flat queries joined on the client (no PostgREST embeds: avoids ambiguous-FK failures).
+import { supabase } from '../lib/supabase.js'
+import { fetchAllRows } from '../lib/fetchAllRows.js'
+import { useQuery } from './useSupabase.js'
+import { fetchProgressBillingData } from './useProgressBillingData.js'
+import { buildReportRows } from '../lib/deliveryReport.js'
+import { discountMultiplier } from '../lib/quotationCalc.js'
+import { bangkokTodayIso } from '../lib/photoUpload.js'
+
+const CHUNK = 200
+const ITEM_COLS = 'id, invoice_id, quotation_item_id, description, unit, quantity, unit_price, line_total'
+
+async function fetchIn(table, cols, column, ids, orderCol = 'id') {
+  let all = []
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK)
+    all = all.concat(await fetchAllRows(() => supabase.from(table).select(cols).in(column, chunk).order(orderCol, { ascending: true })))
+  }
+  return all
+}
+
+// Supabase errors (incl. the signed-report lock trigger message) surfaced as plain Errors.
+function check(error) {
+  if (error) throw new Error(error.message || String(error))
+}
+
+const invKey = inv => [String(inv.invoice_date ?? ''), String(inv.invoice_number ?? '')]
+function cmpInvoice(a, b) {
+  const [ad, an] = invKey(a)
+  const [bd, bn] = invKey(b)
+  if (ad !== bd) return ad < bd ? -1 : 1
+  return an.localeCompare(bn, undefined, { numeric: true })
+}
+
+// Earlier invoices of the same quotation: non-void, strictly before `current` by (date, number), ascending.
+export function earlierInvoicesOf(invoices, current) {
+  return (invoices || [])
+    .filter(i => i.id !== current.id && i.quotation_id === current.quotation_id && i.status !== 'void'
+      && cmpInvoice(i, current) < 0)
+    .sort(cmpInvoice)
+}
+
+export async function fetchDeliveryReport(invoiceId) {
+  if (!invoiceId) return null
+  const [invoice] = await fetchAllRows(() => supabase.from('invoices')
+    .select('id, invoice_number, invoice_date, quotation_id, site_id, status').eq('id', invoiceId).order('id', { ascending: true }))
+  if (!invoice) throw new Error('ไม่พบใบแจ้งหนี้')
+  const { site_id: siteId, quotation_id: quotationId } = invoice
+
+  const [invoiceItems, sameQuotation, quotations, qItems, reports, tasks, plans, pb] = await Promise.all([
+    fetchAllRows(() => supabase.from('invoice_items').select(ITEM_COLS).eq('invoice_id', invoiceId).order('id', { ascending: true })),
+    quotationId ? fetchAllRows(() => supabase.from('invoices').select('id, invoice_number, invoice_date, quotation_id, status')
+      .eq('quotation_id', quotationId).order('id', { ascending: true })) : [],
+    quotationId ? fetchAllRows(() => supabase.from('quotations').select('id, discount_amount, discount_pct').eq('id', quotationId).order('id', { ascending: true })) : [],
+    quotationId ? fetchAllRows(() => supabase.from('quotation_items').select('id, description, unit_price, line_total')
+      .eq('quotation_id', quotationId).order('id', { ascending: true })) : [],
+    fetchAllRows(() => supabase.from('delivery_reports').select('*').eq('invoice_id', invoiceId).order('created_at', { ascending: false })),
+    siteId ? fetchAllRows(() => supabase.from('phase_tasks')
+      .select('id, phase_id, site_id, name, status, progress_mode, boq_item_id, planned_qty, done_qty')
+      .eq('site_id', siteId).order('id', { ascending: true })) : [],
+    siteId ? fetchAllRows(() => supabase.from('site_drawings').select('*').eq('site_id', siteId).order('sort_order', { ascending: true })) : [],
+    fetchProgressBillingData(siteId, quotationId),
+  ])
+
+  const earlier = earlierInvoicesOf(sameQuotation, invoice)
+  const earlierIds = earlier.map(i => i.id)
+  const rank = new Map(earlierIds.map((id, i) => [id, i]))
+  const earlierItems = earlierIds.length
+    ? (await fetchIn('invoice_items', ITEM_COLS, 'invoice_id', earlierIds)).sort((a, b) => rank.get(a.invoice_id) - rank.get(b.invoice_id))
+    : []
+  const allItemIds = [...invoiceItems, ...earlierItems].map(i => i.id)
+  const allPhases = allItemIds.length
+    ? await fetchIn('invoice_item_phases', 'id, invoice_item_id, boq_item_id, phase_id, qty, amount', 'invoice_item_id', allItemIds)
+    : []
+  const thisIds = new Set(invoiceItems.map(i => i.id))
+  const itemPhases = allPhases.filter(p => thisIds.has(p.invoice_item_id))
+  const earlierItemPhases = allPhases.filter(p => !thisIds.has(p.invoice_item_id))
+
+  // BOQ lines carry the quotation's discounted unit price + description (needed by buildReportRows).
+  const mult = discountMultiplier({ ...(quotations[0] || {}), quotation_items: qItems })
+  const qiById = new Map(qItems.map(q => [q.id, q]))
+  const boqByQuotationItem = {}
+  for (const [qiId, b] of Object.entries(pb?.boqByQuotationItem || {})) {
+    const qi = qiById.get(qiId)
+    boqByQuotationItem[qiId] = { ...b, unit_price: (Number(qi?.unit_price) || 0) * mult, description: qi?.description ?? '' }
+  }
+  const boqCards = tasks.filter(t => t.boq_item_id)
+
+  const { rows, totals } = buildReportRows({
+    invoice, invoiceItems, itemPhases, earlierItems, earlierItemPhases,
+    boqByQuotationItem, splitsByBoq: pb?.splitsByBoq || {}, phases: pb?.phases || [], cards: boqCards,
+  })
+
+  const current = reports.find(r => r.status !== 'replaced' && r.status !== 'void') || null
+  const reportCards = current
+    ? await fetchAllRows(() => supabase.from('delivery_report_cards').select('*').eq('report_id', current.id).order('sort_order', { ascending: true }))
+    : []
+
+  const taskIds = tasks.map(t => t.id)
+  const photos = taskIds.length
+    ? await fetchIn('line_site_photos', 'id, task_id, photo_path, date', 'task_id', taskIds)
+    : []
+  const photosByTask = {}
+  for (const p of photos) (photosByTask[p.task_id] ||= []).push(p)
+
+  const marks = plans.length ? await fetchIn('site_drawing_marks', '*', 'plan_id', plans.map(p => p.id)) : []
+  const marksByPlan = {}
+  for (const m of marks) (marksByPlan[m.plan_id] ||= []).push(m)
+
+  return {
+    invoice, reports, current, rows, totals,
+    cards: reportCards, tasks, phases: pb?.phases || [],
+    photosByTask, plans, marksByPlan,
+  }
+}
+
+export function useDeliveryReport(invoiceId) {
+  return useQuery(() => fetchDeliveryReport(invoiceId), [invoiceId])
+}
+
+async function replaceCards(reportId, cards) {
+  const { error: delError } = await supabase.from('delivery_report_cards').delete().eq('report_id', reportId)
+  check(delError)
+  if (!cards?.length) return
+  const rows = cards.map((c, i) => ({
+    report_id: reportId, task_id: c.taskId ?? null, card_title: c.cardTitle,
+    photo_ids: c.photoIds || [], caption: c.caption ?? null, sort_order: i,
+  }))
+  const { error } = await supabase.from('delivery_report_cards').insert(rows)
+  check(error)
+}
+
+async function insertReport(fields) {
+  const { data, error } = await supabase.from('delivery_reports').insert(fields).select().single()
+  check(error)
+  return data
+}
+
+export async function saveDeliveryReport({ reportId = null, invoiceId, siteId, phaseIds, note, cards }) {
+  let report
+  if (reportId) {
+    const { data, error } = await supabase.from('delivery_reports')
+      .update({ phase_ids: phaseIds || [], note: note ?? null }).eq('id', reportId).select().single()
+    check(error)
+    report = data
+  } else {
+    report = await insertReport({
+      invoice_id: invoiceId, site_id: siteId, phase_ids: phaseIds || [], note: note ?? null,
+      status: 'draft', date: bangkokTodayIso(),
+    })
+  }
+  await replaceCards(report.id, cards)
+  return report
+}
+
+export async function reissueDeliveryReport(oldReport, draft) {
+  const report = await insertReport({
+    invoice_id: oldReport.invoice_id, site_id: oldReport.site_id, replaces_id: oldReport.id,
+    phase_ids: draft.phaseIds || [], note: draft.note ?? null, status: 'draft', date: bangkokTodayIso(),
+  })
+  await replaceCards(report.id, draft.cards)
+  const { error } = await supabase.from('delivery_reports').update({ status: 'replaced' }).eq('id', oldReport.id)
+  check(error)
+  return report
+}
+
+export async function markDeliveryReportIssued(id) {
+  const { error } = await supabase.from('delivery_reports').update({ status: 'issued' }).eq('id', id)
+  check(error)
+}
+
+export async function markSignedSeen(id) {
+  const { error } = await supabase.from('delivery_reports').update({ signed_seen_at: new Date().toISOString() }).eq('id', id)
+  check(error)
+}
+
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+async function imageSize(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  const size = { width: bmp.width, height: bmp.height }
+  bmp.close?.()
+  return size
+}
+
+// Page 1 of a one-page PDF -> PNG blob. pdf.js is loaded only here (lazy, its own chunk).
+async function pdfToPng(file) {
+  const pdfjs = await import('pdfjs-dist')
+  const { default: workerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
+  try {
+    if (doc.numPages > 1) throw new Error('รองรับ PDF หน้าเดียว')
+    const page = await doc.getPage(1)
+    const viewport = page.getViewport({ scale: 2 })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(viewport.width)
+    canvas.height = Math.round(viewport.height)
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+    const blob = await new Promise((res, rej) => canvas.toBlob(b => (b ? res(b) : rej(new Error('แปลง PDF ไม่สำเร็จ'))), 'image/png'))
+    return { blob, width: canvas.width, height: canvas.height }
+  } finally {
+    doc.destroy?.()
+  }
+}
+
+export async function uploadSiteDrawing({ siteId, tenantId, file }) {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')
+  let blob, width, height, mime, ext
+  if (isPdf) {
+    ({ blob, width, height } = await pdfToPng(file))
+    mime = 'image/png'
+    ext = 'png'
+  } else if (IMAGE_TYPES.includes(file.type)) {
+    ({ width, height } = await imageSize(file))
+    blob = file
+    mime = file.type
+    ext = mime.split('/')[1].replace('jpeg', 'jpg')
+  } else {
+    throw new Error('รองรับเฉพาะรูปภาพ หรือ PDF หน้าเดียว')
+  }
+  const base = String(file.name || 'plan').replace(/\.[^.]*$/, '')
+  const safeName = (base.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 60) || 'plan') + '.' + ext
+  const path = `${tenantId}/${siteId}/${Date.now()}-${safeName}`
+  const { error: upErr } = await supabase.storage.from('site-drawings').upload(path, blob, { contentType: mime })
+  check(upErr)
+  const { data, error } = await supabase.from('site_drawings')
+    .insert({ tenant_id: tenantId, site_id: siteId, title: base || 'แบบ', file_path: path, mime, width, height })
+    .select().single()
+  if (error) {
+    const { error: rmErr } = await supabase.storage.from('site-drawings').remove([path])
+    if (rmErr) console.error('orphan cleanup failed for', path, rmErr)
+    check(error)
+  }
+  return data
+}
+
+export async function saveSiteDrawingMarks(planId, marks) {
+  const { error: delError } = await supabase.from('site_drawing_marks').delete().eq('plan_id', planId)
+  check(delError)
+  if (!marks?.length) return []
+  const rows = marks.map(m => ({
+    plan_id: planId, task_id: m.task_id ?? m.taskId ?? null, kind: m.kind,
+    x: m.x, y: m.y, w: m.w ?? null, h: m.h ?? null, label: m.label ?? null,
+  }))
+  const { data, error } = await supabase.from('site_drawing_marks').insert(rows).select()
+  check(error)
+  return data
+}

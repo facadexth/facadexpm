@@ -27,7 +27,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE, effectiveInvoiceTaxOffset, invoiceBillingTotal } from '../lib/invoiceCalc.js'
-import { calcQuotationTotals } from '../lib/quotationCalc.js'
+import { calcQuotationTotals, discountMultiplier } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
@@ -78,17 +78,6 @@ function buildLineState(quotationItems, unitsByQuotationItem, priceMultiplier) {
 // full undiscounted amount regardless of any discount the client agreed to.
 // Reuses calcQuotationTotals (not reimplemented) so this stays exactly in
 // sync with how the quotation's own printed total is computed.
-function discountMultiplier(quotation) {
-  const items = quotation.quotation_items || []
-  const rawTotal = items.reduce((s, it) => s + (it.line_total || 0), 0)
-  if (rawTotal <= 0) return 1
-  const totals = calcQuotationTotals(items, {
-    hasVat: false, // hasVat:false makes `subtotal` equal the discounted raw total exactly, before any VAT math -- that's the ratio we need
-    discountAmount: quotation.discount_amount,
-    discountPct: quotation.discount_pct,
-  })
-  return totals.subtotal / rawTotal
-}
 
 // Easy-mode check of one line against the site's BOQ + cards (spec rule 6: no %, value = qty x
 // unit price). Unit comes from the line's BOQ (fallback: quotation item unit). Without a BOQ row

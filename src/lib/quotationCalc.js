@@ -86,3 +86,16 @@ export function normalizeSnapshotItems(items) {
     return { ...it, item_type: blank ? 'item_description' : 'item' }
   })
 }
+
+// Ratio of the discounted subtotal to the raw line total (1 when no discount). Moved from Invoices.jsx.
+export function discountMultiplier(quotation) {
+  const items = quotation.quotation_items || []
+  const rawTotal = items.reduce((s, it) => s + (it.line_total || 0), 0)
+  if (rawTotal <= 0) return 1
+  const totals = calcQuotationTotals(items, {
+    hasVat: false, // hasVat:false makes `subtotal` equal the discounted raw total exactly, before any VAT math -- that's the ratio we need
+    discountAmount: quotation.discount_amount,
+    discountPct: quotation.discount_pct,
+  })
+  return totals.subtotal / rawTotal
+}
