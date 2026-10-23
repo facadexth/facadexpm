@@ -222,6 +222,29 @@ export function markSignedSeen(id) {
   return updateOne(id, { signed_seen_at: new Date().toISOString() })
 }
 
+// Invoices list: newest live (non-replaced/void) report per invoice, ONE query for all rows.
+export async function fetchDeliveryReportStatuses(invoiceIds) {
+  const ids = [...new Set((invoiceIds || []).filter(Boolean))]
+  if (!ids.length) return {}
+  const { data, error } = await supabase.from('delivery_reports')
+    .select('id, invoice_id, status, signed_at, signed_seen_at, created_at').in('invoice_id', ids)
+  check(error)
+  const out = {}
+  for (const r of [...(data || [])].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))) {
+    if (r.status === 'replaced' || r.status === 'void' || out[r.invoice_id]) continue
+    out[r.invoice_id] = r
+  }
+  return out
+}
+
+// One update for many reports (opening the invoices tab clears the bell for shown signed reports).
+export async function markSignedSeenMany(ids) {
+  const list = (ids || []).filter(Boolean)
+  if (!list.length) return
+  const { error } = await supabase.from('delivery_reports').update({ signed_seen_at: new Date().toISOString() }).in('id', list)
+  check(error)
+}
+
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 async function imageSize(file) {

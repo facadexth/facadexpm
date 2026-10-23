@@ -116,12 +116,12 @@ export default function SignChooser({ report, tenantId, onClose, onSigned, onPri
 }
 
 // The document with signing wired in (Task 8 opens this from the invoice).
-export function DeliveryReportWithSigning({ invoiceId, reportId, tenantId, onClose }) {
+export function DeliveryReportWithSigning({ invoiceId, reportId, tenantId, onClose, onEdit }) {
   const [signing, setSigning] = useState(null)
   const [version, setVersion] = useState(0)
   return (
     <>
-      <DeliveryReportDocumentModal key={version} invoiceId={invoiceId} reportId={reportId} onClose={onClose}
+      <DeliveryReportDocumentModal key={version} invoiceId={invoiceId} reportId={reportId} onClose={onClose} onEdit={onEdit}
         onRequestSign={r => setSigning(r)} />
       {signing && <SignChooser report={signing} tenantId={tenantId ?? signing.tenant_id} onClose={() => setSigning(null)}
         onSigned={() => setVersion(v => v + 1)} />}

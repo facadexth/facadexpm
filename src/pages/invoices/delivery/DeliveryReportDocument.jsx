@@ -93,7 +93,7 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
         <div style={{ fontWeight: 800, fontSize: 12 }}>รายงานส่งงาน {report?.report_number || ''}</div>
         <div>อ้างอิงใบแจ้งหนี้ {invoice?.invoice_number}</div>
         {replaced && <div>แทนฉบับ {replaced.report_number}</div>}
-        {site?.name && <div>{site.name}</div>}
+        {site?.name && <div>{site.site_number ? `${site.site_number} · ` : ''}{site.name}</div>}
         <div>{thDate(report?.date)}</div>
         <div style={{ color: '#9296a8' }}>หน้า {n} / {pages.length}</div>
       </div>
@@ -225,7 +225,7 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
 // Props: invoiceId (the hook is keyed by invoice) + reportId (defaults to the current report).
 // The hook loads the requested report's cards (defaults to the current report).
 // Print: root has className="printable-document" so index.css @media print shows only it (as Invoices.jsx).
-export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClose, onRequestSign }) {
+export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClose, onRequestSign, onEdit }) {
   const { tenant } = useTenant()
   const { data, loading, error } = useDeliveryReport(invoiceId, reportId)
   const report = data?.report ?? null
@@ -292,6 +292,7 @@ export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClo
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        {onEdit && <button type="button" className="btn btn-ghost" onClick={onEdit}>✏️ แก้ไขรายงาน</button>}
         <RowActionsMenu trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary" items={items} />
       </div>
     </Modal>

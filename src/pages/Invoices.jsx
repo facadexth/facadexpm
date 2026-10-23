@@ -38,6 +38,7 @@ import CardTable from '../components/CardTable.jsx'
 import { isCountUnit, checkLine, doneQty } from '../lib/progressBilling.js'
 import { useProgressBillingData } from '../hooks/useProgressBillingData.js'
 import ProgressBillingEditor, { buildProgressInvoiceRows } from './invoices/ProgressBillingEditor.jsx'
+import { useDeliveryReportStatuses, DeliveryReportBadge, DeliveryReportLauncher } from './invoices/delivery/InvoiceDeliveryReport.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -1863,6 +1864,8 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [receiptRow, setReceiptRow] = useState(null)
   const [photosRow, setPhotosRow] = useState(null)
   const [linkTarget, setLinkTarget] = useState(null)
+  const [drRow, setDrRow] = useState(null)
+  const { map: drMap, refetch: refetchDr } = useDeliveryReportStatuses(sortedInvoices.filter(i => i.site_id).map(i => i.id))
   // แยก state คนละก้อนกับ photosRow เพราะ Modal ของแอปนี้ไม่รองรับ modal
   // ซ้อน modal (ดูคอมเมนต์ใน Modal.jsx) -- คลิก "พิมพ์เอกสาร" ในโมดัลจัดการรูป
   // จึงต้องปิดโมดัลนั้นแล้วเปิดโมดัลพิมพ์แทนที่ ไม่ใช่เปิดซ้อนกัน
@@ -2223,7 +2226,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                       ) : null
                     })()}
                   </td>
-                  <td><span className={`badge badge-${inv.status}`}>{INV_STATUS_LABELS[inv.status] || inv.status}</span></td>
+                  <td><span className={`badge badge-${inv.status}`}>{INV_STATUS_LABELS[inv.status] || inv.status}</span><DeliveryReportBadge report={drMap[inv.id]} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && inv.status === 'unpaid' && (
                       <button className="btn btn-sm btn-primary" disabled={payingId === inv.id} onClick={() => setPayRow(inv)}>
@@ -2235,6 +2238,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                       ...(canEdit && inv.status === 'unpaid' ? [{ label: '✕ ยกเลิก', onClick: () => setVoidRow(inv), danger: true }] : []),
                       ...(isOwner && inv.status === 'paid' ? [{ label: '↩️ ยกเลิกการชำระเงิน', onClick: () => setUnmarkPaidRow(inv), danger: true }] : []),
                       ...(inv.status === 'paid' ? [{ label: '🧾 ใบเสร็จ', onClick: () => setReceiptRow(inv) }] : []),
+                      ...(canEdit && inv.site_id ? [{ label: '📋 รายงานส่งงาน', onClick: () => setDrRow(inv) }] : []),
                       ...(canEdit ? [{ label: '📷 รูปประกอบการส่งงาน', onClick: () => setPhotosRow(inv) }] : []),
                       ...(canEdit ? [{ label: '🔗 ลิงก์เซ็นรับระยะไกล', onClick: () => setLinkTarget(inv) }] : []),
                     ]} />
@@ -2346,6 +2350,10 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           invoice={photosPrint.invoice} tenant={tenant} photos={photosPrint.photos} urls={photosPrint.urls}
           onClose={() => setPhotosPrint(null)}
         />
+      )}
+      {drRow && (
+        <DeliveryReportLauncher invoice={drRow} current={drMap[drRow.id] || null} tenantId={tenant?.id}
+          onClose={() => setDrRow(null)} onChanged={refetchDr} />
       )}
       {linkTarget && (
         <SignLinkModal documentType="invoice" documentId={linkTarget.id} onClose={() => setLinkTarget(null)} />

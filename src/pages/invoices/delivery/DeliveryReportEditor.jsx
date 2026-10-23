@@ -6,7 +6,8 @@ import { supabase, fmt } from '../../../lib/supabase.js'
 import { Modal } from '../../../components/Modal.jsx'
 import { useTenant } from '../../../hooks/useTenant.js'
 import { useDeliveryReport, saveDeliveryReport, reissueDeliveryReport } from '../../../hooks/useDeliveryReport.js'
-import { nextReportStatusOnEdit } from '../../../lib/deliveryReport.js'
+import { nextReportStatusOnEdit, markColour } from '../../../lib/deliveryReport.js'
+import PlanMarkupEditor from './PlanMarkupEditor.jsx'
 import { uploadSitePhoto, bangkokTodayIso } from '../../../lib/photoUpload.js'
 
 const REASON_TEXT = {
@@ -46,7 +47,8 @@ export default function DeliveryReportEditor({ invoiceId, onClose, onSaved }) {
 
 function Editor({ data, refetch, onClose, onSaved }) {
   const { tenant } = useTenant()
-  const { invoice, rows, totals, current, tasks = [], phases = [], photosByTask = {} } = data
+  const { invoice, rows, totals, current, tasks = [], phases = [], photosByTask = {}, plans = [], marksByPlan = {}, prevTaskIds = [] } = data
+  const [showPlans, setShowPlans] = useState(false)
   const [init] = useState(() => initialState(data))
   const [phaseIds, setPhaseIds] = useState(init.phaseIds)
   const [sel, setSel] = useState(init.sel) // taskId -> { photoIds, caption }
@@ -145,6 +147,8 @@ function Editor({ data, refetch, onClose, onSaved }) {
   const chosen = visibleTasks.filter(t => sel[t.id])
   const photoCount = chosen.reduce((s, t) => s + sel[t.id].photoIds.length, 0)
   const warnings = rows.filter(r => r.check !== 'ok')
+  const prevSet = new Set(prevTaskIds)
+  const thisSet = new Set(chosen.map(t => t.id))
 
   const handleSave = async () => {
     setSaving(true)
@@ -250,6 +254,20 @@ function Editor({ data, refetch, onClose, onSaved }) {
           <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
             เลือก {chosen.length} การ์ด · {photoCount} รูป · กด ＋ รูป เพื่ออัปโหลดรูปเพิ่มเข้าการ์ดนั้น (เก็บไว้ที่การ์ดด้วย งวดหน้าเห็น)
           </div>
+        </section>
+
+        <section>
+          <button type="button" className="btn btn-ghost btn-sm" aria-expanded={showPlans} onClick={() => setShowPlans(v => !v)}>
+            ✏️ วาดบนแบบแปลน
+          </button>
+          {showPlans && (
+            <div style={{ marginTop: 8 }} data-testid="dr-plan-editor">
+              <PlanMarkupEditor siteId={invoice.site_id} tenantId={tenant?.id} plans={plans} marksByPlan={marksByPlan}
+                cards={chosen.map(t => ({ taskId: t.id, title: t.name }))}
+                colourFor={id => markColour(id, { prevTaskIds: prevSet, thisTaskIds: thisSet })}
+                onChanged={() => refetch?.()} />
+            </div>
+          )}
         </section>
 
         {warnings.length > 0 && (
