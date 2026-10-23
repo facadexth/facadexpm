@@ -126,7 +126,9 @@ BEGIN
         y         numeric NOT NULL CHECK (y BETWEEN 0 AND 1),
         w         numeric NULL CHECK (w BETWEEN 0 AND 1),
         h         numeric NULL CHECK (h BETWEEN 0 AND 1),
-        label     text
+        label     text,
+        CONSTRAINT site_drawing_marks_inside_check
+          CHECK (x + COALESCE(w, 0) <= 1 AND y + COALESCE(h, 0) <= 1)
       )$t$, d);
     CREATE INDEX site_drawing_marks_plan_idx ON public.site_drawing_marks (plan_id);
     CREATE INDEX site_drawing_marks_task_idx ON public.site_drawing_marks (task_id);
@@ -191,6 +193,11 @@ BEGIN
   IF OLD.status NOT IN ('signed', 'replaced') THEN
     RETURN COALESCE(NEW, OLD);
   END IF;
+  -- removal fired by an FK cascade (invoice / tenant removed, demo reset) is allowed;
+  -- only a direct removal (trigger depth 1) is refused.
+  IF TG_OP <> 'UPDATE' AND pg_trigger_depth() > 1 THEN
+    RETURN OLD;
+  END IF;
   IF TG_OP = 'UPDATE' THEN
     rest_old := to_jsonb(OLD) - 'status' - 'signed_seen_at';
     rest_new := to_jsonb(NEW) - 'status' - 'signed_seen_at';
@@ -211,10 +218,17 @@ AS $$
 DECLARE
   parent_status text;
 BEGIN
-  SELECT status INTO parent_status FROM delivery_reports
-   WHERE id = CASE WHEN TG_OP = 'INSERT' THEN NEW.report_id ELSE OLD.report_id END;
-  -- parent already gone (cascade from an unlocked report) -> allow
-  IF parent_status IN ('signed', 'replaced') THEN
+  -- removal fired by an FK cascade (report / invoice / tenant removed) is allowed
+  IF TG_OP NOT IN ('INSERT', 'UPDATE') AND pg_trigger_depth() > 1 THEN
+    RETURN OLD;
+  END IF;
+  -- check every report the row touches: NEW for insert, OLD for removal, both for update
+  -- (moving a card into or out of a signed report is refused)
+  SELECT string_agg(status, ',') INTO parent_status FROM delivery_reports
+   WHERE id IN (CASE WHEN TG_OP <> 'INSERT' THEN OLD.report_id END,
+                CASE WHEN TG_OP <> 'INSERT' AND TG_OP <> 'UPDATE' THEN NULL ELSE NEW.report_id END)
+     AND status IN ('signed', 'replaced');
+  IF parent_status IS NOT NULL THEN
     RAISE EXCEPTION 'รายงานที่เซ็นแล้วแก้ไม่ได้ กรุณาออกฉบับใหม่';
   END IF;
   RETURN COALESCE(NEW, OLD);

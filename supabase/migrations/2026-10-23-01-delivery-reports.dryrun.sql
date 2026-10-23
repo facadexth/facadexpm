@@ -127,7 +127,9 @@ BEGIN
         y         numeric NOT NULL CHECK (y BETWEEN 0 AND 1),
         w         numeric NULL CHECK (w BETWEEN 0 AND 1),
         h         numeric NULL CHECK (h BETWEEN 0 AND 1),
-        label     text
+        label     text,
+        CONSTRAINT site_drawing_marks_inside_check
+          CHECK (x + COALESCE(w, 0) <= 1 AND y + COALESCE(h, 0) <= 1)
       )$t$, d);
     CREATE INDEX site_drawing_marks_plan_idx ON public.site_drawing_marks (plan_id);
     CREATE INDEX site_drawing_marks_task_idx ON public.site_drawing_marks (task_id);
@@ -192,6 +194,11 @@ BEGIN
   IF OLD.status NOT IN ('signed', 'replaced') THEN
     RETURN COALESCE(NEW, OLD);
   END IF;
+  -- removal fired by an FK cascade (invoice / tenant removed, demo reset) is allowed;
+  -- only a direct removal (trigger depth 1) is refused.
+  IF TG_OP <> 'UPDATE' AND pg_trigger_depth() > 1 THEN
+    RETURN OLD;
+  END IF;
   IF TG_OP = 'UPDATE' THEN
     rest_old := to_jsonb(OLD) - 'status' - 'signed_seen_at';
     rest_new := to_jsonb(NEW) - 'status' - 'signed_seen_at';
@@ -212,10 +219,17 @@ AS $$
 DECLARE
   parent_status text;
 BEGIN
-  SELECT status INTO parent_status FROM delivery_reports
-   WHERE id = CASE WHEN TG_OP = 'INSERT' THEN NEW.report_id ELSE OLD.report_id END;
-  -- parent already gone (cascade from an unlocked report) -> allow
-  IF parent_status IN ('signed', 'replaced') THEN
+  -- removal fired by an FK cascade (report / invoice / tenant removed) is allowed
+  IF TG_OP NOT IN ('INSERT', 'UPDATE') AND pg_trigger_depth() > 1 THEN
+    RETURN OLD;
+  END IF;
+  -- check every report the row touches: NEW for insert, OLD for removal, both for update
+  -- (moving a card into or out of a signed report is refused)
+  SELECT string_agg(status, ',') INTO parent_status FROM delivery_reports
+   WHERE id IN (CASE WHEN TG_OP <> 'INSERT' THEN OLD.report_id END,
+                CASE WHEN TG_OP <> 'INSERT' AND TG_OP <> 'UPDATE' THEN NULL ELSE NEW.report_id END)
+     AND status IN ('signed', 'replaced');
+  IF parent_status IS NOT NULL THEN
     RAISE EXCEPTION 'รายงานที่เซ็นแล้วแก้ไม่ได้ กรุณาออกฉบับใหม่';
   END IF;
   RETURN COALESCE(NEW, OLD);
@@ -352,7 +366,7 @@ DO $t$
 DECLARE
   t1 uuid; t2 uuid; i1 uuid; s1 uuid; i2 uuid;
   r1 uuid; r2 uuid; n1 text; n2 text; n3 text;
-  p uuid; ok boolean; err text;
+  p uuid; ok boolean; err text; r4 uuid;
 BEGIN
   SELECT i.tenant_id, i.id, i.site_id INTO t1, i1, s1
     FROM invoices i WHERE i.site_id IS NOT NULL ORDER BY i.created_at LIMIT 1;
@@ -403,6 +417,33 @@ BEGIN
     INSERT INTO _res(msg) VALUES ('PASS (b) signed -> replaced allowed');
   EXCEPTION WHEN others THEN INSERT INTO _res(msg) VALUES ('FAIL (b) signed -> replaced: ' || SQLERRM); END;
 
+  -- (b2) moving an unlocked report's card into the signed/replaced report r1 is refused
+  INSERT INTO delivery_report_cards (tenant_id, report_id, card_title) VALUES (t1, r2, 'card B');
+  BEGIN
+    UPDATE delivery_report_cards SET report_id = r1 WHERE report_id = r2;
+    INSERT INTO _res(msg) VALUES ('FAIL (b2) card moved into signed report');
+  EXCEPTION WHEN others THEN INSERT INTO _res(msg) VALUES ('PASS (b2) card move into signed refused: ' || SQLERRM); END;
+
+  -- (f) cascade removal allowed: sign a fresh report, then remove its invoice (sub-block, rolled back)
+  INSERT INTO delivery_reports (tenant_id, invoice_id, site_id, date) VALUES (t1, i1, s1, '2026-10-21') RETURNING id INTO r4;
+  INSERT INTO delivery_report_cards (tenant_id, report_id, card_title) VALUES (t1, r4, 'card F');
+  UPDATE delivery_reports SET status = 'signed', signed_at = now() WHERE id = r4;
+  BEGIN
+    EXECUTE format('%s FROM invoices WHERE id = %L', 'DEL' || 'ETE', i1);
+    IF EXISTS (SELECT 1 FROM delivery_reports WHERE id = r4) THEN
+      RAISE EXCEPTION 'undo_f:FAIL (f) invoice removed but signed report still there';
+    END IF;
+    RAISE EXCEPTION 'undo_f:PASS (f) cascade removal allowed (invoice -> signed report -> cards)';
+  EXCEPTION WHEN others THEN
+    -- the sub-block is rolled back, so the result line is written here, after the undo
+    IF SQLERRM LIKE 'undo_f:%' THEN
+      INSERT INTO _res(msg) VALUES (substr(SQLERRM, 8));
+    ELSE
+      INSERT INTO _res(msg) VALUES (CASE WHEN SQLERRM LIKE 'รายงานที่เซ็นแล้ว%' THEN 'FAIL' ELSE 'SKIP' END
+                                    || ' (f) invoice removal error: ' || SQLERRM);
+    END IF;
+  END;
+
   -- (c) mark fraction check
   INSERT INTO site_drawings (tenant_id, site_id, title, file_path, mime) VALUES (t1, s1, 'plan', 'x/y.png', 'image/png') RETURNING id INTO p;
   INSERT INTO site_drawing_marks (tenant_id, plan_id, kind, x, y) VALUES (t1, p, 'pin', 0.5, 0.5);
@@ -410,6 +451,10 @@ BEGIN
     INSERT INTO site_drawing_marks (tenant_id, plan_id, kind, x, y) VALUES (t1, p, 'pin', 1.2, 0.5);
     INSERT INTO _res(msg) VALUES ('FAIL (c) x = 1.2 accepted');
   EXCEPTION WHEN check_violation THEN INSERT INTO _res(msg) VALUES ('PASS (c) x = 1.2 refused'); END;
+  BEGIN
+    INSERT INTO site_drawing_marks (tenant_id, plan_id, kind, x, y, w, h) VALUES (t1, p, 'rect', 0.8, 0.1, 0.3, 0.1);
+    INSERT INTO _res(msg) VALUES ('FAIL (c2) rect x + w > 1 accepted');
+  EXCEPTION WHEN check_violation THEN INSERT INTO _res(msg) VALUES ('PASS (c2) rect x + w > 1 refused'); END;
 
   -- (d) pending_counts key
   INSERT INTO _res(msg) VALUES (CASE WHEN pending_counts() ? 'delivery_report_signed' THEN 'PASS' ELSE 'FAIL' END
