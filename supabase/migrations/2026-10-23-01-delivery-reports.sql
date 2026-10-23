@@ -4,11 +4,11 @@
 --   * delivery_reports       one DR per invoice snapshot; number DR+YYMM-NNN per tenant.
 --   * delivery_report_cards  Kanban cards shown in the report (card_title snapshot so a
 --                            removed card still prints).
---   * site_plans / site_plan_marks  plan image/PDF per site + rect/pin marks as 0-1 fractions.
+--   * site_drawings / site_drawing_marks  plan image/PDF per site + rect/pin marks as 0-1 fractions.
 --   * Signed (and replaced) reports are locked by trigger. Allowed on a signed report:
 --     status -> 'replaced' and setting signed_seen_at (bell "seen"). Nothing else, no removal.
 --   * document_receipts / document_receipt_links document_type gains 'delivery_report'.
---   * storage bucket site-plans (private), policy mirrors invoice-photos.
+--   * storage bucket site-drawings (private), policy mirrors invoice-photos.
 --   * pending_counts(): LIVE body copied from 2026-10-20-13, one new key delivery_report_signed.
 -- Idempotent. The row-removal keyword never appears literally (the dry-run tool rejects it);
 -- it is built as 'DEL'||'ETE' inside format()/EXECUTE.
@@ -50,7 +50,11 @@ BEGIN
       USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ))
       WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ));
   ELSE
-    RAISE NOTICE 'delivery_reports already exists: skipped';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                    AND table_name = 'delivery_reports' AND column_name = 'signed_receipt_id') THEN
+      RAISE EXCEPTION 'public.delivery_reports exists but is not the delivery-report table (no column signed_receipt_id)';
+    END IF;
+    RAISE NOTICE 'delivery_reports already exists with expected shape: skipped';
   END IF;
 
   IF to_regclass('public.delivery_report_cards') IS NULL THEN
@@ -74,12 +78,16 @@ BEGIN
       USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ))
       WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ));
   ELSE
-    RAISE NOTICE 'delivery_report_cards already exists: skipped';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                    AND table_name = 'delivery_report_cards' AND column_name = 'card_title') THEN
+      RAISE EXCEPTION 'public.delivery_report_cards exists but is not the delivery-report table (no column card_title)';
+    END IF;
+    RAISE NOTICE 'delivery_report_cards already exists with expected shape: skipped';
   END IF;
 
-  IF to_regclass('public.site_plans') IS NULL THEN
+  IF to_regclass('public.site_drawings') IS NULL THEN
     EXECUTE format($t$
-      CREATE TABLE public.site_plans (
+      CREATE TABLE public.site_drawings (
         id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id   uuid NOT NULL DEFAULT current_tenant_id() REFERENCES public.tenants(id) ON %1$s CASCADE,
         site_id     uuid NOT NULL REFERENCES public.sites(id) ON %1$s CASCADE,
@@ -91,23 +99,27 @@ BEGIN
         sort_order  int DEFAULT 0,
         created_at  timestamptz DEFAULT now()
       )$t$, d);
-    CREATE INDEX site_plans_site_idx ON public.site_plans (site_id);
+    CREATE INDEX site_drawings_site_idx ON public.site_drawings (site_id);
 
-    ALTER TABLE public.site_plans ENABLE ROW LEVEL SECURITY;
-    REVOKE ALL ON public.site_plans FROM anon;
-    CREATE POLICY admin_full_access ON public.site_plans FOR ALL TO authenticated
+    ALTER TABLE public.site_drawings ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON public.site_drawings FROM anon;
+    CREATE POLICY admin_full_access ON public.site_drawings FOR ALL TO authenticated
       USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ))
       WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ));
   ELSE
-    RAISE NOTICE 'site_plans already exists: skipped';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                    AND table_name = 'site_drawings' AND column_name = 'file_path') THEN
+      RAISE EXCEPTION 'public.site_drawings exists but is not the delivery-report table (no column file_path)';
+    END IF;
+    RAISE NOTICE 'site_drawings already exists with expected shape: skipped';
   END IF;
 
-  IF to_regclass('public.site_plan_marks') IS NULL THEN
+  IF to_regclass('public.site_drawing_marks') IS NULL THEN
     EXECUTE format($t$
-      CREATE TABLE public.site_plan_marks (
+      CREATE TABLE public.site_drawing_marks (
         id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id uuid NOT NULL DEFAULT current_tenant_id() REFERENCES public.tenants(id) ON %1$s CASCADE,
-        plan_id   uuid NOT NULL REFERENCES public.site_plans(id) ON %1$s CASCADE,
+        plan_id   uuid NOT NULL REFERENCES public.site_drawings(id) ON %1$s CASCADE,
         task_id   uuid NULL REFERENCES public.phase_tasks(id) ON %1$s SET NULL,
         kind      text NOT NULL CHECK (kind IN ('rect','pin')),
         x         numeric NOT NULL CHECK (x BETWEEN 0 AND 1),
@@ -116,16 +128,20 @@ BEGIN
         h         numeric NULL CHECK (h BETWEEN 0 AND 1),
         label     text
       )$t$, d);
-    CREATE INDEX site_plan_marks_plan_idx ON public.site_plan_marks (plan_id);
-    CREATE INDEX site_plan_marks_task_idx ON public.site_plan_marks (task_id);
+    CREATE INDEX site_drawing_marks_plan_idx ON public.site_drawing_marks (plan_id);
+    CREATE INDEX site_drawing_marks_task_idx ON public.site_drawing_marks (task_id);
 
-    ALTER TABLE public.site_plan_marks ENABLE ROW LEVEL SECURITY;
-    REVOKE ALL ON public.site_plan_marks FROM anon;
-    CREATE POLICY admin_full_access ON public.site_plan_marks FOR ALL TO authenticated
+    ALTER TABLE public.site_drawing_marks ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON public.site_drawing_marks FROM anon;
+    CREATE POLICY admin_full_access ON public.site_drawing_marks FOR ALL TO authenticated
       USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ))
       WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ));
   ELSE
-    RAISE NOTICE 'site_plan_marks already exists: skipped';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                    AND table_name = 'site_drawing_marks' AND column_name = 'kind') THEN
+      RAISE EXCEPTION 'public.site_drawing_marks exists but is not the delivery-report table (no column kind)';
+    END IF;
+    RAISE NOTICE 'site_drawing_marks already exists with expected shape: skipped';
   END IF;
 END $mig$;
 
@@ -226,22 +242,22 @@ ALTER TABLE public.document_receipt_links ADD CONSTRAINT document_receipt_links_
   CHECK (document_type IN ('cheque', 'quotation', 'invoice', 'delivery_report'));
 
 -- ---------------------------------------------------------------- storage
-INSERT INTO storage.buckets (id, name, public) VALUES ('site-plans', 'site-plans', false)
+INSERT INTO storage.buckets (id, name, public) VALUES ('site-drawings', 'site-drawings', false)
 ON CONFLICT (id) DO NOTHING;
 
 DO $mig$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies
                   WHERE schemaname = 'storage' AND tablename = 'objects'
-                    AND policyname = 'site_plans_tenant_access') THEN
-    CREATE POLICY site_plans_tenant_access ON storage.objects FOR ALL TO authenticated
+                    AND policyname = 'site_drawings_tenant_access') THEN
+    CREATE POLICY site_drawings_tenant_access ON storage.objects FOR ALL TO authenticated
       USING (
-        bucket_id = 'site-plans'
+        bucket_id = 'site-drawings'
         AND is_admin_or_owner()
         AND (storage.foldername(name))[1] = current_tenant_id()::text
       )
       WITH CHECK (
-        bucket_id = 'site-plans'
+        bucket_id = 'site-drawings'
         AND is_admin_or_owner()
         AND (storage.foldername(name))[1] = current_tenant_id()::text
       );

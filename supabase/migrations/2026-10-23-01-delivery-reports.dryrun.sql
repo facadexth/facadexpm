@@ -1,4 +1,4 @@
--- DRY-RUN for 2026-10-23-01-delivery-reports.sql (controller only). Migration body, then asserts, then ROLLBACK.
+-- DRY-RUN for 2026-10-23-01-delivery-reports.sql (controller only). Migration body, asserts into _res, final SELECT, then ROLLBACK.
 BEGIN;
 -- Delivery report (รายงานส่งงาน, DR) schema -- plan B task 1.
 -- Spec docs/superpowers/specs/2026-10-22-delivery-report-design.md.
@@ -6,11 +6,11 @@ BEGIN;
 --   * delivery_reports       one DR per invoice snapshot; number DR+YYMM-NNN per tenant.
 --   * delivery_report_cards  Kanban cards shown in the report (card_title snapshot so a
 --                            removed card still prints).
---   * site_plans / site_plan_marks  plan image/PDF per site + rect/pin marks as 0-1 fractions.
+--   * site_drawings / site_drawing_marks  plan image/PDF per site + rect/pin marks as 0-1 fractions.
 --   * Signed (and replaced) reports are locked by trigger. Allowed on a signed report:
 --     status -> 'replaced' and setting signed_seen_at (bell "seen"). Nothing else, no removal.
 --   * document_receipts / document_receipt_links document_type gains 'delivery_report'.
---   * storage bucket site-plans (private), policy mirrors invoice-photos.
+--   * storage bucket site-drawings (private), policy mirrors invoice-photos.
 --   * pending_counts(): LIVE body copied from 2026-10-20-13, one new key delivery_report_signed.
 -- Idempotent. The row-removal keyword never appears literally (the dry-run tool rejects it);
 -- it is built as 'DEL'||'ETE' inside format()/EXECUTE.
@@ -51,7 +51,11 @@ BEGIN
       USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ))
       WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ));
   ELSE
-    RAISE NOTICE 'delivery_reports already exists: skipped';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                    AND table_name = 'delivery_reports' AND column_name = 'signed_receipt_id') THEN
+      RAISE EXCEPTION 'public.delivery_reports exists but is not the delivery-report table (no column signed_receipt_id)';
+    END IF;
+    RAISE NOTICE 'delivery_reports already exists with expected shape: skipped';
   END IF;
 
   IF to_regclass('public.delivery_report_cards') IS NULL THEN
@@ -75,12 +79,16 @@ BEGIN
       USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ))
       WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ));
   ELSE
-    RAISE NOTICE 'delivery_report_cards already exists: skipped';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                    AND table_name = 'delivery_report_cards' AND column_name = 'card_title') THEN
+      RAISE EXCEPTION 'public.delivery_report_cards exists but is not the delivery-report table (no column card_title)';
+    END IF;
+    RAISE NOTICE 'delivery_report_cards already exists with expected shape: skipped';
   END IF;
 
-  IF to_regclass('public.site_plans') IS NULL THEN
+  IF to_regclass('public.site_drawings') IS NULL THEN
     EXECUTE format($t$
-      CREATE TABLE public.site_plans (
+      CREATE TABLE public.site_drawings (
         id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id   uuid NOT NULL DEFAULT current_tenant_id() REFERENCES public.tenants(id) ON %1$s CASCADE,
         site_id     uuid NOT NULL REFERENCES public.sites(id) ON %1$s CASCADE,
@@ -92,23 +100,27 @@ BEGIN
         sort_order  int DEFAULT 0,
         created_at  timestamptz DEFAULT now()
       )$t$, d);
-    CREATE INDEX site_plans_site_idx ON public.site_plans (site_id);
+    CREATE INDEX site_drawings_site_idx ON public.site_drawings (site_id);
 
-    ALTER TABLE public.site_plans ENABLE ROW LEVEL SECURITY;
-    REVOKE ALL ON public.site_plans FROM anon;
-    CREATE POLICY admin_full_access ON public.site_plans FOR ALL TO authenticated
+    ALTER TABLE public.site_drawings ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON public.site_drawings FROM anon;
+    CREATE POLICY admin_full_access ON public.site_drawings FOR ALL TO authenticated
       USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ))
       WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ));
   ELSE
-    RAISE NOTICE 'site_plans already exists: skipped';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                    AND table_name = 'site_drawings' AND column_name = 'file_path') THEN
+      RAISE EXCEPTION 'public.site_drawings exists but is not the delivery-report table (no column file_path)';
+    END IF;
+    RAISE NOTICE 'site_drawings already exists with expected shape: skipped';
   END IF;
 
-  IF to_regclass('public.site_plan_marks') IS NULL THEN
+  IF to_regclass('public.site_drawing_marks') IS NULL THEN
     EXECUTE format($t$
-      CREATE TABLE public.site_plan_marks (
+      CREATE TABLE public.site_drawing_marks (
         id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id uuid NOT NULL DEFAULT current_tenant_id() REFERENCES public.tenants(id) ON %1$s CASCADE,
-        plan_id   uuid NOT NULL REFERENCES public.site_plans(id) ON %1$s CASCADE,
+        plan_id   uuid NOT NULL REFERENCES public.site_drawings(id) ON %1$s CASCADE,
         task_id   uuid NULL REFERENCES public.phase_tasks(id) ON %1$s SET NULL,
         kind      text NOT NULL CHECK (kind IN ('rect','pin')),
         x         numeric NOT NULL CHECK (x BETWEEN 0 AND 1),
@@ -117,16 +129,20 @@ BEGIN
         h         numeric NULL CHECK (h BETWEEN 0 AND 1),
         label     text
       )$t$, d);
-    CREATE INDEX site_plan_marks_plan_idx ON public.site_plan_marks (plan_id);
-    CREATE INDEX site_plan_marks_task_idx ON public.site_plan_marks (task_id);
+    CREATE INDEX site_drawing_marks_plan_idx ON public.site_drawing_marks (plan_id);
+    CREATE INDEX site_drawing_marks_task_idx ON public.site_drawing_marks (task_id);
 
-    ALTER TABLE public.site_plan_marks ENABLE ROW LEVEL SECURITY;
-    REVOKE ALL ON public.site_plan_marks FROM anon;
-    CREATE POLICY admin_full_access ON public.site_plan_marks FOR ALL TO authenticated
+    ALTER TABLE public.site_drawing_marks ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON public.site_drawing_marks FROM anon;
+    CREATE POLICY admin_full_access ON public.site_drawing_marks FOR ALL TO authenticated
       USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ))
       WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT has_module_access('invoices') ));
   ELSE
-    RAISE NOTICE 'site_plan_marks already exists: skipped';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                    AND table_name = 'site_drawing_marks' AND column_name = 'kind') THEN
+      RAISE EXCEPTION 'public.site_drawing_marks exists but is not the delivery-report table (no column kind)';
+    END IF;
+    RAISE NOTICE 'site_drawing_marks already exists with expected shape: skipped';
   END IF;
 END $mig$;
 
@@ -227,22 +243,22 @@ ALTER TABLE public.document_receipt_links ADD CONSTRAINT document_receipt_links_
   CHECK (document_type IN ('cheque', 'quotation', 'invoice', 'delivery_report'));
 
 -- ---------------------------------------------------------------- storage
-INSERT INTO storage.buckets (id, name, public) VALUES ('site-plans', 'site-plans', false)
+INSERT INTO storage.buckets (id, name, public) VALUES ('site-drawings', 'site-drawings', false)
 ON CONFLICT (id) DO NOTHING;
 
 DO $mig$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies
                   WHERE schemaname = 'storage' AND tablename = 'objects'
-                    AND policyname = 'site_plans_tenant_access') THEN
-    CREATE POLICY site_plans_tenant_access ON storage.objects FOR ALL TO authenticated
+                    AND policyname = 'site_drawings_tenant_access') THEN
+    CREATE POLICY site_drawings_tenant_access ON storage.objects FOR ALL TO authenticated
       USING (
-        bucket_id = 'site-plans'
+        bucket_id = 'site-drawings'
         AND is_admin_or_owner()
         AND (storage.foldername(name))[1] = current_tenant_id()::text
       )
       WITH CHECK (
-        bucket_id = 'site-plans'
+        bucket_id = 'site-drawings'
         AND is_admin_or_owner()
         AND (storage.foldername(name))[1] = current_tenant_id()::text
       );
@@ -330,69 +346,83 @@ $function$;
 
 
 -- ================================================================ asserts
+CREATE TEMP TABLE _res (n serial, msg text);
+
 DO $t$
 DECLARE
-  t1 uuid; t2 uuid; i1 uuid; s1 uuid; i2 uuid; s2 uuid;
-  r1 uuid; r2 uuid; r3 uuid; n1 text; n2 text; n3 text;
-  p uuid; ok boolean;
+  t1 uuid; t2 uuid; i1 uuid; s1 uuid; i2 uuid;
+  r1 uuid; r2 uuid; n1 text; n2 text; n3 text;
+  p uuid; ok boolean; err text;
 BEGIN
   SELECT i.tenant_id, i.id, i.site_id INTO t1, i1, s1
     FROM invoices i WHERE i.site_id IS NOT NULL ORDER BY i.created_at LIMIT 1;
-  SELECT i.tenant_id, i.id, i.site_id INTO t2, i2, s2
+  IF t1 IS NULL THEN INSERT INTO _res(msg) VALUES ('FAIL setup: no invoice with a site'); RETURN; END IF;
+  SELECT i.tenant_id, i.id INTO t2, i2
     FROM invoices i WHERE i.site_id IS NOT NULL AND i.tenant_id <> t1 ORDER BY i.created_at LIMIT 1;
-  IF t1 IS NULL OR t2 IS NULL THEN RAISE EXCEPTION 'setup: need invoices with site in two tenants'; END IF;
 
   -- (a) numbering per tenant
   INSERT INTO delivery_reports (tenant_id, invoice_id, site_id, date) VALUES (t1, i1, s1, '2026-10-05') RETURNING id, report_number INTO r1, n1;
   INSERT INTO delivery_reports (tenant_id, invoice_id, site_id, date) VALUES (t1, i1, s1, '2026-10-20') RETURNING id, report_number INTO r2, n2;
-  INSERT INTO delivery_reports (tenant_id, invoice_id, site_id, date) VALUES (t2, i2, s2, '2026-10-10') RETURNING id, report_number INTO r3, n3;
-  IF n1 <> 'DR2610-001' OR n2 <> 'DR2610-002' OR n3 <> 'DR2610-001' THEN
-    RAISE EXCEPTION 'FAIL (a) numbers % % %', n1, n2, n3; END IF;
-  RAISE NOTICE 'PASS (a) % % %', n1, n2, n3;
+  INSERT INTO _res(msg) VALUES (CASE WHEN n1 = 'DR2610-001' AND n2 = 'DR2610-002' THEN 'PASS' ELSE 'FAIL' END
+                                || ' (a) tenant1 numbers ' || n1 || ', ' || n2);
+  IF t2 IS NULL THEN
+    INSERT INTO _res(msg) VALUES ('SKIP (a) cross-tenant numbering: no other tenant has an invoice');
+  ELSE
+    INSERT INTO delivery_reports (tenant_id, invoice_id, site_id, date)
+      SELECT t2, i2, i.site_id, '2026-10-10' FROM invoices i WHERE i.id = i2 RETURNING report_number INTO n3;
+    INSERT INTO _res(msg) VALUES (CASE WHEN n3 = 'DR2610-001' THEN 'PASS' ELSE 'FAIL' END || ' (a) tenant2 number ' || n3);
+  END IF;
 
   -- (b) lock
   INSERT INTO delivery_report_cards (tenant_id, report_id, card_title) VALUES (t1, r1, 'card A');
-  UPDATE delivery_reports SET status = 'signed', signed_at = now() WHERE id = r1;  -- draft -> signed allowed
-  ok := false;
+  BEGIN
+    UPDATE delivery_reports SET status = 'signed', signed_at = now() WHERE id = r1;
+    INSERT INTO _res(msg) VALUES ('PASS (b) draft -> signed allowed');
+  EXCEPTION WHEN others THEN INSERT INTO _res(msg) VALUES ('FAIL (b) draft -> signed: ' || SQLERRM); END;
   BEGIN
     UPDATE delivery_reports SET note = 'x' WHERE id = r1;
+    INSERT INTO _res(msg) VALUES ('FAIL (b) note update on signed was allowed');
   EXCEPTION WHEN others THEN
-    ok := SQLERRM = 'รายงานที่เซ็นแล้วแก้ไม่ได้ กรุณาออกฉบับใหม่';
+    INSERT INTO _res(msg) VALUES (CASE WHEN SQLERRM = 'รายงานที่เซ็นแล้วแก้ไม่ได้ กรุณาออกฉบับใหม่' THEN 'PASS' ELSE 'FAIL' END
+                                  || ' (b) note update refused: ' || SQLERRM);
   END;
-  IF NOT ok THEN RAISE EXCEPTION 'FAIL (b) note update on signed not refused'; END IF;
-  ok := false;
   BEGIN
     UPDATE delivery_report_cards SET caption = 'x' WHERE report_id = r1;
-  EXCEPTION WHEN others THEN ok := true; END;
-  IF NOT ok THEN RAISE EXCEPTION 'FAIL (b) card update on signed not refused'; END IF;
-  ok := false;
+    INSERT INTO _res(msg) VALUES ('FAIL (b) card update on signed was allowed');
+  EXCEPTION WHEN others THEN INSERT INTO _res(msg) VALUES ('PASS (b) card update refused'); END;
   BEGIN
     EXECUTE format('%s FROM delivery_reports WHERE id = %L', 'DEL' || 'ETE', r1);
-  EXCEPTION WHEN others THEN ok := true; END;
-  IF NOT ok THEN RAISE EXCEPTION 'FAIL (b) removal of signed not refused'; END IF;
-  UPDATE delivery_reports SET signed_seen_at = now() WHERE id = r1;               -- bell seen allowed
-  UPDATE delivery_reports SET status = 'replaced' WHERE id = r1;                  -- must succeed
-  IF (SELECT status FROM delivery_reports WHERE id = r1) <> 'replaced' THEN RAISE EXCEPTION 'FAIL (b) replaced'; END IF;
-  RAISE NOTICE 'PASS (b) lock';
+    INSERT INTO _res(msg) VALUES ('FAIL (b) removal of signed was allowed');
+  EXCEPTION WHEN others THEN INSERT INTO _res(msg) VALUES ('PASS (b) removal refused'); END;
+  BEGIN
+    UPDATE delivery_reports SET signed_seen_at = now() WHERE id = r1;
+    INSERT INTO _res(msg) VALUES ('PASS (b) signed_seen_at allowed');
+  EXCEPTION WHEN others THEN INSERT INTO _res(msg) VALUES ('FAIL (b) signed_seen_at: ' || SQLERRM); END;
+  BEGIN
+    UPDATE delivery_reports SET status = 'replaced' WHERE id = r1;
+    INSERT INTO _res(msg) VALUES ('PASS (b) signed -> replaced allowed');
+  EXCEPTION WHEN others THEN INSERT INTO _res(msg) VALUES ('FAIL (b) signed -> replaced: ' || SQLERRM); END;
 
   -- (c) mark fraction check
-  INSERT INTO site_plans (tenant_id, site_id, title, file_path, mime) VALUES (t1, s1, 'plan', 'x/y.png', 'image/png') RETURNING id INTO p;
-  INSERT INTO site_plan_marks (tenant_id, plan_id, kind, x, y) VALUES (t1, p, 'pin', 0.5, 0.5);
-  ok := false;
+  INSERT INTO site_drawings (tenant_id, site_id, title, file_path, mime) VALUES (t1, s1, 'plan', 'x/y.png', 'image/png') RETURNING id INTO p;
+  INSERT INTO site_drawing_marks (tenant_id, plan_id, kind, x, y) VALUES (t1, p, 'pin', 0.5, 0.5);
   BEGIN
-    INSERT INTO site_plan_marks (tenant_id, plan_id, kind, x, y) VALUES (t1, p, 'pin', 1.2, 0.5);
-  EXCEPTION WHEN check_violation THEN ok := true; END;
-  IF NOT ok THEN RAISE EXCEPTION 'FAIL (c) x=1.2 accepted'; END IF;
-  RAISE NOTICE 'PASS (c) mark check';
+    INSERT INTO site_drawing_marks (tenant_id, plan_id, kind, x, y) VALUES (t1, p, 'pin', 1.2, 0.5);
+    INSERT INTO _res(msg) VALUES ('FAIL (c) x = 1.2 accepted');
+  EXCEPTION WHEN check_violation THEN INSERT INTO _res(msg) VALUES ('PASS (c) x = 1.2 refused'); END;
 
   -- (d) pending_counts key
-  IF NOT (pending_counts() ? 'delivery_report_signed') THEN RAISE EXCEPTION 'FAIL (d) key missing'; END IF;
-  RAISE NOTICE 'PASS (d) pending_counts %', pending_counts() -> 'delivery_report_signed';
+  INSERT INTO _res(msg) VALUES (CASE WHEN pending_counts() ? 'delivery_report_signed' THEN 'PASS' ELSE 'FAIL' END
+                                || ' (d) pending_counts key, value ' || COALESCE(pending_counts() ->> 'delivery_report_signed', 'null'));
 
   -- (e) document_type widened
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'document_receipt_links_document_type_check'
-                  AND pg_get_constraintdef(oid) LIKE '%delivery_report%') THEN RAISE EXCEPTION 'FAIL (e)'; END IF;
-  RAISE NOTICE 'PASS (e) document_type';
+  INSERT INTO _res(msg) VALUES (CASE WHEN (SELECT count(*) FROM pg_constraint
+      WHERE conname IN ('document_receipts_document_type_check', 'document_receipt_links_document_type_check')
+        AND pg_get_constraintdef(oid) LIKE '%delivery_report%') = 2 THEN 'PASS' ELSE 'FAIL' END || ' (e) document_type CHECKs');
+EXCEPTION WHEN others THEN
+  GET STACKED DIAGNOSTICS err = MESSAGE_TEXT;
+  INSERT INTO _res(msg) VALUES ('FAIL unexpected: ' || err);
 END $t$;
 
+SELECT n, msg FROM _res ORDER BY n;
 ROLLBACK;
