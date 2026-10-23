@@ -25,7 +25,7 @@ import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
 import { nodeProgress, fmtNum } from './progressCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
-import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
+import { uploadSitePhotos, bangkokTodayIso, photoUploaderLabel } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { useProgressSchemaReady } from '../../lib/progressSchema.js'
@@ -109,7 +109,7 @@ function PhotoPreview({ photos, photoId, canSelect, onNavigate, onClose, onSelec
           <div style={{ padding: 40, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
         )}
         <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
-          {photo.workers?.nickname || photo.workers?.name || '-'}
+          {photoUploaderLabel(photo)}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 12 }}>
           <button type="button" className="btn btn-ghost" aria-label="รูปก่อนหน้า" disabled={idx <= 0} onClick={() => go(-1)}>←</button>
@@ -964,14 +964,14 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                     draggable={canEdit}
                     onDragStart={canEdit ? (e) => e.dataTransfer.setData(PHOTO_DRAG_MIME, p.id) : undefined}
                     onClick={canEdit ? () => setTapPhotoId((cur) => (cur === p.id ? null : p.id)) : undefined}
-                    title={`${p.workers?.nickname || p.workers?.name || ''} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
+                    title={`${photoUploaderLabel(p, '')} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
                     style={{ opacity: assigningPhotoId === p.id ? 0.5 : 1, cursor: canEdit ? 'grab' : 'default' }}>
                     {p.url ? (
                       <img src={p.url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, display: 'block', border: ring, boxSizing: 'border-box' }} />
                     ) : (
                       <div className="kb-tray-ph" style={{ width: 72, height: 72, borderRadius: 8, border: ring, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
                     )}
-                    <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+                    <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{photoUploaderLabel(p)}</div>
                   </div>
                 </div>
               )
@@ -1184,7 +1184,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                         <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
                       )}
                       <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)' }}>
-                        {p.workers?.nickname || p.workers?.name || '-'} · {new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                        {photoUploaderLabel(p)} · {new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
                       </div>
                     </a>
                   </div>

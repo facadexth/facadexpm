@@ -7,6 +7,7 @@
 // ============================================================
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { photoUploaderLabel } from '../lib/photoUpload.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useLineGroups } from '../hooks/useLineGroups.js'
@@ -497,7 +498,7 @@ export default function CommunicationCenter({ navState }) {
     setLoadingPhotos(true)
     const { data, error } = await supabase
       .from('line_site_photos')
-      .select('id, photo_path, date, created_at, workers(name, nickname), sites(name)')
+      .select('id, photo_path, date, created_at, worker_id, workers(name, nickname), sites(name)')
       .order('created_at', { ascending: false })
       .limit(60)
     if (error || !data?.length) {
@@ -974,7 +975,7 @@ export default function CommunicationCenter({ navState }) {
                   <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
                 )}
                 <div style={{ fontSize: 11, marginTop: 4, color: 'var(--text3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {p.workers?.nickname || p.workers?.name || '-'} · {p.sites?.name || '-'}
+                  {photoUploaderLabel(p)} · {p.sites?.name || '-'}
                 </div>
                 <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{new Date(p.created_at).toLocaleDateString('th-TH')}</div>
               </a>

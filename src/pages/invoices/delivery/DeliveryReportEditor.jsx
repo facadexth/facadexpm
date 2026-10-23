@@ -55,6 +55,7 @@ function Editor({ data, refetch, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(null)
   const [saveError, setSaveError] = useState(null)
+  const [uploadError, setUploadError] = useState(null)
   const [myWorkerId, setMyWorkerId] = useState(null)
   const fileRefs = useRef({})
 
@@ -96,7 +97,16 @@ function Editor({ data, refetch, onClose, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathsKey])
 
-  const togglePhase = id => setPhaseIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
+  const togglePhase = id => {
+    if (phaseIds.includes(id)) {
+      // unticking a phase also drops the ticks of its cards
+      const drop = new Set(tasks.filter(t => t.phase_id === id).map(t => t.id))
+      setSel(s => Object.fromEntries(Object.entries(s).filter(([k]) => !drop.has(k))))
+      setPhaseIds(ids => ids.filter(x => x !== id))
+    } else {
+      setPhaseIds(ids => [...ids, id])
+    }
+  }
   const toggleCard = id => setSel(s => {
     const n = { ...s }
     if (n[id]) delete n[id]; else n[id] = { photoIds: [], caption: '' }
@@ -111,12 +121,12 @@ function Editor({ data, refetch, onClose, onSaved }) {
 
   const handleUpload = async (task, files) => {
     if (!files?.length) return
-    if (!myWorkerId) { alert('ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ — กรุณาติดต่อผู้ดูแลระบบ'); return }
     setUploading(task.id)
+    setUploadError(null)
     const failed = []
     for (const file of Array.from(files)) {
       try {
-        const res = await uploadSitePhoto({ file, tenantId: tenant?.id, workerId: myWorkerId, siteId: invoice.site_id, taskId: task.id, date: bangkokTodayIso() })
+        const res = await uploadSitePhoto({ file, tenantId: tenant?.id, workerId: myWorkerId || null, siteId: invoice.site_id, taskId: task.id, date: bangkokTodayIso() })
         if (!res.id) throw new Error('บันทึกรูปไม่สำเร็จ')
         const photo = { id: res.id, task_id: task.id, photo_path: res.photo_path }
         setExtraPhotos(x => ({ ...x, [task.id]: [...(x[task.id] || []), photo] }))
@@ -129,7 +139,7 @@ function Editor({ data, refetch, onClose, onSaved }) {
       }
     }
     setUploading(null)
-    if (failed.length) alert(`อัปโหลดไม่สำเร็จ ${failed.length} รูป: ${failed[0]?.message || failed[0]}`)
+    if (failed.length) setUploadError(`อัปโหลดไม่สำเร็จ ${failed.length} รูป: ${failed[0]?.message || failed[0]}`)
   }
 
   const chosen = visibleTasks.filter(t => sel[t.id])
@@ -253,6 +263,7 @@ function Editor({ data, refetch, onClose, onSaved }) {
           </section>
         )}
 
+        {uploadError && <div role="alert" style={{ color: 'var(--red, #dc2626)', fontSize: 13 }}>{uploadError}</div>}
         {saveError && <div role="alert" style={{ color: 'var(--red, #dc2626)', fontSize: 13 }}>{saveError}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>

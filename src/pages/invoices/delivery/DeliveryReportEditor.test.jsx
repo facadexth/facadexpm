@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, cleanup, fireEvent, screen, waitFor, act } from '@testing-library/react'
 
 let hookData = null
+let rpcWorker = 'w1'
 const saveMock = vi.fn(async () => ({ id: 'r-new' }))
 const reissueMock = vi.fn(async () => ({ id: 'r-re' }))
 const uploadMock = vi.fn(async () => ({ id: 'ph-new', photo_path: 't1/s1/new.jpg' }))
@@ -20,7 +21,7 @@ vi.mock('../../../hooks/useTenant.js', () => ({ useTenant: () => ({ tenant: { id
 vi.mock('../../../hooks/useBackToClose.js', () => ({ useBackToClose: () => {} }))
 vi.mock('../../../lib/supabase.js', () => ({
   supabase: {
-    rpc: async () => ({ data: 'w1' }),
+    rpc: async () => ({ data: rpcWorker }),
     storage: { from: () => ({ createSignedUrls: async paths => ({ data: paths.map(p => ({ signedUrl: 'u:' + p })) }) }) },
   },
   fmt: n => String(n),
@@ -50,7 +51,7 @@ function makeData(over = {}) {
 }
 const renderIt = () => render(<DeliveryReportEditor invoiceId="inv1" onClose={() => {}} onSaved={() => {}} />)
 
-afterEach(() => { cleanup(); hookData = null; vi.clearAllMocks() })
+afterEach(() => { cleanup(); hookData = null; rpcWorker = 'w1'; vi.clearAllMocks() })
 
 describe('DeliveryReportEditor', () => {
   it('pre-ticks phases billed on the invoice', () => {
@@ -90,6 +91,30 @@ describe('DeliveryReportEditor', () => {
     await waitFor(() => expect(uploadMock).toHaveBeenCalled())
     expect(uploadMock.mock.calls[0][0]).toMatchObject({ taskId: 'tB', tenantId: 't1', workerId: 'w1', siteId: 's1', file })
     await waitFor(() => expect(document.querySelector('[data-photo="ph-new"]').getAttribute('aria-pressed')).toBe('true'))
+  })
+
+  it('uploads without a linked worker (workerId null) and shows upload errors inline', async () => {
+    hookData = makeData()
+    rpcWorker = null
+    uploadMock.mockRejectedValueOnce(new Error('เน็ตหลุด'))
+    renderIt()
+    await act(async () => {})
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('upload-tB'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } })
+    })
+    await waitFor(() => expect(uploadMock).toHaveBeenCalled())
+    expect(uploadMock.mock.calls[0][0].workerId).toBeNull()
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('เน็ตหลุด'))
+  })
+
+  it('unticking a phase clears its card ticks', async () => {
+    hookData = makeData()
+    renderIt()
+    fireEvent.click(document.querySelector('[data-photo="ph1"]'))
+    fireEvent.click(screen.getByLabelText('ส่งงวดนี้ ติดตั้ง'))
+    fireEvent.click(screen.getByLabelText('ส่งงวดนี้ ติดตั้ง'))
+    expect(screen.getByLabelText('เลือกการ์ด การ์ดติดตั้ง').checked).toBe(false)
+    expect(document.querySelector('[data-photo="ph1"]').getAttribute('aria-pressed')).toBe('false')
   })
 
   it('save sends phaseIds and ticked photoIds', async () => {
