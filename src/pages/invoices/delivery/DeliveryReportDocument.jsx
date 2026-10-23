@@ -31,7 +31,9 @@ async function signUrls(bucket, paths) {
 }
 
 // Card size in page units (a page holds 2): >2 photos or a long caption takes a whole page.
+// A card with no photos is a title line only: 4 fit on a page.
 function cardUnits(c, shownCount) {
+  if (shownCount === 0 && String(c.caption || '').length <= 120) return 0.5
   return shownCount > 2 || String(c.caption || '').length > 120 ? 2 : 1
 }
 
@@ -53,8 +55,10 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
   const thisPct = pct(totals.this || 0, contract)
   const remPct = pct(totals.remaining || 0, contract)
 
+  // Phases with 0% weight and nothing billed are all zeros: leave them off the paper.
+  const shownRows = rows.filter(r => r.value || r.prev || r.this || r.remaining)
   const rowPages = []
-  for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) rowPages.push(rows.slice(i, i + ROWS_PER_PAGE))
+  for (let i = 0; i < shownRows.length; i += ROWS_PER_PAGE) rowPages.push(shownRows.slice(i, i + ROWS_PER_PAGE))
   if (!rowPages.length) rowPages.push([])
   const shownPhotos = c => {
     const task = c.task_id ? taskById.get(c.task_id) : null

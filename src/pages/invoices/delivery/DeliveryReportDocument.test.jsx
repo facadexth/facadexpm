@@ -49,11 +49,26 @@ describe('DeliveryReportDocument', () => {
 
   it('long description is clipped; signature moves to own page after a full card page', () => {
     hookData = makeData({
-      rows: [{ key: 'k', description: 'ก'.repeat(200), value: 0, prev: 0, this: 0, remaining: 0 }],
+      rows: [{ key: 'k', description: 'ก'.repeat(200), value: 1, prev: 0, this: 0, remaining: 0 }],
       cards: [{ id: 'c1', task_id: null, card_title: 'A', photo_ids: [], caption: 'x'.repeat(150) }],
     })
     render(<DeliveryReportDocumentModal invoiceId="inv1" reportId="r1" onClose={() => {}} />)
     expect(screen.getByTitle('ก'.repeat(200)).textContent.length).toBe(90)
+    expect(screen.getAllByText(/หน้า \d+ \/ 3/).length).toBe(3)
+  })
+
+  it('all-zero phase rows are left off; cards without photos fit 4 to a page', () => {
+    hookData = makeData({
+      rows: [
+        { key: 'a', description: 'ZERO-ROW', value: 0, prev: 0, this: 0, remaining: 0 },
+        { key: 'b', description: 'REAL-ROW', value: 10, prev: 0, this: 5, remaining: 5 },
+      ],
+      cards: [1, 2, 3, 4].map(i => ({ id: 'c' + i, task_id: null, card_title: 'C' + i, photo_ids: [], caption: '' })),
+    })
+    render(<DeliveryReportDocumentModal invoiceId="inv1" reportId="r1" onClose={() => {}} />)
+    expect(screen.queryByText('ZERO-ROW')).toBeNull()
+    expect(screen.getAllByText('REAL-ROW').length).toBeGreaterThan(0)
+    // table page + one card page (4 cards) + signature page
     expect(screen.getAllByText(/หน้า \d+ \/ 3/).length).toBe(3)
   })
 
