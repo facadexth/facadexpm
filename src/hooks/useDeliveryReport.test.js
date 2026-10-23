@@ -47,12 +47,12 @@ describe('useDeliveryReport', () => {
   it('earlier invoices are filtered to same quotation, non-void, before this one', async () => {
     Object.assign(tables, {
       invoices: [
-        { id: 'cur', invoice_number: 'IN2609-002', invoice_date: '2026-09-10', quotation_id: 'q1', site_id: 's1', status: 'sent' },
-        { id: 'a', invoice_number: 'IN2609-001', invoice_date: '2026-09-10', quotation_id: 'q1', status: 'paid' },
-        { id: 'b', invoice_number: 'IN2608-005', invoice_date: '2026-08-01', quotation_id: 'q1', status: 'sent' },
-        { id: 'v', invoice_number: 'IN2607-001', invoice_date: '2026-07-01', quotation_id: 'q1', status: 'void' },
-        { id: 'later', invoice_number: 'IN2609-003', invoice_date: '2026-09-10', quotation_id: 'q1', status: 'sent' },
-        { id: 'other', invoice_number: 'IN2601-001', invoice_date: '2026-01-01', quotation_id: 'q2', status: 'paid' },
+        { id: 'cur', invoice_number: 'IN2609-002', date: '2026-09-10', quotation_id: 'q1', site_id: 's1', status: 'sent' },
+        { id: 'a', invoice_number: 'IN2609-001', date: '2026-09-10', quotation_id: 'q1', status: 'paid' },
+        { id: 'b', invoice_number: 'IN2608-005', date: '2026-08-01', quotation_id: 'q1', status: 'sent' },
+        { id: 'v', invoice_number: 'IN2607-001', date: '2026-07-01', quotation_id: 'q1', status: 'void' },
+        { id: 'later', invoice_number: 'IN2609-003', date: '2026-09-10', quotation_id: 'q1', status: 'sent' },
+        { id: 'other', invoice_number: 'IN2601-001', date: '2026-01-01', quotation_id: 'q2', status: 'paid' },
       ],
       invoice_items: [
         { id: 'i-cur', invoice_id: 'cur' }, { id: 'i-a', invoice_id: 'a' }, { id: 'i-b', invoice_id: 'b' },
@@ -109,8 +109,8 @@ describe('useDeliveryReport', () => {
   it('reportId other than current loads that report\'s cards, prev task ids, site', async () => {
     Object.assign(tables, {
       invoices: [
-        { id: 'cur', invoice_number: 'IN2', invoice_date: '2026-09-10', quotation_id: 'q1', site_id: 's1', status: 'sent' },
-        { id: 'a', invoice_number: 'IN1', invoice_date: '2026-09-01', quotation_id: 'q1', status: 'paid' },
+        { id: 'cur', invoice_number: 'IN2', date: '2026-09-10', quotation_id: 'q1', site_id: 's1', status: 'sent' },
+        { id: 'a', invoice_number: 'IN1', date: '2026-09-01', quotation_id: 'q1', status: 'paid' },
       ],
       invoice_items: [], invoice_item_phases: [], quotations: [{ id: 'q1' }], quotation_items: [], phase_tasks: [],
       site_drawings: [], line_site_photos: [], sites: [{ id: 's1', name: 'SOAP' }],

@@ -9,7 +9,7 @@ import { discountMultiplier } from '../lib/quotationCalc.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 
 const CHUNK = 200
-const ITEM_COLS = 'id, invoice_id, quotation_item_id, description, unit, quantity, unit_price, line_total'
+const ITEM_COLS = 'id, invoice_id, quotation_item_id, description, unit, draw_qty, unit_price, line_total'
 
 async function fetchIn(table, cols, column, ids, orderCol = 'id') {
   let all = []
@@ -25,10 +25,10 @@ function check(error) {
   if (error) throw new Error(error.message || String(error))
 }
 
-// By (invoice_date, invoice_number). When either date is missing, fall back to the number only
+// By (date, invoice_number). When either date is missing, fall back to the number only
 // rather than sorting the undated invoice before everything.
 function cmpInvoice(a, b) {
-  const ad = a.invoice_date, bd = b.invoice_date
+  const ad = a.date, bd = b.date
   if (ad && bd && ad !== bd) return ad < bd ? -1 : 1
   return String(a.invoice_number ?? '').localeCompare(String(b.invoice_number ?? ''), undefined, { numeric: true })
 }
@@ -44,13 +44,13 @@ export function earlierInvoicesOf(invoices, current) {
 export async function fetchDeliveryReport(invoiceId, reportId = null) {
   if (!invoiceId) return null
   const [invoice] = await fetchAllRows(() => supabase.from('invoices')
-    .select('id, invoice_number, invoice_date, quotation_id, site_id, status').eq('id', invoiceId).order('id', { ascending: true }))
+    .select('id, invoice_number, date, quotation_id, site_id, status').eq('id', invoiceId).order('id', { ascending: true }))
   if (!invoice) throw new Error('ไม่พบใบแจ้งหนี้')
   const { site_id: siteId, quotation_id: quotationId } = invoice
 
   const [invoiceItems, sameQuotation, quotations, qItems, reports, tasks, plans, pb] = await Promise.all([
     fetchAllRows(() => supabase.from('invoice_items').select(ITEM_COLS).eq('invoice_id', invoiceId).order('id', { ascending: true })),
-    quotationId ? fetchAllRows(() => supabase.from('invoices').select('id, invoice_number, invoice_date, quotation_id, status')
+    quotationId ? fetchAllRows(() => supabase.from('invoices').select('id, invoice_number, date, quotation_id, status')
       .eq('quotation_id', quotationId).order('id', { ascending: true })) : [],
     quotationId ? fetchAllRows(() => supabase.from('quotations').select('id, discount_amount, discount_pct').eq('id', quotationId).order('id', { ascending: true })) : [],
     quotationId ? fetchAllRows(() => supabase.from('quotation_items').select('id, description, unit_price, line_total')

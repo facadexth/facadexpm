@@ -182,7 +182,7 @@ export function buildReportRows({ invoice, invoiceItems, itemPhases, earlierItem
     const prevAmt = p ? p.amount : 0
     finish({
       key: `item|${k}`, boqCode: null, description: it.description ?? '', phaseId: null, phaseName: '',
-      unit: it.unit ?? null, qty: num(it.quantity ?? it.qty), unitPrice: num(it.unit_price), weightPct: null,
+      unit: it.unit ?? null, qty: num(it.draw_qty ?? it.qty), unitPrice: num(it.unit_price), weightPct: null,
       value: round2(thisAmt + prevAmt), prev: prevAmt, this: thisAmt, remaining: 0, check: 'ok', reasons: [],
     })
   }
