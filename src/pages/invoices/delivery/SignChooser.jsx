@@ -3,6 +3,7 @@
 // report to 'signed' here after the receipt is saved; the remote path is signed by sign-link.
 // Customer LINE push: there is no client-callable endpoint that pushes an arbitrary link to a
 // customer's LINE (pushToCustomer is server-only, used by repair-push), so remote = copy link only.
+import { newId } from '../../../lib/uuid.js'
 import { useState } from 'react'
 import { supabase } from '../../../lib/supabase.js'
 import { Modal } from '../../../components/Modal.jsx'
@@ -63,7 +64,7 @@ export default function SignChooser({ report, tenantId, onClose, onSigned, onPri
       path = `${tenantId}/delivery_report/${report.id}/${Date.now()}-paper.${ext}`
       const { error: upErr } = await supabase.storage.from('document-receipts').upload(path, file, { contentType: file.type })
       if (upErr) throw upErr
-      const id = crypto.randomUUID()
+      const id = newId()
       const { error: dbErr } = await supabase.from('document_receipts').insert({
         id, document_type: 'delivery_report', document_id: report.id,
         signer_name: signerName.trim(), signer_note: 'เซ็นบนกระดาษ (แนบรูป)',

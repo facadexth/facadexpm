@@ -1865,7 +1865,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [photosRow, setPhotosRow] = useState(null)
   const [linkTarget, setLinkTarget] = useState(null)
   const [drRow, setDrRow] = useState(null)
-  const { map: drMap, refetch: refetchDr } = useDeliveryReportStatuses(sortedInvoices.filter(i => i.site_id).map(i => i.id))
+  const { map: drMap, refetch: refetchDr } = useDeliveryReportStatuses(sortedInvoices.filter(i => i.site_id).map(i => i.id), { canEdit })
   // แยก state คนละก้อนกับ photosRow เพราะ Modal ของแอปนี้ไม่รองรับ modal
   // ซ้อน modal (ดูคอมเมนต์ใน Modal.jsx) -- คลิก "พิมพ์เอกสาร" ในโมดัลจัดการรูป
   // จึงต้องปิดโมดัลนั้นแล้วเปิดโมดัลพิมพ์แทนที่ ไม่ใช่เปิดซ้อนกัน

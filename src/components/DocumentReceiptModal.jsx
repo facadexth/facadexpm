@@ -7,6 +7,7 @@
 // caller decides what, if anything, should happen to the underlying
 // document's own status after a successful signature (see Cheques.jsx).
 // ============================================================
+import { newId } from '../lib/uuid.js'
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { Modal } from './Modal.jsx'
@@ -29,7 +30,7 @@ export default function DocumentReceiptModal({ documentType, documentId, tenantI
       if (upErr) throw upErr
 
       // id made here so onSaved can get it without RETURNING (old callers ignore the argument)
-      const receiptId = crypto.randomUUID()
+      const receiptId = newId()
       const { error: dbErr } = await supabase.from('document_receipts').insert({
         id: receiptId,
         document_type: documentType,

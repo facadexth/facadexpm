@@ -9,6 +9,7 @@
 // web-originated photos stay indistinguishable to the rest of the app.
 // See docs/superpowers/specs/2026-09-29-kanban-photo-upload-design.md.
 // ============================================================
+import { newId } from './uuid.js'
 import { supabase } from './supabase.js'
 
 /** Target size for an image before upload -- never upscales, only
@@ -90,7 +91,7 @@ export async function uploadSitePhoto({ file, tenantId, workerId, siteId, taskId
   const { error: uploadError } = await supabase.storage.from('line-site-photos').upload(photoPath, blob, { contentType: 'image/jpeg' })
   if (uploadError) throw uploadError
   // Client-made id, no RETURNING: workers may INSERT but not SELECT line_site_photos (RLS).
-  const id = crypto.randomUUID()
+  const id = newId()
   const { error: insertError } = await supabase.from('line_site_photos')
     .insert({ id, tenant_id: tenantId, worker_id: workerId ?? null, site_id: siteId, date, photo_path: photoPath, task_id: taskId })
   if (insertError) {

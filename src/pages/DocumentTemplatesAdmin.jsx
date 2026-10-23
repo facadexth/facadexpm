@@ -6,6 +6,7 @@
 // The database (RLS + admin RPCs) is the real boundary; the tab is also hidden
 // for non-admins in App.jsx.
 // ============================================================
+import { newId } from '../lib/uuid.js'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useTenant } from '../hooks/useTenant.js'
@@ -156,7 +157,7 @@ export default function DocumentTemplatesAdmin() {
         </div>
       )}
 
-      <PackManager packs={packs} onEdit={setEditPack} onNew={() => setEditPack({ id: crypto.randomUUID(), name_th: '', hero_path: '', gallery: [], features_th: [], tagline_th: '', status: 'draft', isNew: true })} />
+      <PackManager packs={packs} onEdit={setEditPack} onNew={() => setEditPack({ id: newId(), name_th: '', hero_path: '', gallery: [], features_th: [], tagline_th: '', status: 'draft', isNew: true })} />
       {isOwner && tenant && <DocStyleEditor tenant={tenant} refetchTenant={refetchTenant} title="🎨 ระยะ/รูปแบบเอกสารของบริษัทนี้" />}
       {editPack && <PackEditor pack={editPack} onClose={() => setEditPack(null)} onSaved={() => { setEditPack(null); load() }} />}
       {confirm && <ConfirmDialog title={confirm.title} message={confirm.message} danger={confirm.danger} confirmDisabled={busy} onConfirm={confirm.run} onCancel={() => setConfirm(null)} />}

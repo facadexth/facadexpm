@@ -13,8 +13,8 @@ export function thaiDate(iso) {
   return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' })
 }
 
-// { [invoiceId]: currentReport } for the given invoices; marks shown signed reports as seen once.
-export function useDeliveryReportStatuses(invoiceIds) {
+// { [invoiceId]: currentReport } for the given invoices; marks shown signed reports as seen once (editors only).
+export function useDeliveryReportStatuses(invoiceIds, { canEdit = false } = {}) {
   const key = [...new Set((invoiceIds || []).filter(Boolean))].sort().join(',')
   const [map, setMap] = useState({})
   const [version, setVersion] = useState(0)
@@ -26,11 +26,11 @@ export function useDeliveryReportStatuses(invoiceIds) {
         if (!alive) return
         setMap(m)
         const unseen = Object.values(m).filter(r => r.status === 'signed' && !r.signed_seen_at).map(r => r.id)
-        if (unseen.length) markSignedSeenMany(unseen).catch(e => console.error('markSignedSeen failed', e))
+        if (canEdit && unseen.length) markSignedSeenMany(unseen).catch(e => console.error('markSignedSeen failed', e))
       })
       .catch(e => console.error('delivery report status load failed', e))
     return () => { alive = false }
-  }, [key, version])
+  }, [key, version, canEdit])
   return { map, refetch: () => setVersion(v => v + 1) }
 }
 
