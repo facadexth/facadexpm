@@ -115,12 +115,17 @@ function MediaTiles({ items, urls, onOpenImage, onAdd, adding }) {
   )
 }
 
+const CONFLICT_TYPE_LABEL = { ...OTHER_TYPE_LABEL, subcontract: 'ผู้รับเหมา' }
 const conflictBtn = { minHeight: 44, flex: '1 1 180px' }
 
 // Crew already busy on the chosen date (schedule_repair_ticket returned conflicts). เขียนทับ re-calls the RPC
 // with p_overwrite; a checked-in conflict cannot be moved, so เขียนทับ stays disabled while that worker is ticked.
 export function ConflictBox({ conflicts, workerIds, nameOf, busy, onOverwrite, onCancel }) {
-  const jobOf = (c) => (c.type && c.type !== 'site' ? (OTHER_TYPE_LABEL[c.type] || c.type) : (c.label || 'งานอื่น'))
+  const jobOf = (c) => {
+    if (!c.type || c.type === 'site') return c.label || 'งานอื่น'
+    if (c.type === 'factory') return c.label && c.label !== 'factory' ? `โรงงาน · ${c.label}` : 'โรงงาน'
+    return CONFLICT_TYPE_LABEL[c.type] || 'งานอื่น'
+  }
   const line = (c) => `• ${nameOf(c.worker_id)} — กะ${SHIFT_TH[c.shift] || c.shift}: ${jobOf(c)}`
   // A worker unticked since the save drops out of the box.
   const shown = conflicts.list.filter((c) => workerIds.includes(c.worker_id))

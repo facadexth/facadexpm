@@ -62,13 +62,17 @@ describe('ConflictBox', () => {
     expect(screen.queryByText('เช็คอินแล้ว — ย้ายไม่ได้')).toBeNull()
     expect(screen.queryByText('• ต้น — กะเช้า: FX-1 A')).toBeNull()
   })
-  it('leave types use the Thai labels, unknown types fall back to the raw value', () => {
+  it('leave types use the Thai labels, factory/subcontract mapped, unknown types show งานอื่น', () => {
     render(<ConflictBox conflicts={{ date: '2099-11-10', list: [
       { worker_id: 'w1', shift: 'morning', type: 'leave_sick', label: 'leave_sick', checked_in: false },
       { worker_id: 'w2', shift: 'morning', type: 'weird', label: 'weird', checked_in: false },
+      { worker_id: 'w1', shift: 'evening', type: 'factory', label: 'FX-9 โรงงานหลัก', checked_in: false },
+      { worker_id: 'w2', shift: 'evening', type: 'subcontract', label: 'subcontract', checked_in: false },
     ] }} workerIds={['w1', 'w2']} nameOf={nameOf} onOverwrite={() => {}} onCancel={() => {}} />)
     expect(screen.getByText('• ต้น — กะเช้า: ลาป่วย')).toBeTruthy()
-    expect(screen.getByText('• บอย — กะเช้า: weird')).toBeTruthy()
+    expect(screen.getByText('• บอย — กะเช้า: งานอื่น')).toBeTruthy()
+    expect(screen.getByText('• ต้น — กะบ่าย: โรงงาน · FX-9 โรงงานหลัก')).toBeTruthy()
+    expect(screen.getByText('• บอย — กะบ่าย: ผู้รับเหมา')).toBeTruthy()
   })
   it('ยกเลิก calls onCancel', () => {
     const onCancel = vi.fn()
