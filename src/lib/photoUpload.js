@@ -89,14 +89,15 @@ export async function uploadSitePhoto({ file, tenantId, workerId, siteId, taskId
   const photoPath = `${tenantId}/${siteId}/${Date.now()}-${workerId}.jpg`
   const { error: uploadError } = await supabase.storage.from('line-site-photos').upload(photoPath, blob, { contentType: 'image/jpeg' })
   if (uploadError) throw uploadError
-  const { error: insertError } = await supabase.from('line_site_photos')
+  const { data: inserted, error: insertError } = await supabase.from('line_site_photos')
     .insert({ tenant_id: tenantId, worker_id: workerId, site_id: siteId, date, photo_path: photoPath, task_id: taskId })
+    .select('id').single()
   if (insertError) {
     const { error: cleanupError } = await supabase.storage.from('line-site-photos').remove([photoPath])
     if (cleanupError) console.error('orphan cleanup failed for', photoPath, cleanupError)
     throw insertError
   }
-  return { photo_path: photoPath }
+  return { id: inserted?.id ?? null, photo_path: photoPath }
 }
 
 /**
