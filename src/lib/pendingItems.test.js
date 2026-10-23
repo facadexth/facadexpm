@@ -106,4 +106,9 @@ describe('repair_customer_update bell item', () => {
     expect(badgeByTab(shown)).toEqual({ repairs: 3 })
     expect(visiblePendingItems({ repair_customer_update: 2 }, tab => tab !== 'repairs')).toEqual([])
   })
+
+  it('shows signed delivery reports on the invoices page', () => {
+    const item = PENDING_ITEMS.find(i => i.key === 'delivery_report_signed')
+    expect(item).toEqual({ key: 'delivery_report_signed', icon: '✍️', label: 'ลูกค้าเซ็นรับงานแล้ว', tab: 'invoices' })
+  })
 })

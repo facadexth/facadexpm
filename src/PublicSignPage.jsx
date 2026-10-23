@@ -22,6 +22,7 @@ const REASON_MESSAGES = {
   expired: 'ลิงก์นี้หมดอายุแล้ว — กรุณาติดต่อขอลิงก์ใหม่',
   unsupported_document_type: 'ไม่รองรับเอกสารประเภทนี้',
   document_not_found: 'ไม่พบเอกสารที่ลิงก์นี้อ้างอิงถึง',
+  replaced: 'รายงานนี้ถูกแทนด้วยฉบับใหม่',
 }
 
 const fmt = (n) => Number(n ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -111,6 +112,14 @@ function DocumentPaper({ elementId, document: doc, tenant, tenantName, signature
               </tbody>
             </table>
           </div>
+          {doc.cardTitles?.length > 0 && (
+            <div style={{ marginTop: 14, fontSize: 11.5, color: '#444' }}>
+              <strong>งานที่ส่งมอบ</strong>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {doc.cardTitles.map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
+            </div>
+          )}
           {(doc.notes || doc.paymentTerms) && (
             <div style={{ marginTop: 14, fontSize: 11.5, color: '#444', background: '#f7f7fb', borderRadius: 8, padding: 12, display: 'grid', gap: 8 }}>
               {doc.notes && <div><strong>หมายเหตุ</strong><div style={{ whiteSpace: 'pre-line' }}>{doc.notes}</div></div>}

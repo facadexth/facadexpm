@@ -213,6 +213,11 @@ export function markDeliveryReportIssued(id) {
   return updateOne(id, { status: 'issued' })
 }
 
+// Local signing paths (this device / paper photo): lock the report with the receipt.
+export function markDeliveryReportSigned(id, receiptId) {
+  return updateOne(id, { status: 'signed', signed_at: new Date().toISOString(), signed_receipt_id: receiptId })
+}
+
 export function markSignedSeen(id) {
   return updateOne(id, { signed_seen_at: new Date().toISOString() })
 }

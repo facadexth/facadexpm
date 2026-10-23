@@ -21,6 +21,8 @@ export const PENDING_ITEMS = [
   // Accepted repair tickets (received / scheduled / in_progress) the customer added photos or details to
   // from LINE since staff last opened them (admin/owner). pending_review ones are already in repair_pending.
   { key: 'repair_customer_update', icon: '🆕', label: 'ลูกค้าเพิ่มข้อมูลงานซ่อม', tab: 'repairs' },
+  // Delivery reports (รายงานส่งงาน) the customer signed that staff haven't opened yet (signed_seen_at null).
+  { key: 'delivery_report_signed', icon: '✍️', label: 'ลูกค้าเซ็นรับงานแล้ว', tab: 'invoices' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา',          tab: 'quotations' },
 ]
 
