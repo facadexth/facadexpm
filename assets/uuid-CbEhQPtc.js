@@ -1,0 +1,1 @@
+function c(){const o=globalThis.crypto;if(o&&typeof o.randomUUID=="function")return o.randomUUID();const n=o.getRandomValues(new Uint8Array(16));n[6]=n[6]&15|64,n[8]=n[8]&63|128;const t=[...n].map(e=>e.toString(16).padStart(2,"0")).join("");return`${t.slice(0,8)}-${t.slice(8,12)}-${t.slice(12,16)}-${t.slice(16,20)}-${t.slice(20)}`}export{c as n};
