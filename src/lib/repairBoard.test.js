@@ -97,6 +97,9 @@ describe('movePatch', () => {
     expect(movePatch('pending_review', 'declined', now)).toEqual({ status: 'declined', declined_at: now })
     expect(movePatch('scheduled', 'in_progress', now)).toEqual({ status: 'in_progress', started_at: now })
     expect(movePatch('in_progress', 'done', now)).toEqual({ status: 'done', done_at: now })
+    expect(movePatch('scheduled', 'done', now)).toEqual({ status: 'done', done_at: now, started_at: now })
+    expect(movePatch('scheduled', 'done', now, { started_at: null })).toEqual({ status: 'done', done_at: now, started_at: now })
+    expect(movePatch('scheduled', 'done', now, { started_at: '2026-01-01T00:00:00Z' })).toEqual({ status: 'done', done_at: now })
   })
   it('sets only the status when the forward move has no timestamp of its own', () => {
     expect(movePatch('received', 'scheduled', now)).toEqual({ status: 'scheduled' })
