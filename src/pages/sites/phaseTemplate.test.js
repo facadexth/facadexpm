@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   DEFAULT_PHASE_TEMPLATE, parsePhaseTemplate, serializePhaseTemplate, templateTotal, templateProblems,
-  moveTemplateRow, templateToPhaseRows, compareWeightsWithTemplate,
+  moveTemplateRow, templateToPhaseRows, compareWeightsWithTemplate, parseExtraTemplates,
 } from './phaseTemplate.js'
 import { PHASE_TEMPLATE } from './ganttTimeline.js'
 
@@ -97,5 +97,24 @@ describe('compareWeightsWithTemplate', () => {
     const r = compareWeightsWithTemplate([{ id: 'p1', name: 'ผลิต', billing_weight_pct: 40 }], tpl)
     expect(r.rows[0].changed).toBe(false)
     expect(r.updates).toEqual([])
+  })
+})
+
+describe('parseExtraTemplates', () => {
+  it('missing, bad JSON, not an array -> []', () => {
+    expect(parseExtraTemplates(null)).toEqual([])
+    expect(parseExtraTemplates('{x')).toEqual([])
+    expect(parseExtraTemplates('{"a":1}')).toEqual([])
+  })
+  it('parses the aluminium template in order and drops entries without label or rows', () => {
+    const raw = JSON.stringify([
+      { key: 'alu', label: 'งานอลูมิเนียม', rows: [{ name: 'ทำแบบเพื่อขออนุมัติ', weight: 0 }, { name: 'วงกบและบาน', weight: 40 }, { name: 'กระจก', weight: 40 }, { name: 'อุปกรณ์และเก็บงาน', weight: 20 }] },
+      { key: 'x', label: '', rows: [{ name: 'a', weight: 100 }] },
+      { key: 'y', label: 'ว่าง', rows: [] },
+    ])
+    const out = parseExtraTemplates(raw)
+    expect(out).toHaveLength(1)
+    expect(out[0].label).toBe('งานอลูมิเนียม')
+    expect(out[0].rows.map((r) => [r.name, r.weight])).toEqual([['ทำแบบเพื่อขออนุมัติ', 0], ['วงกบและบาน', 40], ['กระจก', 40], ['อุปกรณ์และเก็บงาน', 20]])
   })
 })

@@ -9,6 +9,10 @@
 import { PHASE_TEMPLATE } from './ganttTimeline.js'
 
 export const PHASE_TEMPLATE_KEY = 'phase_template'
+// Extra named templates offered next to the company template when a site starts its Gantt:
+// JSON [{ key, label, rows: [{ name, weight }] }]. Only set for companies that need one
+// (FacadeX "งานอลูมิเนียม"); missing / invalid -> [] and the Gantt shows the single button.
+export const PHASE_TEMPLATES_EXTRA_KEY = 'phase_templates_extra'
 
 export const DEFAULT_PHASE_TEMPLATE = PHASE_TEMPLATE.map((t) => ({ name: t.name, sort_order: t.sort_order, weight: t.billing_weight_pct }))
 
@@ -30,6 +34,21 @@ export function parsePhaseTemplate(raw) {
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((r, i) => ({ ...r, sort_order: i + 1 }))
   return rows.length ? rows : DEFAULT_PHASE_TEMPLATE
+}
+
+/** raw 'phase_templates_extra' value -> [{ key, label, rows }]; bad entries dropped. */
+export function parseExtraTemplates(raw) {
+  if (raw == null || String(raw).trim() === '') return []
+  let json
+  try { json = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
+  if (!Array.isArray(json)) return []
+  return json.flatMap((t, i) => {
+    const label = String(t?.label ?? '').trim()
+    if (!label || !Array.isArray(t?.rows) || !t.rows.length) return []
+    const rows = parsePhaseTemplate(t.rows)
+    if (rows === DEFAULT_PHASE_TEMPLATE) return []
+    return [{ key: String(t.key ?? `extra${i}`), label, rows }]
+  })
 }
 
 /** editor rows -> the JSON string saved to app_settings. */

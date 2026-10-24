@@ -13,7 +13,7 @@ import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses, use
 import { supabase } from '../../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
 import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, computeFocusRange, computeAxisTicks, dateAtPercent, phaseOverlapsRange, STATUS_COLOR, expandRangeForTransactions } from './ganttTimeline.js'
-import { PHASE_TEMPLATE_KEY, parsePhaseTemplate, templateToPhaseRows, compareWeightsWithTemplate } from './phaseTemplate.js'
+import { PHASE_TEMPLATE_KEY, PHASE_TEMPLATES_EXTRA_KEY, parsePhaseTemplate, parseExtraTemplates, templateToPhaseRows, compareWeightsWithTemplate } from './phaseTemplate.js'
 import { groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
 import { summarizeTasks } from './phaseTasksCalc.js'
 import { siteProgress } from './progressCalc.js'
@@ -107,6 +107,10 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   // app_settings gets the built-in template through parsePhaseTemplate(null).
   const { data: templateRaw } = useAppSetting(PHASE_TEMPLATE_KEY, '')
   const phaseTemplate = useMemo(() => parsePhaseTemplate(templateRaw), [templateRaw])
+  // Extra templates (FacadeX "งานอลูมิเนียม"): when any exist, the empty state lets the user pick.
+  const { data: extraRaw } = useAppSetting(PHASE_TEMPLATES_EXTRA_KEY, '')
+  const extraTemplates = useMemo(() => parseExtraTemplates(extraRaw), [extraRaw])
+  const [templatePick, setTemplatePick] = useState('std')
   const [weightsDialogOpen, setWeightsDialogOpen] = useState(false)
   const [applyingWeights, setApplyingWeights] = useState(false)
   // PLAN layer on the single-site Gantt: 'latest' (default), 'off', or a site_plans id.
@@ -411,7 +415,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const applyTemplate = async (site) => {
     setApplyingTemplate(true)
     try {
-      const rows = templateToPhaseRows(phaseTemplate).map((t) => ({ site_id: site.id, ...t }))
+      const picked = extraTemplates.find((t) => t.key === templatePick)
+      const rows = templateToPhaseRows(picked ? picked.rows : phaseTemplate).map((t) => ({ site_id: site.id, ...t }))
       const { error } = await supabase.from('site_phases').insert(rows)
       if (error) throw error
       await afterWrite()
@@ -486,10 +491,21 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       return (
         <div className="card" style={{ padding: 32, textAlign: 'center' }}>
           <div style={{ color: 'var(--text3)', marginBottom: 14 }}>ไซท์นี้ยังไม่มีขั้นตอนงาน</div>
+          {canEdit && extraTemplates.length > 0 && (
+            <div role="radiogroup" aria-label="เลือกเทมเพลต" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 8, maxWidth: 560, margin: '0 auto 14px', textAlign: 'left' }}>
+              {[{ key: 'std', label: 'มาตรฐาน', rows: phaseTemplate }, ...extraTemplates].map((t) => (
+                <button key={t.key} type="button" role="radio" aria-checked={templatePick === t.key} onClick={() => setTemplatePick(t.key)}
+                  style={{ font: 'inherit', textAlign: 'left', cursor: 'pointer', padding: 10, borderRadius: 10, color: 'var(--text)', background: templatePick === t.key ? 'var(--bg3, transparent)' : 'transparent', border: `2px solid ${templatePick === t.key ? 'var(--accent, #c2410c)' : 'var(--border)'}` }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>{t.label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>{t.rows.map((r) => `${r.name} ${r.weight}%`).join(' · ')}</div>
+                </button>
+              ))}
+            </div>
+          )}
           {canEdit && (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
               <button type="button" className="btn btn-primary btn-sm" disabled={applyingTemplate} onClick={() => applyTemplate(site)}>
-                {applyingTemplate ? '⏳ กำลังเพิ่ม...' : '+ เริ่มใช้ Gantt (เทมเพลตขั้นตอนงาน)'}
+                {applyingTemplate ? '⏳ กำลังเพิ่ม...' : `+ เริ่มใช้ Gantt (${extraTemplates.length ? (extraTemplates.find((t) => t.key === templatePick)?.label ?? 'มาตรฐาน') : 'เทมเพลตขั้นตอนงาน'})`}
               </button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอนเอง</button>
             </div>
