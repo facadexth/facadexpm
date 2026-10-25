@@ -15,6 +15,11 @@ export function clampMark(m) {
   return { ...m, x, y, w: Math.max(0, w), h: Math.max(0, h) }
 }
 
+// Card picker label: the same BOQ item has a card per phase (and per floor), so the name alone repeats.
+export function markCardLabel(task, phaseName) {
+  return [task?.name, phaseName, task?.zone].filter(Boolean).join(' · ')
+}
+
 export function pointToFraction(e, el) {
   const r = el.getBoundingClientRect()
   if (!r.width || !r.height) return { x: 0, y: 0 }
@@ -36,6 +41,8 @@ export default function PlanMarkupEditor({ siteId, tenantId, plans = [], marksBy
   const tried = useRef(new Set()) // plan ids whose signed URL was already requested (no retry loop)
   const plan = plans.find(p => p.id === activeId) || null
   const cardOrder = cards.map(c => c.taskId)
+  // picker sorted by name (AD1, AD2, … AD10); numbering on the plan still follows cardOrder
+  const pickerCards = [...cards].sort((a, b) => String(a.title).localeCompare(String(b.title), 'th', { numeric: true }))
 
   useEffect(() => { if (!activeId && plans[0]) setActiveId(plans[0].id) }, [plans, activeId])
   useEffect(() => { setMarks(marksByPlan[activeId] || []); setDirty(false); setPending(null) }, [activeId, marksByPlan])
@@ -139,7 +146,7 @@ export default function PlanMarkupEditor({ siteId, tenantId, plans = [], marksBy
                 <select aria-label={`การ์ดของเครื่องหมาย ${i + 1}`} value={m.task_id || ''} style={{ minWidth: 0, flex: 1 }}
                   onChange={e => { setCard(i, e.target.value); if (pending === i) setPending(null) }}>
                   <option value="">— เลือกการ์ด —</option>
-                  {cards.map(c => <option key={c.taskId} value={c.taskId}>{c.title}</option>)}
+                  {pickerCards.map(c => <option key={c.taskId} value={c.taskId}>{c.title}</option>)}
                 </select>
                 <button type="button" aria-label={`ลบเครื่องหมาย ${i + 1}`} title={cardName(m.task_id)} style={btn(false)} onClick={() => removeMark(i)}>ลบ</button>
               </li>

@@ -24,6 +24,16 @@ export default function PlanMarkup({ plan, src, marks = [], colourFor = () => '#
         })}
         {children}
       </svg>
+      {/* Rect numbers: HTML badge at the top-left corner, same number as a pin of the same card. */}
+      {marks.map((m, i) => m.kind !== 'rect' ? null : (
+        <span key={'rn' + (m.id || i)} data-kind="rect-label" style={{
+          position: 'absolute', left: `${m.x * 100}%`, top: `${m.y * 100}%`, transform: 'translate(-35%,-35%)',
+          minWidth: 20, height: 20, padding: '0 4px', borderRadius: 10, boxSizing: 'border-box', border: '2px solid #fff',
+          background: colourFor(m.task_id ?? m.taskId ?? null), color: '#fff', fontSize: 11, fontWeight: 700,
+          lineHeight: '16px', textAlign: 'center', pointerEvents: 'none',
+          WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
+        }}>{pinLabel(m.task_id ?? m.taskId, cardOrder)}</span>
+      ))}
       {/* Pins are HTML so they stay round at any aspect ratio (the SVG above is stretched). */}
       {marks.map((m, i) => m.kind === 'rect' ? null : (
         <span key={'pin' + (m.id || i)} data-kind="pin" style={{

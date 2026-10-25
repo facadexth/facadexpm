@@ -57,7 +57,7 @@ export async function fetchDeliveryReport(invoiceId, reportId = null) {
       .eq('quotation_id', quotationId).order('id', { ascending: true })) : [],
     fetchAllRows(() => supabase.from('delivery_reports').select('*').eq('invoice_id', invoiceId).order('created_at', { ascending: false })),
     siteId ? fetchAllRows(() => supabase.from('phase_tasks')
-      .select('id, phase_id, site_id, name, status, progress_mode, boq_item_id, planned_qty, done_qty')
+      .select('id, phase_id, site_id, name, zone, status, progress_mode, boq_item_id, planned_qty, done_qty')
       .eq('site_id', siteId).order('id', { ascending: true })) : [],
     siteId ? fetchAllRows(() => supabase.from('site_drawings').select('*').eq('site_id', siteId).order('sort_order', { ascending: true })) : [],
     fetchProgressBillingData(siteId, quotationId),

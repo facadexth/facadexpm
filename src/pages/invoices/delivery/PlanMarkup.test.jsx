@@ -13,7 +13,7 @@ vi.mock('../../../lib/supabase.js', () => ({
 }))
 
 import PlanMarkup from './PlanMarkup.jsx'
-import PlanMarkupEditor, { clampMark } from './PlanMarkupEditor.jsx'
+import PlanMarkupEditor, { clampMark, markCardLabel } from './PlanMarkupEditor.jsx'
 import { markColour } from '../../../lib/deliveryReport.js'
 
 // jsdom has no PointerEvent; without this fireEvent.pointer* drops clientX/clientY.
@@ -152,5 +152,21 @@ describe('PlanMarkupEditor', () => {
 
   it('clampMark keeps x+w ≤ 1', () => {
     expect(clampMark({ kind: 'rect', x: 0.9, y: -1, w: 0.5, h: 2 })).toMatchObject({ x: 0.9, y: 0, w: 0.1, h: 1 })
+  })
+})
+
+describe('mark labels', () => {
+  afterEach(cleanup)
+
+  it('a rect gets the same number badge as a pin of the same card', () => {
+    const { container } = render(<PlanMarkup plan={{ url: 'x' }} cardOrder={['a', 'b']}
+      marks={[{ kind: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2, task_id: 'b' }, { kind: 'pin', x: 0.5, y: 0.5, task_id: 'b' }]} />)
+    expect(container.querySelector('[data-kind="rect-label"]').textContent).toBe('2')
+    expect(container.querySelector('[data-kind="pin"]').textContent).toBe('2')
+  })
+
+  it('card picker label adds phase and floor so per-phase cards of one item differ', () => {
+    expect(markCardLabel({ name: 'AD2', zone: 'FL.3' }, 'กระจก')).toBe('AD2 · กระจก · FL.3')
+    expect(markCardLabel({ name: 'AD2', zone: null }, 'ผลิต')).toBe('AD2 · ผลิต')
   })
 })

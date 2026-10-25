@@ -7,7 +7,7 @@ import { Modal } from '../../../components/Modal.jsx'
 import { useTenant } from '../../../hooks/useTenant.js'
 import { useDeliveryReport, saveDeliveryReport, reissueDeliveryReport } from '../../../hooks/useDeliveryReport.js'
 import { nextReportStatusOnEdit, markColour } from '../../../lib/deliveryReport.js'
-import PlanMarkupEditor from './PlanMarkupEditor.jsx'
+import PlanMarkupEditor, { markCardLabel } from './PlanMarkupEditor.jsx'
 import { uploadSitePhoto, bangkokTodayIso } from '../../../lib/photoUpload.js'
 
 const REASON_TEXT = {
@@ -263,7 +263,7 @@ function Editor({ data, refetch, onClose, onSaved }) {
           {showPlans && (
             <div style={{ marginTop: 8 }} data-testid="dr-plan-editor">
               <PlanMarkupEditor siteId={invoice.site_id} tenantId={tenant?.id} plans={plans} marksByPlan={marksByPlan}
-                cards={chosen.map(t => ({ taskId: t.id, title: t.name }))}
+                cards={chosen.map(t => ({ taskId: t.id, title: markCardLabel(t, phaseName(t.phase_id)) }))}
                 colourFor={id => markColour(id, { prevTaskIds: prevSet, thisTaskIds: thisSet })}
                 onChanged={() => refetch?.()} />
             </div>
