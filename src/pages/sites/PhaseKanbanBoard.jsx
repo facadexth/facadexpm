@@ -33,7 +33,7 @@ import { canManagePlan, canManageSites } from '../../lib/roles.js'
 import { auditLog } from '../../lib/audit.js'
 import { useBoqPhaseSplits } from './useBoqPhaseSplits.js'
 import { cellsFromRows } from './boqPhaseSplit.js'
-import { boqRemainingInPhase, boqCardCandidates, bulkCardRows, buildBoqMultiSave } from './boqPhaseCards.js'
+import { boqRemainingInPhase, boqCardCandidates, bulkCardRows, buildBoqMultiSave, sortZones } from './boqPhaseCards.js'
 import BoqBulkCardsDialog, { insertBoqCards } from './BoqBulkCardsDialog.jsx'
 import RecordProgressDialog from './RecordProgressDialog.jsx'
 import SplitTaskDialog from './SplitTaskDialog.jsx'
@@ -608,7 +608,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setSelectedChain([phaseId, ...chain.filter((id) => id !== phaseId)])
   }, [initialLeafId, allSubtasks])
 
-  const zones = useMemo(() => [...new Set(leafMicrotasks.map((t) => t.zone).filter(Boolean))].sort(), [leafMicrotasks])
+  const zones = useMemo(() => sortZones(new Set(leafMicrotasks.map((t) => t.zone).filter(Boolean))), [leafMicrotasks])
   const effectiveZone = zones.includes(selectedZone) ? selectedZone : 'all'
   const visibleTasks = leafMicrotasks.filter((t) => effectiveZone === 'all' || t.zone === effectiveZone)
 
