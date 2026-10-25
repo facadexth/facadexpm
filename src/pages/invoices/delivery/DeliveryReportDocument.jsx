@@ -153,7 +153,7 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
             <table data-testid="dr-compact" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 8.5, tableLayout: 'fixed' }}>
               <thead><tr style={{ background: '#3d3a34', color: '#fff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
                 <th style={{ ...td, textAlign: 'left', width: '30%' }}>รายการ</th>
-                {compact.columns.map(c => <th key={c.id} style={{ ...td, textAlign: 'center' }}>{c.name}</th>)}
+                {compact.columns.map(c => <th key={c.id} style={{ ...td, textAlign: 'center', whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.2 }}>{c.name}</th>)}
                 <th style={{ ...td, textAlign: 'right', width: '13%' }}>มูลค่างวดนี้</th>
                 <th style={{ ...td, textAlign: 'right', width: '15%' }}>สะสม</th>
               </tr></thead>
@@ -161,7 +161,7 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
                 {pg.rows.map(r => (
                   <tr key={r.key} style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                     <td style={td} title={r.description}>
-                      <b>{r.boqCode || clip(r.description, 40)}</b>
+                      <b>{r.boqCode ? `${r.boqCode}. ` : ''}{clip(r.description, 40)}</b>
                       <div style={{ fontSize: 7.5, color: '#6b7280' }}>
                         {r.qty} {r.unit || ''} × {fmt(r.unitPrice)}{r.weights.length > 0 && ` · ${r.weights.map(w => w.pct).join('/')}%`}
                       </div>
