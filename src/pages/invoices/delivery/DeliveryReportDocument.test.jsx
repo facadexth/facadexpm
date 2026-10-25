@@ -113,4 +113,21 @@ describe('DeliveryReportDocument', () => {
     await waitFor(() => expect(document.querySelectorAll('img').length).toBe(1))
     expect(document.querySelector('img').getAttribute('src')).toBe('u:ok.jpg')
   })
+
+  it('mode toggle: detailed by default for few items, compact shows one row per item with — cells', async () => {
+    const { fireEvent } = await import('@testing-library/react')
+    const r = (boqId, phaseId, w, value, ths) => ({ key: `${boqId}|${phaseId}`, boqId, boqCode: boqId.toUpperCase(), description: boqId,
+      phaseId, phaseName: phaseId, unit: 'ชุด', qty: 2, unitPrice: 100, weightPct: w, value, prev: 0, this: ths, remaining: value - ths, check: 'ok', reasons: [] })
+    hookData = makeData({
+      phases: [{ id: 'fr', name: 'วงกบ' }, { id: 'gl', name: 'กระจก' }],
+      rows: [r('d1', 'fr', 100, 200, 100), r('d2', 'fr', 50, 100, 50), r('d2', 'gl', 50, 100, 0)],
+    })
+    render(<DeliveryReportDocumentModal invoiceId="inv1" reportId="r1" onClose={() => {}} />)
+    expect(screen.queryByTestId('dr-compact')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'แบบย่อ' }))
+    const table = screen.getByTestId('dr-compact')
+    expect(table.querySelectorAll('tbody tr').length).toBe(2)
+    expect(table.textContent).toContain('—')
+    expect(table.textContent).toContain('วงกบ')
+  })
 })

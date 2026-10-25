@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, fmt } from '../../../lib/supabase.js'
 import { useTenant } from '../../../hooks/useTenant.js'
 import { useDeliveryReport } from '../../../hooks/useDeliveryReport.js'
-import { markColour, MARK_PREV, MARK_THIS, MARK_REMAINING } from '../../../lib/deliveryReport.js'
+import { markColour, MARK_PREV, MARK_THIS, MARK_REMAINING, buildCompactRows, defaultReportMode } from '../../../lib/deliveryReport.js'
 import { downloadPDF } from '../../../lib/pdf.js'
 import { Modal } from '../../../components/Modal.jsx'
 import RowActionsMenu from '../../../components/RowActionsMenu.jsx'
@@ -16,6 +16,8 @@ import PlanMarkup from './PlanMarkup.jsx'
 
 const PAGE_HEIGHT_MM = 270
 const ROWS_PER_PAGE = 14
+const COMPACT_ROWS_PER_PAGE = 16
+const qtyTxt = n => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100))
 const DESC_MAX = 90
 const clip = (t, n) => { const x = String(t ?? ''); return x.length > n ? x.slice(0, n - 1) + '…' : x }
 const thDate = d => (d ? new Date(d).toLocaleDateString('th-TH') : '')
@@ -37,7 +39,7 @@ function cardUnits(c, shownCount) {
   return shownCount > 2 || String(c.caption || '').length > 120 ? 2 : 1
 }
 
-export function DeliveryReportDocument({ data, report, tenant, urls = {}, receipt = null, signatureUrl = null, elementId = 'dr-doc' }) {
+export function DeliveryReportDocument({ data, report, tenant, urls = {}, receipt = null, signatureUrl = null, elementId = 'dr-doc', mode = 'detailed', showAll = false }) {
   const { invoice, rows = [], totals = {}, cards = [], tasks = [], phases = [], photosByTask = {}, plans = [], marksByPlan = {}, reports = [], replacedBy = null, site = null } = data
   const taskById = new Map(tasks.map(t => [t.id, t]))
   const phaseName = new Map(phases.map(p => [p.id, p.name]))
@@ -73,8 +75,13 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
       { group: true, key: g.key, n: gi + 1, name: g.name, value: sumOf(g.rows, 'value'), prev: sumOf(g.rows, 'prev'), this: sumOf(g.rows, 'this'), remaining: sumOf(g.rows, 'remaining') },
       ...g.rows,
     ])
+  // Compact (แบบย่อ): one line per item, phases as columns. Whole rows per page, header repeated
+  // on every page (each page is its own table), so no row is ever split.
+  const compact = mode === 'compact' ? buildCompactRows(rows, phases, { showAll }) : null
+  const tableLines = compact ? compact.rows : lines
+  const perPage = compact ? COMPACT_ROWS_PER_PAGE : ROWS_PER_PAGE
   const rowPages = []
-  for (let i = 0; i < lines.length; i += ROWS_PER_PAGE) rowPages.push(lines.slice(i, i + ROWS_PER_PAGE))
+  for (let i = 0; i < tableLines.length; i += perPage) rowPages.push(tableLines.slice(i, i + perPage))
   if (!rowPages.length) rowPages.push([])
   const shownPhotos = c => {
     const task = c.task_id ? taskById.get(c.task_id) : null
@@ -136,7 +143,53 @@ export function DeliveryReportDocument({ data, report, tenant, urls = {}, receip
           height: `${PAGE_HEIGHT_MM}mm`, boxSizing: 'border-box', padding: '6mm 8mm', display: 'flex', flexDirection: 'column', overflow: 'hidden',
           pageBreakAfter: idx < pages.length - 1 ? 'always' : 'auto', breakAfter: idx < pages.length - 1 ? 'page' : 'auto',
         }}>
-          {pg.kind === 'table' && <>
+          {pg.kind === 'table' && compact && <>
+            {withBanner('สรุปการส่งงาน (บาท ก่อน VAT)', idx + 1)}
+            <div data-testid="dr-compact-sum" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '2mm', fontSize: 9, marginBottom: '2mm' }}>
+              {[['มูลค่าสัญญา', fmt(contract)], ['งวดนี้', fmt(totals.this), MARK_THIS], ['สะสมรวมงวดนี้', fmt((Number(totals.prev) || 0) + (Number(totals.this) || 0))], ['ส่งแล้ว', `${totals.pctDone ?? 0}%`]].map(([l, v, c]) => (
+                <div key={l} style={{ border: '1px solid #e4e6ef', borderRadius: 3, padding: '1mm 2mm' }}>{l}<div style={{ fontSize: 12, fontWeight: 800, color: c }}>{v}</div></div>
+              ))}
+            </div>
+            <table data-testid="dr-compact" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 8.5, tableLayout: 'fixed' }}>
+              <thead><tr style={{ background: '#3d3a34', color: '#fff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                <th style={{ ...td, textAlign: 'left', width: '30%' }}>รายการ</th>
+                {compact.columns.map(c => <th key={c.id} style={{ ...td, textAlign: 'center' }}>{c.name}</th>)}
+                <th style={{ ...td, textAlign: 'right', width: '13%' }}>มูลค่างวดนี้</th>
+                <th style={{ ...td, textAlign: 'right', width: '15%' }}>สะสม</th>
+              </tr></thead>
+              <tbody>
+                {pg.rows.map(r => (
+                  <tr key={r.key} style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+                    <td style={td} title={r.description}>
+                      <b>{r.boqCode || clip(r.description, 40)}</b>
+                      <div style={{ fontSize: 7.5, color: '#6b7280' }}>
+                        {r.qty} {r.unit || ''} × {fmt(r.unitPrice)}{r.weights.length > 0 && ` · ${r.weights.map(w => w.pct).join('/')}%`}
+                      </div>
+                    </td>
+                    {compact.columns.map(c => {
+                      const cell = r.cells[c.id]
+                      if (!cell) return <td key={c.id} style={{ ...td, textAlign: 'center', color: '#b8bcc4' }}>—</td>
+                      return (
+                        <td key={c.id} style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {cell.this > 0 ? <b>{qtyTxt(cell.this)}</b> : <span style={{ color: '#b8bcc4' }}>0</span>}
+                          <span style={{ fontSize: 7.5, color: '#6b7280' }}>/{qtyTxt(cell.cumulative)}/{qtyTxt(cell.total)}</span>
+                        </td>
+                      )
+                    })}
+                    <td style={num}>{fmt(r.this)}</td>
+                    <td style={num}>{fmt(r.cumulative)}<div style={{ fontSize: 7.5, color: '#6b7280' }}>{r.cumulativePct}%</div></td>
+                  </tr>
+                ))}
+              </tbody>
+              {pg.last && <tfoot style={{ fontWeight: 700 }}>
+                <tr><td style={td} colSpan={compact.columns.length + 1}>รวมงวดนี้</td><td style={num}>{fmt(totals.this)}</td><td style={num}>{fmt((Number(totals.prev) || 0) + (Number(totals.this) || 0))}</td></tr>
+                <tr><td style={{ ...td, fontWeight: 400, fontSize: 7.5, color: '#6b7280' }} colSpan={compact.columns.length + 3}>
+                  ช่องเฟส = งวดนี้/สะสม/ทั้งหมด · — = รายการนี้ไม่มีเฟสนั้น{!showAll && ' · แสดงเฉพาะรายการที่ส่งงวดนี้'}
+                </td></tr>
+              </tfoot>}
+            </table>
+          </>}
+          {pg.kind === 'table' && !compact && <>
             {withBanner('สรุปการส่งงาน (บาท ก่อน VAT)', idx + 1)}
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
               <thead><tr style={{ background: '#f4f3ff' }}>
@@ -261,6 +314,9 @@ export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClo
   const [receipt, setReceipt] = useState(null)
   const [signatureUrl, setSignatureUrl] = useState(null)
   const elementId = `dr-doc-${report?.id || 'x'}`
+  const [modeChoice, setModeChoice] = useState(null) // null = default by item count
+  const [showAll, setShowAll] = useState(false)
+  const mode = modeChoice ?? defaultReportMode(data?.rows)
 
   const photoPaths = useMemo(() => {
     if (!data) return []
@@ -313,8 +369,22 @@ export default function DeliveryReportDocumentModal({ invoiceId, reportId, onClo
         {loadErr && <div style={{ color: '#b45309', fontSize: 12, marginBottom: 8 }}>โหลดรูป/ลายเซ็นไม่สำเร็จ</div>}
         {data && !report && <div>ยังไม่มีรายงานส่งงาน</div>}
         {data && report && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, fontSize: 13 }}>
+            <span>รูปแบบตาราง:</span>
+            {[['compact', 'แบบย่อ'], ['detailed', 'แบบละเอียด']].map(([m, label]) => (
+              <button key={m} type="button" className={`btn btn-sm ${mode === m ? 'btn-primary' : 'btn-ghost'}`}
+                aria-pressed={mode === m} onClick={() => setModeChoice(m)}>{label}</button>
+            ))}
+            {mode === 'compact' && (
+              <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> แสดงทุกรายการ
+              </label>
+            )}
+          </div>
+        )}
+        {data && report && (
           <DeliveryReportDocument data={data} report={report} tenant={tenant} urls={urls}
-            receipt={receipt} signatureUrl={signatureUrl} elementId={elementId} />
+            receipt={receipt} signatureUrl={signatureUrl} elementId={elementId} mode={mode} showAll={showAll} />
         )}
       </div>
       <div className="modal-footer">

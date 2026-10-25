@@ -186,7 +186,7 @@ export function buildReportRows({ invoice, invoiceItems, itemPhases, earlierItem
         reasons = [...res.reasons]
       }
       finish({
-        key, boqCode: boq.code ?? null, description: boq.description ?? item?.description ?? '',
+        key, boqId: boq.id, boqCode: boq.code ?? null, description: boq.description ?? item?.description ?? '',
         phaseId: s.phase_id, phaseName: phaseName.get(s.phase_id) ?? '', unit: boq.unit ?? item?.unit ?? null,
         qty, unitPrice, weightPct: num(s.pct), value: vals[i],
         prev: p ? p.amount : 0, this: c ? c.amount : 0, remaining: 0, check, reasons,
@@ -212,6 +212,70 @@ export function buildReportRows({ invoice, invoiceItems, itemPhases, earlierItem
   const totals = { contract: sum('value'), prev: sum('prev'), this: sum('this'), remaining: sum('remaining') }
   totals.pctDone = totals.contract ? round2((totals.prev + totals.this) / totals.contract * 100) : 0
   return { rows, totals }
+}
+
+// ---- Compact mode (แบบย่อ): one row per BOQ item, site phases as columns ----
+export const COMPACT_DEFAULT_THRESHOLD = 30
+
+const itemKeyOf = r => (r.phaseId == null ? r.key : (r.boqId ?? String(r.key).split('|')[0]))
+
+// Detailed mode lists item x phase; count distinct items to pick the default mode.
+export function countReportItems(rows) {
+  return new Set((rows || []).filter(r => r.value || r.prev || r.this || r.remaining).map(itemKeyOf)).size
+}
+
+export function defaultReportMode(rows) {
+  return countReportItems(rows) > COMPACT_DEFAULT_THRESHOLD ? 'compact' : 'detailed'
+}
+
+// Pivot buildReportRows output. Phase qty is derived from money: qty x amount / phase value,
+// so the baht columns are the detailed rows' own numbers summed (totals match exactly).
+// cells[phaseId] = null when the item has no weight in that phase (shown "—").
+// Phases with 0 weight across every item (and nothing billed) are dropped as columns.
+// showAll=false keeps only items with something this งวด.
+export function buildCompactRows(rows, phases, { showAll = false } = {}) {
+  const order = new Map((phases || []).map((p, i) => [p.id, i]))
+  const phaseName = new Map((phases || []).map(p => [p.id, p.name]))
+  const colIds = new Set()
+  for (const r of rows || []) {
+    if (r.phaseId == null) continue
+    if (num(r.weightPct) > 0 || r.value || r.prev || r.this) colIds.add(r.phaseId)
+  }
+  const columns = [...colIds]
+    .sort((a, b) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9))
+    .map(id => ({ id, name: phaseName.get(id) ?? (rows.find(r => r.phaseId === id)?.phaseName || '') }))
+
+  const items = new Map()
+  for (const r of rows || []) {
+    const k = itemKeyOf(r)
+    if (!items.has(k)) {
+      items.set(k, { key: k, boqCode: r.boqCode, description: r.description, unit: r.unit, qty: r.qty,
+        unitPrice: r.unitPrice, weights: [], cells: {}, value: 0, prev: 0, this: 0, cumulative: 0, remaining: 0 })
+    }
+    const it = items.get(k)
+    it.value = round2(it.value + num(r.value))
+    it.prev = round2(it.prev + num(r.prev))
+    it.this = round2(it.this + num(r.this))
+    it.remaining = round2(it.remaining + num(r.remaining))
+    if (r.phaseId != null && colIds.has(r.phaseId) && (num(r.weightPct) > 0 || r.value || r.prev || r.this)) {
+      const total = num(r.qty)
+      const toQty = amt => (r.value ? round2(total * num(amt) / num(r.value)) : 0)
+      const thisQty = toQty(r.this)
+      it.cells[r.phaseId] = { this: thisQty, cumulative: round2(toQty(r.prev) + thisQty), total }
+      it.weights.push({ phaseId: r.phaseId, pct: num(r.weightPct) })
+    }
+  }
+  const out = []
+  for (const it of items.values()) {
+    it.cumulative = round2(it.prev + it.this)
+    it.cumulativePct = it.value ? round2(it.cumulative / it.value * 100) : 0
+    for (const c of columns) if (!(c.id in it.cells)) it.cells[c.id] = null
+    it.weights.sort((a, b) => (order.get(a.phaseId) ?? 1e9) - (order.get(b.phaseId) ?? 1e9))
+    it.hasMovement = it.this > 0 || Object.values(it.cells).some(c => c && c.this > 0)
+    if (showAll ? (it.value || it.prev || it.this || it.remaining) : it.hasMovement) out.push(it)
+  }
+  const thisSum = round2(out.reduce((s, r) => s + r.this, 0))
+  return { columns, rows: out, thisSum }
 }
 
 export function markColour(taskId, { prevTaskIds, thisTaskIds } = {}) {
