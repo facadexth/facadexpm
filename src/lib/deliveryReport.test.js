@@ -36,6 +36,17 @@ describe('buildReportRows', () => {
     expect(row(rows, 'p2').this).toBe(0)
   })
 
+  it('progress invoice line price (40% of the unit price) does not shrink the contract value', () => {
+    // มศว proof: the invoice line carries price x weight; the DR must value the contract at the quotation price
+    const boq = { qi1: { ...boqByQuotationItem.qi1, unit_price: 500 } }
+    const { rows, totals } = buildReportRows({ ...base, boqByQuotationItem: boq,
+      invoiceItems: [{ ...item('it1', 2600), unit_price: 100 }],
+      itemPhases: [{ invoice_item_id: 'it1', boq_item_id: 'b1', phase_id: 'p1', qty: 26, weight_pct: 20, amount: 2600 }] })
+    expect(totals.contract).toBe(13000)
+    expect(row(rows, 'p1')).toMatchObject({ value: 2600, this: 2600, remaining: 0 })
+    expect(row(rows, 'p2').value).toBe(10400)
+  })
+
   it('legacy amount above the done phases spills into the next phases, not onto the done one', () => {
     // live IN2610-002: only ผลิต (p1, 2600) done, invoice bills 13000 → p1 full, rest to p2
     const c = [cards[0], { ...cards[1], done_qty: 0 }]

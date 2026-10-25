@@ -147,7 +147,8 @@ export function buildReportRows({ invoice, invoiceItems, itemPhases, earlierItem
   const valueMap = new Map()
   for (const [qiId, boq] of boqEntries) {
     const item = thisItemByQi.get(qiId) || itemByQi.get(qiId)
-    const unitPrice = num(item?.unit_price ?? boq.unit_price)
+    // quotation price first: a progress invoice line carries price x phase weight, not the unit price
+    const unitPrice = num(boq.unit_price) || num(item?.unit_price)
     const qty = num(boq.planned_qty)
     const splits = sortedSplits(splitsByBoq?.[boq.id], phases)
     const vals = phaseValues(qty, unitPrice, splits)
