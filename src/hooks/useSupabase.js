@@ -414,7 +414,9 @@ export async function ensureQuotationItemUnits(quotationItems) {
   if (!toSeed.length) return
 
   const rows = toSeed.flatMap(buildUnitSeedRows)
-  const { error: insertError } = await supabase.from('quotation_item_units').insert(rows)
+  // Two loads of the same screen can race past the check above; skip rows the other one already inserted
+  const { error: insertError } = await supabase.from('quotation_item_units')
+    .upsert(rows, { onConflict: 'quotation_item_id,unit_index', ignoreDuplicates: true })
   if (insertError) throw insertError
 }
 
