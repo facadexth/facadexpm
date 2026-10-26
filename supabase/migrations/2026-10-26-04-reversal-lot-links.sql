@@ -19,7 +19,9 @@
 --                                 snapshot's pre-FIFO before_wac and the incremental WAC of
 --                                 the re-posted PO receipts). updated_at is left as the
 --                                 restore / movement writers set it, so the exactness stamps
---                                 of other invoices keep their meaning.
+--                                 of other invoices keep their meaning. The exactness test
+--                                 no longer compares WAC (only qty + the updated_at stamp),
+--                                 since those replay finishes change stored WAC.
 --   po_unreceive_reverse_stock    each reversal slice links the receipt row it reverses.
 --                                 (Balances already finish by replay inside the helper.)
 --   confirm_supplier_credit_note  a purchase_return links the credited tax invoice's own
@@ -130,7 +132,11 @@ BEGIN
     SELECT quantity_on_hand, weighted_average_cost, updated_at INTO q, w, u FROM inventory_stock_balances
      WHERE inventory_item_id = sn.inventory_item_id AND site_id = sn.site_id AND tenant_id = v_tenant;
     IF NOT FOUND THEN q := 0; w := 0; u := NULL; END IF;
-    IF sn.after_qty IS NOT NULL AND q = sn.after_qty AND w = sn.after_wac AND u IS NOT DISTINCT FROM sn.after_updated_at THEN
+    -- [2026-10-26-04] exact = same qty and the post-unique updated_at stamp. WAC is NOT compared:
+    -- every void now finishes its cards by FIFO replay without moving updated_at, so another
+    -- invoice's void can legitimately change this key's stored WAC while the key is still
+    -- untouched in the exactness sense (stacked posts: B, A, void A, void B must stay exact).
+    IF sn.after_qty IS NOT NULL AND q = sn.after_qty AND u IS NOT DISTINCT FROM sn.after_updated_at THEN
       v_exact := v_exact || jsonb_build_object('item', sn.inventory_item_id, 'site', sn.site_id);
     ELSE
       v_warn := v_warn || jsonb_build_object('code', 'void_inexact', 'blocking', false, 'inventory_item_id', sn.inventory_item_id, 'site_id', sn.site_id);

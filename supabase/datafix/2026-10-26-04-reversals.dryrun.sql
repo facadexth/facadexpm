@@ -20,9 +20,12 @@
 --      receipt id, links the reversal to the receipt (= reversals.source_movement_id); the
 --      live function text carries r.movement_id as the 10th argument. (A full post needs a
 --      PO / expense / amount fixture that passes _sti_check -- out of proportion here.)
+--   S  stacked posts SB then SA on one key; void SA then void SB: neither warns void_inexact
+--      although SA's replay finish moved the stored WAC away from SB's after_wac (the
+--      exactness test compares qty + updated_at stamp only); the function text check too.
 --   D  every touched card's stored balance equals _replay_stock_lots.
 -- Block 1 (fixtures, no auth) and block 2 (RPC probes as a FacadeX OWNER/ADMIN; each probe
--- group in its own exception sub-block that records a FAIL row 90-94) are separate.
+-- group in its own exception sub-block that records a FAIL row 90-95) are separate.
 BEGIN;
 
 -- ===== migration body =====================================================
@@ -47,7 +50,9 @@ BEGIN;
 --                                 snapshot's pre-FIFO before_wac and the incremental WAC of
 --                                 the re-posted PO receipts). updated_at is left as the
 --                                 restore / movement writers set it, so the exactness stamps
---                                 of other invoices keep their meaning.
+--                                 of other invoices keep their meaning. The exactness test
+--                                 no longer compares WAC (only qty + the updated_at stamp),
+--                                 since those replay finishes change stored WAC.
 --   po_unreceive_reverse_stock    each reversal slice links the receipt row it reverses.
 --                                 (Balances already finish by replay inside the helper.)
 --   confirm_supplier_credit_note  a purchase_return links the credited tax invoice's own
@@ -162,7 +167,11 @@ BEGIN
     SELECT quantity_on_hand, weighted_average_cost, updated_at INTO q, w, u FROM inventory_stock_balances
      WHERE inventory_item_id = sn.inventory_item_id AND site_id = sn.site_id AND tenant_id = v_tenant;
     IF NOT FOUND THEN q := 0; w := 0; u := NULL; END IF;
-    IF sn.after_qty IS NOT NULL AND q = sn.after_qty AND w = sn.after_wac AND u IS NOT DISTINCT FROM sn.after_updated_at THEN
+    -- [2026-10-26-04] exact = same qty and the post-unique updated_at stamp. WAC is NOT compared:
+    -- every void now finishes its cards by FIFO replay without moving updated_at, so another
+    -- invoice's void can legitimately change this key's stored WAC while the key is still
+    -- untouched in the exactness sense (stacked posts: B, A, void A, void B must stay exact).
+    IF sn.after_qty IS NOT NULL AND q = sn.after_qty AND u IS NOT DISTINCT FROM sn.after_updated_at THEN
       v_exact := v_exact || jsonb_build_object('item', sn.inventory_item_id, 'site', sn.site_id);
     ELSE
       v_warn := v_warn || jsonb_build_object('code', 'void_inexact', 'blocking', false, 'inventory_item_id', sn.inventory_item_id, 'site_id', sn.site_id);
@@ -652,6 +661,7 @@ DECLARE
   v_b1 uuid; v_b2 uuid; v_c0 uuid; v_r1 uuid; v_r2 uuid; v_e1 uuid; v_e2 uuid;
   v_sti_a uuid; v_sti_b uuid; v_cn1 uuid; v_cn2 uuid; v_po uuid;
   v_ig uuid; v_g0 uuid; v_gr uuid;
+  v_ik uuid; v_kb uuid; v_ka uuid; v_sti_sa uuid; v_sti_sb uuid;
   t_jan1 timestamptz := timestamptz '2026-01-01 10:00+07';
   t_inv_a timestamptz := timestamptz '2026-01-10 12:00+07';
 BEGIN
@@ -758,6 +768,30 @@ BEGIN
   INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
   VALUES (v_tenant, v_ig, v_s, 9, 175.0 / 9, now());
 
+  -- S: stacked posts on one key K. K0 2 @20 (Jan 1); invoice SB line KB 4 @50 (Jan 5); then
+  -- invoice SA line KA 6 @80 (Jan 10). The stored WAC after SB is a legacy (pre-FIFO) 41,
+  -- not the replay's 40, so voiding SA (replay finish) changes K's WAC under SB.
+  INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (v_tenant, 'dryrun-t10-K', 'pcs') RETURNING id INTO v_ik;
+  INSERT INTO supplier_tax_invoices (tenant_id, supplier_id, invoice_no, invoice_date, net_before_vat, vat, grand_total,
+                                     status, posted_at, posted_by)
+  VALUES (v_tenant, v_sup, 'DRYRUN-T10-SB', date '2026-01-05', 200, 0, 200, 'posted', now(), 'dryrun') RETURNING id INTO v_sti_sb;
+  INSERT INTO supplier_tax_invoices (tenant_id, supplier_id, invoice_no, invoice_date, net_before_vat, vat, grand_total,
+                                     status, posted_at, posted_by)
+  VALUES (v_tenant, v_sup, 'DRYRUN-T10-SA', date '2026-01-10', 480, 0, 480, 'posted', now(), 'dryrun') RETURNING id INTO v_sti_sa;
+  PERFORM pg_temp.t10_mv(v_tenant, v_ik, v_s, 'purchase_in', 2, 20, 'dryrun', NULL, t_jan1);
+  v_kb := pg_temp.t10_mv(v_tenant, v_ik, v_s, 'purchase_in', 4, 50, 'supplier_tax_invoice', v_sti_sb, timestamptz '2026-01-05 12:00+07');
+  v_ka := pg_temp.t10_mv(v_tenant, v_ik, v_s, 'purchase_in', 6, 80, 'supplier_tax_invoice', v_sti_sa, t_inv_a);
+  INSERT INTO supplier_tax_invoice_items (tenant_id, invoice_id, sort_order, description, qty, unit_price, amount,
+                                          inventory_item_id, site_id, base_qty, base_unit_cost, posted_movement_id)
+  VALUES (v_tenant, v_sti_sb, 1, 'dryrun T10 stacked SB', 4, 50, 200, v_ik, v_s, 4, 50, v_kb),
+         (v_tenant, v_sti_sa, 1, 'dryrun T10 stacked SA', 6, 80, 480, v_ik, v_s, 6, 80, v_ka);
+  INSERT INTO supplier_tax_invoice_snapshots (tenant_id, invoice_id, inventory_item_id, site_id,
+                                              before_qty, before_wac, after_qty, after_wac, before_updated_at, after_updated_at)
+  VALUES (v_tenant, v_sti_sb, v_ik, v_s, 2, 20, 6, 41, timestamptz '2026-01-01 10:00:05+07', timestamptz '2026-01-05 12:00:05+07'),
+         (v_tenant, v_sti_sa, v_ik, v_s, 6, 41, 12, 60.5, timestamptz '2026-01-05 12:00:05+07', timestamptz '2026-01-10 12:00:05+07');
+  INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
+  VALUES (v_tenant, v_ik, v_s, 12, 60.5, timestamptz '2026-01-10 12:00:05+07');
+
   v_e1 := pg_temp.t10_mv(v_tenant, v_ie, v_s, 'purchase_in', 5, 10, 'dryrun', NULL, t_jan1);
   v_e2 := pg_temp.t10_mv(v_tenant, v_ie, v_s, 'purchase_in', 5, 20, 'dryrun', NULL, timestamptz '2026-01-02 10:00+07');
   INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
@@ -767,7 +801,8 @@ BEGIN
     ('p0', v_p0), ('l1', v_l1), ('d0', v_d0), ('l2', v_l2), ('f0', v_f0), ('fr', v_fr), ('fx', v_fx),
     ('b1', v_b1), ('b2', v_b2), ('c0', v_c0), ('r1', v_r1), ('r2', v_r2), ('e1', v_e1), ('e2', v_e2),
     ('sti_a', v_sti_a), ('sti_b', v_sti_b), ('cn1', v_cn1), ('cn2', v_cn2), ('po', v_po),
-    ('ig', v_ig), ('g0', v_g0), ('gr', v_gr);
+    ('ig', v_ig), ('g0', v_g0), ('gr', v_gr),
+    ('ik', v_ik), ('kb', v_kb), ('ka', v_ka), ('sti_sa', v_sti_sa), ('sti_sb', v_sti_sb);
   INSERT INTO _ctx VALUES (v_email);
 END $$;
 
@@ -805,6 +840,10 @@ DECLARE
   v_ig uuid := (SELECT id FROM _ids WHERE k = 'ig');
   v_g0 uuid := (SELECT id FROM _ids WHERE k = 'g0');
   v_gr uuid := (SELECT id FROM _ids WHERE k = 'gr');
+  v_ik uuid := (SELECT id FROM _ids WHERE k = 'ik');
+  v_sti_sa uuid := (SELECT id FROM _ids WHERE k = 'sti_sa');
+  v_sti_sb uuid := (SELECT id FROM _ids WHERE k = 'sti_sb');
+  res2 jsonb;
   res jsonb; v_exp uuid; v_err text; v_n int; v_ok boolean; v_detail text;
   x record; y record; bal record; rv record; rp record;
 BEGIN
@@ -994,11 +1033,35 @@ BEGIN
                   || chr(10) || '      r.movement_id);%'
       AND v_detail NOT LIKE '%v_at);%', NULL);
 
+  -- ================= probe S: stacked voids stay exact =================
+  BEGIN
+    res := void_supplier_tax_invoice(v_sti_sa, 'dryrun T10 stacked A');
+    SELECT * INTO bal FROM inventory_stock_balances WHERE inventory_item_id = v_ik AND site_id = v_s;
+    INSERT INTO _results VALUES (25, 'S void A (posted last) is exact: K back to 6, stamp = SB''s after stamp, WAC = replay 40 (SB''s snapshot said 41)',
+      NOT EXISTS (SELECT 1 FROM jsonb_array_elements(res->'warnings') w WHERE w->>'code' = 'void_inexact')
+        AND bal.quantity_on_hand = 6 AND bal.weighted_average_cost = 40
+        AND bal.updated_at = timestamptz '2026-01-05 12:00:05+07' AND pg_temp.t10_bal_ok(v_ik, v_s),
+      res::text || ' | ' || pg_temp.t10_card(v_ik, v_s));
+    res2 := void_supplier_tax_invoice(v_sti_sb, 'dryrun T10 stacked B');
+    SELECT * INTO bal FROM inventory_stock_balances WHERE inventory_item_id = v_ik AND site_id = v_s;
+    INSERT INTO _results VALUES (26, 'S void B after void A: NO void_inexact although stored WAC (40) <> SB after_wac (41); K = 2 @20, stamp restored',
+      NOT EXISTS (SELECT 1 FROM jsonb_array_elements(res2->'warnings') w WHERE w->>'code' = 'void_inexact')
+        AND bal.quantity_on_hand = 2 AND bal.weighted_average_cost = 20
+        AND bal.updated_at = timestamptz '2026-01-01 10:00:05+07' AND pg_temp.t10_bal_ok(v_ik, v_s),
+      res2::text || ' | ' || pg_temp.t10_card(v_ik, v_s));
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _results VALUES (95, 'probe S aborted (rows 25-26 missing)', false, SQLSTATE || ' ' || SQLERRM);
+  END;
+  v_detail := pg_get_functiondef('public.void_supplier_tax_invoice(uuid, text)'::regprocedure);
+  INSERT INTO _results VALUES (27, 'S void exactness test no longer compares WAC to after_wac',
+    v_detail NOT LIKE '%sn.after_wac%'
+      AND v_detail LIKE '%sn.after_qty IS NOT NULL AND q = sn.after_qty AND u IS NOT DISTINCT FROM sn.after_updated_at%', NULL);
+
   -- ================= probe D: every touched card equals its replay =================
   SELECT bool_and(pg_temp.t10_bal_ok(k, v_s)), string_agg(pg_temp.t10_card(k, v_s), E'\n')
     INTO v_ok, v_detail
-    FROM unnest(ARRAY[v_ia, v_xd, v_xf, v_ib, v_ic, v_ie, v_ig]) k;
-  INSERT INTO _results VALUES (19, 'D all seven touched cards: stored balance = _replay_stock_lots (qty, fifo_value/qty)',
+    FROM unnest(ARRAY[v_ia, v_xd, v_xf, v_ib, v_ic, v_ie, v_ig, v_ik]) k;
+  INSERT INTO _results VALUES (19, 'D all eight touched cards: stored balance = _replay_stock_lots (qty, fifo_value/qty)',
     coalesce(v_ok, false), v_detail);
 
   -- ================= signatures + grants =================
@@ -1008,8 +1071,10 @@ BEGIN
       AND NOT has_function_privilege('authenticated', 'public._stock_receipt_reversal(uuid, uuid, uuid, numeric, numeric, text, uuid, text, timestamptz, uuid)', 'EXECUTE')
       AND NOT has_function_privilege('anon', 'public._stock_receipt_reversal(uuid, uuid, uuid, numeric, numeric, text, uuid, text, timestamptz, uuid)', 'EXECUTE'),
     NULL);
-  INSERT INTO _results VALUES (21, 'RPC grants kept: void STI / confirm CN / void CN callable by authenticated, not anon; trigger fn by neither',
-    has_function_privilege('authenticated', 'public.void_supplier_tax_invoice(uuid, text)', 'EXECUTE')
+  INSERT INTO _results VALUES (21, 'RPC grants kept: post STI / void STI / confirm CN / void CN callable by authenticated, not anon; trigger fn by neither',
+    has_function_privilege('authenticated', 'public.post_supplier_tax_invoice(uuid, integer)', 'EXECUTE')
+      AND NOT has_function_privilege('anon', 'public.post_supplier_tax_invoice(uuid, integer)', 'EXECUTE')
+      AND has_function_privilege('authenticated', 'public.void_supplier_tax_invoice(uuid, text)', 'EXECUTE')
       AND NOT has_function_privilege('anon', 'public.void_supplier_tax_invoice(uuid, text)', 'EXECUTE')
       AND has_function_privilege('authenticated', 'public.confirm_supplier_credit_note(uuid)', 'EXECUTE')
       AND NOT has_function_privilege('anon', 'public.confirm_supplier_credit_note(uuid)', 'EXECUTE')
