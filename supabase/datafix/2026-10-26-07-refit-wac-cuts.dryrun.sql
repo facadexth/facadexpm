@@ -3,12 +3,15 @@
 --     are only reported, so the whole report always prints. Hard guards (unexpected
 --     rows, foreign keys into the cut, missing owner/site) still RAISE.
 --   * ends in ROLLBACK: nothing is kept.
--- Same OPERATIONAL PRECONDITIONS as the real file (see below): run the refit before any
--- v2 (MO) cut is posted in a month that still holds v1 targets, or the number pre-check
+-- Same OPERATIONAL PRECONDITIONS as the real file (see below): ห้ามตัดสต็อกจากใบแจ้งหนี้
+-- ระหว่าง apply migration 03 จนถึง refit เสร็จ + เว็บใหม่ deploy แล้ว (a ship-window cut
+-- that slips through anyway is discovered as target (b)); run the refit before any v2
+-- (MO) cut is posted in a month that still holds v1 targets, or the number pre-check
 -- refuses; the real run is all-or-nothing across every target and tenant.
 -- Read: DISCOVERED (targets + the numbers they will get), NUMBER_PRECHECK, NUMBERS,
 -- CATEGORY / ITEM / RM_TOTAL (old vs new values), FG, MO, LINKS, NOTE, BALANCES, MIN_QTY,
--- UNLINKED. Every row must be PASS (ITEM may be WARN, NOTE is INFO) before the real run.
+-- UNLINKED. Every row must be PASS (ITEM and a ship-window MO NUMBER_PRECHECK may be WARN,
+-- NOTE is INFO) before the real run.
 --
 -- Refit the posted WAC invoice cuts as FIFO under an MO (FIFO + MO/OB stock documents,
 -- task 13, the last datafix). Run AFTER migrations 2026-10-26-01 .. -04, the task-11
@@ -16,14 +19,32 @@
 -- same body, it only reports (never aborts on a FAIL row) and ends in ROLLBACK.
 --
 -- TARGETS (discovered at run time, nothing hard-coded): every invoice, any tenant, that
--- has a DM or DP stock document but NO MO document. On 2026-10-26 that is only
--- FacadeX IN2601-001 (DM2601-001 + DP2601-001); cuts the owner posts before ship are
--- picked up the same way. An invoice whose DM/DP have no movements at all is NOT a cut:
--- it is reported (WARN) and left untouched.
+-- has a DM or DP stock document AND either
+--   (a) NO MO document (a v1 WAC cut, posted before migration 03), or
+--   (b) an MO with target_total IS NULL whose cut came from the OLD (1.33.2) web client
+--       through migration 03's RPC during the ship window: that client sends no targets,
+--       no lot links and WAC prices. Marker: at least one raw-material out-row
+--       (reference_type 'invoice', sale_out / transfer_out) with lot_movement_id IS NULL,
+--       OR (the switch-over may have linked those rows if it ran after the cut) any
+--       raw-material out-row at all, OR a finished-goods row with a legacy PI-/PO- note.
+--       The new client always sends a numeric p_target_total, and this refit's own
+--       re-posts set target_total whenever raw material is issued (an FG-only re-post has
+--       a NULL target but no raw material and no PI-/PO- notes), so (b) never matches a
+--       v2 cut and a re-run never re-targets its own output.
+-- On 2026-10-26 that is only FacadeX IN2601-001 (DM2601-001 + DP2601-001); cuts the owner
+-- posts before ship are picked up the same way. An invoice whose documents have no
+-- movements at all is NOT a cut: it is reported (WARN) and left untouched.
 -- TENANT SCOPE: the code intentionally covers ALL tenants (in practice FacadeX only);
 -- the dry-run's DISCOVERED rows show exactly which invoices / tenants it will touch.
 --
 -- OPERATIONAL PRECONDITIONS (read before running):
+--   * SHIP-CHECKLIST GATE: ห้ามตัดสต็อกจากใบแจ้งหนี้ระหว่าง apply migration 03 จนถึง refit
+--     เสร็จ + เว็บใหม่ deploy แล้ว (no invoice stock cut from migration 03's apply until
+--     this refit has run AND the new web is deployed). Discovery (b) above is only the
+--     safety net if a cut slips through anyway: its MO is removed with the DM/DP and the
+--     cut is re-posted like a v1 target. Its MO number is re-issued in post order and
+--     may change (the 1.33.2 client never showed MO numbers: its alert lists DP / DM
+--     only); its DM/DP numbers must come back exactly like any target's.
 --   * Run this refit BEFORE any v2 (MO) cut is posted in a month that still holds v1
 --     targets. A v2 cut in that month takes a later DM/DP number of the same prefix,
 --     so the old numbers can no longer come back and the number pre-check refuses
@@ -41,7 +62,9 @@
 -- REMOVAL SET, per target invoice (exact): every stock_movements row with
 -- reference_type = 'invoice' AND reference_id = the invoice (the whole cut: raw-material
 -- sale_out, central transfer_out / transfer_in, finished-goods purchase_in + sale_out
--- incl. the legacy PI-/PO- noted rows), then the invoice's DM / DP stock_documents rows.
+-- incl. the legacy PI-/PO- noted rows), then the invoice's DM / DP (and, for a
+-- ship-window target, MO) stock_documents rows -- all documents in ONE statement, so the
+-- DM/DP -> MO parent links go with the set.
 -- The statements are spliced in EXECUTE: the SQL runner rejects any statement text that
 -- carries a row/table-removing keyword, so none appears literally in this file.
 --
@@ -81,10 +104,11 @@
 -- documents (and ALL their movements, in ONE statement, so cross-target lot links set
 -- by the switch-over go with the set) are removed first, then targets are re-posted in
 -- post order = ascending ORIGINAL document number (old DM number, then old DP number,
--- then invoice date). The script simulates the numbering BEFORE removing
--- anything (kept max per prefix + rank of each target that will issue that type) and
--- asserts every old DM/DP number comes back; after each post it asserts the returned
--- MO/DM/DP numbers equal the simulated ones. Any mismatch RAISEs (real run) -> nothing
+-- then old MO number, then invoice date). The script simulates the numbering BEFORE
+-- removing anything (kept max per prefix -- the removed MO/DM/DP excluded -- + rank of
+-- each target that will issue that type) and asserts every old DM/DP number comes back
+-- (FAIL) and reports an old MO number that does not (WARN, see the ship-checklist gate);
+-- after each post it asserts the returned MO/DM/DP numbers equal the simulated ones. Any mismatch RAISEs (real run) -> nothing
 -- is changed; the controller investigates (e.g. another invoice already holds a later
 -- DM of the same month).
 --
@@ -95,7 +119,7 @@
 -- checked generically from pg_constraint).
 --
 -- VERIFICATION (one result set; the real run RAISEs if any row is FAIL):
---   per invoice  NUMBERS   old DM/DP vs new MO/DM/DP (and the simulated ones)
+--   per invoice  NUMBERS   old MO/DM/DP vs new MO/DM/DP (and the simulated ones)
 --                CATEGORY  old vs new issued value per category      (FAIL > 0.01)
 --                ITEM      old vs new issued value per item          (FAIL > 0.01 when a
 --                          category of that invoice is off too; WARN when phase 2 made
@@ -122,7 +146,7 @@ CREATE TEMP TABLE IF NOT EXISTS _rf_cfg (abort_on_fail boolean NOT NULL);
 CREATE TEMP TABLE IF NOT EXISTS _rf_target (
   inv uuid PRIMARY KEY, tenant uuid, inv_number text, inv_date date, inv_status text, inv_site uuid,
   sale_site uuid, central uuid, email text, post_ord int, empty boolean DEFAULT false,
-  dm_old text, dp_old text, has_rm boolean, has_fg boolean,
+  dm_old text, dp_old text, mo_old text, has_rm boolean, has_fg boolean,
   mo_expected text, dm_expected text, dp_expected text,
   mo_new text, dm_new text, dp_new text,
   rm_old numeric, rm_new numeric, fg_old numeric, fg_new numeric, n_old int, n_new int);
@@ -273,12 +297,38 @@ BEGIN
   SELECT i.id, i.tenant_id, i.invoice_number, i.date, i.status, i.site_id
   FROM invoices i
   WHERE EXISTS (SELECT 1 FROM stock_documents d WHERE d.invoice_id = i.id AND d.doc_type IN ('DM', 'DP'))
-    AND NOT EXISTS (SELECT 1 FROM stock_documents d WHERE d.invoice_id = i.id AND d.doc_type = 'MO');
+    AND (
+      -- (a) v1 WAC cut: no MO at all
+      NOT EXISTS (SELECT 1 FROM stock_documents d WHERE d.invoice_id = i.id AND d.doc_type = 'MO')
+      -- (b) ship-window cut by the 1.33.2 client through migration 03's RPC
+      OR EXISTS (
+        SELECT 1 FROM stock_documents mo
+        WHERE mo.invoice_id = i.id AND mo.doc_type = 'MO' AND mo.target_total IS NULL
+          AND (
+            -- the brief's marker: a raw-material out-row without a lot link
+            EXISTS (SELECT 1 FROM stock_movements sm
+                    JOIN inventory_items ii ON ii.id = sm.inventory_item_id
+                    WHERE sm.reference_type = 'invoice' AND sm.reference_id = i.id
+                      AND sm.movement_type IN ('sale_out', 'transfer_out')
+                      AND ii.item_kind IS DISTINCT FROM 'finished_goods'
+                      AND sm.lot_movement_id IS NULL)
+            -- the switch-over may have linked them already: any raw-material out-row
+            -- under a NULL-target MO is still the old client's (see TARGETS (b))
+            OR EXISTS (SELECT 1 FROM stock_movements sm
+                       JOIN inventory_items ii ON ii.id = sm.inventory_item_id
+                       WHERE sm.reference_type = 'invoice' AND sm.reference_id = i.id
+                         AND sm.movement_type IN ('sale_out', 'transfer_out')
+                         AND ii.item_kind IS DISTINCT FROM 'finished_goods')
+            -- an FG-only old-client cut: legacy PI-/PO- notes
+            OR EXISTS (SELECT 1 FROM stock_movements sm
+                       JOIN inventory_items ii ON ii.id = sm.inventory_item_id
+                       WHERE sm.reference_type = 'invoice' AND sm.reference_id = i.id
+                         AND ii.item_kind = 'finished_goods' AND sm.notes ~ '^P[IO]-'))));
 
   IF NOT EXISTS (SELECT 1 FROM _rf_target) THEN
-    RAISE NOTICE 'refit: no invoice has DM/DP without MO -- nothing to do';
+    RAISE NOTICE 'refit: no invoice has a WAC (v1 or ship-window) cut -- nothing to do';
     INSERT INTO _rf_report (tenant, post_ord, sec, section, result, detail)
-    VALUES (NULL, 0, 0, 'DISCOVERED', 'PASS', 'no invoice has DM/DP without MO -- nothing to do');
+    VALUES (NULL, 0, 0, 'DISCOVERED', 'PASS', 'no invoice has a WAC (v1 or ship-window) cut -- nothing to do');
     RETURN;
   END IF;
 
@@ -290,8 +340,10 @@ BEGIN
   SELECT d.id, d.invoice_id, d.tenant_id, d.doc_type, d.doc_number
   FROM stock_documents d JOIN _rf_target t ON t.inv = d.invoice_id;
   SELECT count(*) INTO n FROM _rf_old_docs o JOIN _rf_target t ON t.inv = o.inv
-  WHERE o.tenant IS DISTINCT FROM t.tenant OR o.doc_type NOT IN ('DM', 'DP');
+  WHERE o.tenant IS DISTINCT FROM t.tenant OR o.doc_type NOT IN ('MO', 'DM', 'DP');
   IF n > 0 THEN RAISE EXCEPTION 'refit aborted: % old document(s) of another tenant or type', n; END IF;
+  SELECT count(*) INTO n FROM (SELECT inv, doc_type FROM _rf_old_docs GROUP BY inv, doc_type HAVING count(*) > 1) x;
+  IF n > 0 THEN RAISE EXCEPTION 'refit aborted: % invoice/document-type pair(s) hold more than one document', n; END IF;
 
   -- the old cut (removal set)
   INSERT INTO _rf_old (id, inv, tenant, item, site, mtype, qty, cost, is_fg, category, created_at, doc, lot)
@@ -329,7 +381,7 @@ BEGIN
 
   SELECT count(*) INTO n FROM _rf_old o
   WHERE o.doc IS NOT NULL AND NOT EXISTS (SELECT 1 FROM _rf_old_docs d WHERE d.id = o.doc AND d.inv = o.inv);
-  IF n > 0 THEN RAISE EXCEPTION 'refit aborted: % cut row(s) cite a document that is not this invoice''s DM/DP', n; END IF;
+  IF n > 0 THEN RAISE EXCEPTION 'refit aborted: % cut row(s) cite a document that is not this invoice''s MO/DM/DP', n; END IF;
 
   FOR tg IN SELECT inv, inv_number FROM _rf_target WHERE NOT empty LOOP
     SELECT count(DISTINCT site) INTO n FROM _rf_old WHERE inv = tg.inv AND NOT is_fg AND mtype = 'sale_out';
@@ -393,7 +445,8 @@ BEGIN
     has_fg = EXISTS (SELECT 1 FROM _rf_old o WHERE o.inv = t.inv AND o.is_fg),
     n_old = (SELECT count(*) FROM _rf_old o WHERE o.inv = t.inv),
     dm_old = (SELECT d.doc_number FROM _rf_old_docs d WHERE d.inv = t.inv AND d.doc_type = 'DM'),
-    dp_old = (SELECT d.doc_number FROM _rf_old_docs d WHERE d.inv = t.inv AND d.doc_type = 'DP')
+    dp_old = (SELECT d.doc_number FROM _rf_old_docs d WHERE d.inv = t.inv AND d.doc_type = 'DP'),
+    mo_old = (SELECT d.doc_number FROM _rf_old_docs d WHERE d.inv = t.inv AND d.doc_type = 'MO')
   WHERE NOT t.empty;
   UPDATE _rf_target SET has_rm = rm_old > 0 WHERE NOT empty;
 
@@ -405,11 +458,11 @@ BEGIN
 
   -- post order per tenant
   UPDATE _rf_target t SET post_ord = x.rn
-  FROM (SELECT inv, row_number() OVER (PARTITION BY tenant ORDER BY dm_old NULLS LAST, dp_old NULLS LAST, inv_date, inv) AS rn
+  FROM (SELECT inv, row_number() OVER (PARTITION BY tenant ORDER BY dm_old NULLS LAST, dp_old NULLS LAST, mo_old NULLS LAST, inv_date, inv) AS rn
         FROM _rf_target WHERE NOT empty) x
   WHERE x.inv = t.inv;
 
-  -- numbering simulation: removing every target's DM/DP first, then posting in post_ord,
+  -- numbering simulation: removing every target's MO/DM/DP first, then posting in post_ord,
   -- each issuing type gets kept max (of that tenant + prefix) + its rank.
   WITH part AS (
     SELECT t.inv, t.tenant, t.post_ord, dt.doc_type, dt.doc_type || to_char(t.inv_date, 'YYMM') || '-' AS prefix
@@ -435,8 +488,8 @@ BEGIN
 
   INSERT INTO _rf_report (tenant, post_ord, sec, section, result, key, name, detail)
   SELECT t.tenant, t.post_ord, 1, 'DISCOVERED', NULL, t.inv_number, NULL,
-         format('date %s, status %s, %s old rows, old docs DM=%s DP=%s -> will issue MO=%s DM=%s DP=%s',
-                t.inv_date, t.inv_status, t.n_old, coalesce(t.dm_old, '-'), coalesce(t.dp_old, '-'),
+         format('date %s, status %s, %s old rows, old docs MO=%s DM=%s DP=%s -> will issue MO=%s DM=%s DP=%s',
+                t.inv_date, t.inv_status, t.n_old, coalesce(t.mo_old, '-'), coalesce(t.dm_old, '-'), coalesce(t.dp_old, '-'),
                 coalesce(t.mo_expected, '-'), coalesce(t.dm_expected, '-'), coalesce(t.dp_expected, '-'))
   FROM _rf_target t WHERE NOT t.empty;
 
@@ -455,6 +508,15 @@ BEGIN
     INSERT INTO _rf_report (tenant, post_ord, sec, section, result, key, name, detail)
     VALUES (NULL, 0, 0, 'NUMBER_PRECHECK', 'PASS', NULL, NULL, 'every old DM/DP number is the one max+1 will issue again');
   END IF;
+
+  -- a ship-window target's old MO number: reported, never fatal (MO follows DM order;
+  -- the 1.33.2 client never showed it -- see OPERATIONAL PRECONDITIONS)
+  INSERT INTO _rf_report (tenant, post_ord, sec, section, result, key, name, detail)
+  SELECT t.tenant, t.post_ord, 0, 'NUMBER_PRECHECK',
+         CASE WHEN t.mo_old IS NOT DISTINCT FROM t.mo_expected THEN 'PASS' ELSE 'WARN' END, t.inv_number, NULL,
+         format('ship-window MO: old %s -> simulated %s%s', t.mo_old, coalesce(t.mo_expected, '-'),
+                CASE WHEN t.mo_old IS NOT DISTINCT FROM t.mo_expected THEN '' ELSE ' (MO renumbered in post order)' END)
+  FROM _rf_target t WHERE NOT t.empty AND t.mo_old IS NOT NULL;
 
   -- pre-refit snapshot (every card of every in-scope tenant)
   PERFORM pg_temp._rf_snapshot('pre');
@@ -477,7 +539,9 @@ BEGIN
     RAISE EXCEPTION 'refit aborted: removed % movement(s), captured %', n, v_expect;
   END IF;
 
-  EXECUTE 'DE' || 'LETE FROM stock_documents WHERE invoice_id = ANY ($1) AND doc_type IN (''DM'', ''DP'')' USING v_invs;
+  -- ONE statement for every target's documents (MO included): a DM/DP's parent link to
+  -- its MO is checked at the statement's end, so parent and children go together.
+  EXECUTE 'DE' || 'LETE FROM stock_documents WHERE invoice_id = ANY ($1) AND doc_type IN (''MO'', ''DM'', ''DP'')' USING v_invs;
   GET DIAGNOSTICS n = ROW_COUNT;
   SELECT count(*) INTO v_expect FROM _rf_old_docs WHERE inv = ANY (v_invs);
   IF n <> v_expect THEN
@@ -649,16 +713,17 @@ BEGIN
     IF (v_res->>'mo') IS DISTINCT FROM t.mo_expected
        OR (v_res->>'dm') IS DISTINCT FROM coalesce(t.dm_old, t.dm_expected)
        OR (v_res->>'dp') IS DISTINCT FROM coalesce(t.dp_old, t.dp_expected) THEN
-      v_bad := format('%s: got MO=%s DM=%s DP=%s, expected MO=%s DM=%s DP=%s (old DM=%s DP=%s)', t.inv_number,
+      v_bad := format('%s: got MO=%s DM=%s DP=%s, expected MO=%s DM=%s DP=%s (old MO=%s DM=%s DP=%s)', t.inv_number,
                       coalesce(v_res->>'mo', '-'), coalesce(v_res->>'dm', '-'), coalesce(v_res->>'dp', '-'),
                       coalesce(t.mo_expected, '-'), coalesce(coalesce(t.dm_old, t.dm_expected), '-'),
-                      coalesce(coalesce(t.dp_old, t.dp_expected), '-'), coalesce(t.dm_old, '-'), coalesce(t.dp_old, '-'));
+                      coalesce(coalesce(t.dp_old, t.dp_expected), '-'), coalesce(t.mo_old, '-'),
+                      coalesce(t.dm_old, '-'), coalesce(t.dp_old, '-'));
       IF v_abort THEN RAISE EXCEPTION 'refit aborted: number not reused -- %', v_bad; END IF;
     END IF;
     INSERT INTO _rf_report (tenant, post_ord, sec, section, result, key, detail)
     VALUES (t.tenant, t.post_ord, 2, 'NUMBERS', CASE WHEN v_bad IS NULL THEN 'PASS' ELSE 'FAIL' END, t.inv_number,
-            coalesce(v_bad, format('old DM=%s DP=%s -> new MO=%s DM=%s DP=%s (%s rows posted)',
-                                   coalesce(t.dm_old, '-'), coalesce(t.dp_old, '-'), coalesce(v_res->>'mo', '-'),
+            coalesce(v_bad, format('old MO=%s DM=%s DP=%s -> new MO=%s DM=%s DP=%s (%s rows posted)',
+                                   coalesce(t.mo_old, '-'), coalesce(t.dm_old, '-'), coalesce(t.dp_old, '-'), coalesce(v_res->>'mo', '-'),
                                    coalesce(v_res->>'dm', '-'), coalesce(v_res->>'dp', '-'), v_res->>'rows')));
   END LOOP;
 END $$;
