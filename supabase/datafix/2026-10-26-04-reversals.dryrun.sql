@@ -20,6 +20,10 @@
 --      receipt id, links the reversal to the receipt (= reversals.source_movement_id); the
 --      live function text carries r.movement_id as the 10th argument. (A full post needs a
 --      PO / expense / amount fixture that passes _sti_check -- out of proportion here.)
+--   Q  receipt lot already drained by a linked cut: _sti_reversal_lot + the loop-(b)-shaped
+--      call link the invoice's OWN just-posted line lot (dated v_at + 1 microsecond), the
+--      older unrelated lot stays untouched, balance = replay; a receipt lot that still holds
+--      the qty is picked as before; nothing left anywhere -> no link.
 --   S  stacked posts SB then SA on one key; void SA then void SB: neither warns void_inexact
 --      although SA's replay finish moved the stored WAC away from SB's after_wac (the
 --      exactness test compares qty + updated_at stamp only); the function text check too.
@@ -70,9 +74,21 @@ BEGIN;
 --                                 it and then UPDATE the new row's lot_movement_id (and cost),
 --                                 the same pattern as post_invoice_stock_deduction v2.
 --
---   post_supplier_tax_invoice     loop (b): each PO-receipt reversal links the receipt row it
---                                 reverses (r.movement_id = the reversals table's
---                                 source_movement_id). Live body otherwise unchanged.
+--   post_supplier_tax_invoice     loop (b): each PO-receipt reversal links a lot chosen by the
+--                                 new helper _sti_reversal_lot: the receipt row it reverses
+--                                 (r.movement_id) when that lot's replayed remainder still
+--                                 holds the whole reversal qty and the receipt is dated on or
+--                                 before the post date; otherwise this invoice's own line lot
+--                                 for the same item + site that loop (a) just posted (the one
+--                                 with the most left); otherwise no link. Linking a consumed
+--                                 receipt lot made _fifo_consume overflow oldest-first into an
+--                                 UNRELATED lot while the invoice's own line lot sat untouched.
+--                                 A reversal linked to a line lot is dated v_at + 1 microsecond
+--                                 so the replay (created_at, id order) always opens the line
+--                                 lot first (both rows would otherwise tie on v_at and the
+--                                 random id would decide). supplier_tax_invoice_reversals
+--                                 .source_movement_id stays r.movement_id (audit trail
+--                                 unchanged). Live body otherwise unchanged.
 
 -- ---------------------------------------------------------------------------
 -- _stock_receipt_reversal
@@ -449,9 +465,57 @@ REVOKE ALL ON FUNCTION public.void_supplier_credit_note(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.void_supplier_credit_note(uuid) TO authenticated;
 
 -- ---------------------------------------------------------------------------
+-- _sti_reversal_lot: which lot a post's PO-receipt reversal cancels (see the header).
+-- Reads the card's FIFO replay as it stands inside the post (loop (a)'s line lots and the
+-- earlier reversals of the same loop included).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public._sti_reversal_lot(
+  p_tenant uuid, p_invoice uuid, p_item uuid, p_site uuid, p_receipt uuid, p_qty numeric, p_at timestamp with time zone)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_lots jsonb; v_lot uuid;
+BEGIN
+  v_lots := (_replay_stock_lots(p_item, p_site)).lots;
+
+  -- 1. the receipt's own lot, when it still holds the whole reversal and is open by p_at
+  IF p_receipt IS NOT NULL
+     AND EXISTS (SELECT 1 FROM stock_movements sm
+                  WHERE sm.id = p_receipt AND sm.tenant_id = p_tenant
+                    AND sm.inventory_item_id = p_item AND sm.site_id = p_site AND sm.created_at <= p_at)
+     AND coalesce((SELECT (e->>'qty')::numeric FROM jsonb_array_elements(v_lots) e
+                     WHERE (e->>'movement_id')::uuid = p_receipt), 0) >= p_qty THEN
+    RETURN p_receipt;
+  END IF;
+
+  -- 2. this invoice's own line lot for the same item + site (posted by loop (a)), most left first
+  SELECT (e->>'movement_id')::uuid INTO v_lot
+    FROM jsonb_array_elements(v_lots) e
+   WHERE (e->>'qty')::numeric > 0
+     AND (e->>'movement_id')::uuid IN (
+           SELECT i.posted_movement_id
+             FROM supplier_tax_invoice_items i
+             JOIN stock_movements sm ON sm.id = i.posted_movement_id
+            WHERE i.invoice_id = p_invoice AND i.tenant_id = p_tenant
+              AND sm.inventory_item_id = p_item AND sm.site_id = p_site)
+   ORDER BY (e->>'qty')::numeric DESC, e->>'movement_id'
+   LIMIT 1;
+
+  -- 3. none: no link (replay takes oldest-first)
+  RETURN v_lot;
+END $function$;
+
+REVOKE ALL ON FUNCTION public._sti_reversal_lot(uuid, uuid, uuid, uuid, uuid, numeric, timestamp with time zone)
+  FROM PUBLIC, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- post_supplier_tax_invoice: the LIVE body (pulled 2026-10-26) with ONE change in loop (b):
--- the PO-receipt reversal passes the receipt row it reverses (r.movement_id, also stored as
--- supplier_tax_invoice_reversals.source_movement_id) as p_lot. Nothing else changes.
+-- the PO-receipt reversal passes the lot _sti_reversal_lot picks (the receipt row it
+-- reverses, else this invoice's own line lot, else none) as p_lot, dated v_at + 1 microsecond
+-- when it is a line lot. supplier_tax_invoice_reversals.source_movement_id stays
+-- r.movement_id. Nothing else changes.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.post_supplier_tax_invoice(p_id uuid, p_expected_revision integer)
  RETURNS jsonb
@@ -465,6 +529,7 @@ DECLARE
   v_chk JSONB; v_block TEXT; v_keys JSONB; v_result JSONB; v_created JSONB := '[]'::jsonb;
   v_at TIMESTAMPTZ;
   l RECORD; r RECORD; k RECORD; mv RECORD; rv RECORD;
+  v_lot UUID;   -- [2026-10-26-04]
   v_prev TEXT; v_sub NUMERIC; v_warns JSONB := '[]'::jsonb;
   v_lines INT := 0; v_revs INT := 0; v_stamped INT := 0;
 BEGIN
@@ -527,9 +592,13 @@ BEGIN
 
   -- (b) reverse the linked POs' real receipts at their original cost
   FOR r IN SELECT * FROM _sti_receipt_movements(p_id, v_tenant) LOOP
+    -- [2026-10-26-04] cancel the receipt's own lot while it still holds the whole qty, else
+    -- this invoice's own line lot (dated 1 microsecond later so the replay opens it first)
+    v_lot := _sti_reversal_lot(v_tenant, p_id, r.inventory_item_id, r.site_id, r.movement_id, r.quantity, v_at);
     SELECT * INTO rv FROM _stock_receipt_reversal(v_tenant, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost,
-      'supplier_tax_invoice', p_id, 'กลับรายการรับเข้า ' || r.po_number || ' (ใบกำกับ ' || inv.invoice_no || ')', v_at,
-      r.movement_id);   -- [2026-10-26-04] cancel this receipt's own lot
+      'supplier_tax_invoice', p_id, 'กลับรายการรับเข้า ' || r.po_number || ' (ใบกำกับ ' || inv.invoice_no || ')',
+      CASE WHEN v_lot IS NOT NULL AND v_lot IS DISTINCT FROM r.movement_id THEN v_at + interval '1 microsecond' ELSE v_at END,
+      v_lot);
     INSERT INTO supplier_tax_invoice_reversals (tenant_id, invoice_id, po_id, source_movement_id, reversal_movement_id,
                                                 inventory_item_id, site_id, quantity, unit_cost)
     VALUES (v_tenant, p_id, r.po_id, r.movement_id, rv.movement_id, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost);
@@ -662,6 +731,7 @@ DECLARE
   v_sti_a uuid; v_sti_b uuid; v_cn1 uuid; v_cn2 uuid; v_po uuid;
   v_ig uuid; v_g0 uuid; v_gr uuid;
   v_ik uuid; v_kb uuid; v_ka uuid; v_sti_sa uuid; v_sti_sb uuid;
+  v_iq uuid; v_q0 uuid; v_qr uuid; v_ql uuid; v_sti_q uuid;
   t_jan1 timestamptz := timestamptz '2026-01-01 10:00+07';
   t_inv_a timestamptz := timestamptz '2026-01-10 12:00+07';
 BEGIN
@@ -768,6 +838,23 @@ BEGIN
   INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
   VALUES (v_tenant, v_ig, v_s, 9, 175.0 / 9, now());
 
+  -- Q: receipt lot drained by a cut. Q0 5 @10 (Jan 1, unrelated, older); PO receipt QR 4 @30
+  -- (Jan 2); a cut sale_out 3 linked to QR (Jan 3) -> QR holds 1. Invoice DRYRUN-T10-Q (Jan 10)
+  -- has loop (a)'s line lot QL 4 @32 (dated v_at = Jan 10 12:00). Its loop (b) reverses QR's 4.
+  INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (v_tenant, 'dryrun-t10-Q', 'pcs') RETURNING id INTO v_iq;
+  INSERT INTO supplier_tax_invoices (tenant_id, supplier_id, invoice_no, invoice_date, net_before_vat, vat, grand_total,
+                                     status, posted_at, posted_by)
+  VALUES (v_tenant, v_sup, 'DRYRUN-T10-Q', date '2026-01-10', 128, 0, 128, 'posted', now(), 'dryrun') RETURNING id INTO v_sti_q;
+  v_q0 := pg_temp.t10_mv(v_tenant, v_iq, v_s, 'purchase_in', 5, 10, 'dryrun', NULL, t_jan1);
+  v_qr := pg_temp.t10_mv(v_tenant, v_iq, v_s, 'purchase_in', 4, 30, 'dryrun', NULL, timestamptz '2026-01-02 10:00+07');
+  PERFORM pg_temp.t10_mv(v_tenant, v_iq, v_s, 'sale_out', 3, 30, 'dryrun', NULL, timestamptz '2026-01-03 10:00+07', v_qr);
+  v_ql := pg_temp.t10_mv(v_tenant, v_iq, v_s, 'purchase_in', 4, 32, 'supplier_tax_invoice', v_sti_q, t_inv_a);
+  INSERT INTO supplier_tax_invoice_items (tenant_id, invoice_id, sort_order, description, qty, unit_price, amount,
+                                          inventory_item_id, site_id, base_qty, base_unit_cost, posted_movement_id)
+  VALUES (v_tenant, v_sti_q, 1, 'dryrun T10 line Q', 4, 32, 128, v_iq, v_s, 4, 32, v_ql);
+  INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
+  VALUES (v_tenant, v_iq, v_s, 10, 208.0 / 10, now());
+
   -- S: stacked posts on one key K. K0 2 @20 (Jan 1); invoice SB line KB 4 @50 (Jan 5); then
   -- invoice SA line KA 6 @80 (Jan 10). The stored WAC after SB is a legacy (pre-FIFO) 41,
   -- not the replay's 40, so voiding SA (replay finish) changes K's WAC under SB.
@@ -802,7 +889,8 @@ BEGIN
     ('b1', v_b1), ('b2', v_b2), ('c0', v_c0), ('r1', v_r1), ('r2', v_r2), ('e1', v_e1), ('e2', v_e2),
     ('sti_a', v_sti_a), ('sti_b', v_sti_b), ('cn1', v_cn1), ('cn2', v_cn2), ('po', v_po),
     ('ig', v_ig), ('g0', v_g0), ('gr', v_gr),
-    ('ik', v_ik), ('kb', v_kb), ('ka', v_ka), ('sti_sa', v_sti_sa), ('sti_sb', v_sti_sb);
+    ('ik', v_ik), ('kb', v_kb), ('ka', v_ka), ('sti_sa', v_sti_sa), ('sti_sb', v_sti_sb),
+    ('iq', v_iq), ('q0', v_q0), ('qr', v_qr), ('ql', v_ql), ('sti_q', v_sti_q);
   INSERT INTO _ctx VALUES (v_email);
 END $$;
 
@@ -843,6 +931,12 @@ DECLARE
   v_ik uuid := (SELECT id FROM _ids WHERE k = 'ik');
   v_sti_sa uuid := (SELECT id FROM _ids WHERE k = 'sti_sa');
   v_sti_sb uuid := (SELECT id FROM _ids WHERE k = 'sti_sb');
+  v_iq uuid := (SELECT id FROM _ids WHERE k = 'iq');
+  v_q0 uuid := (SELECT id FROM _ids WHERE k = 'q0');
+  v_qr uuid := (SELECT id FROM _ids WHERE k = 'qr');
+  v_ql uuid := (SELECT id FROM _ids WHERE k = 'ql');
+  v_sti_q uuid := (SELECT id FROM _ids WHERE k = 'sti_q');
+  v_lot uuid; v_at timestamptz := timestamptz '2026-01-10 12:00+07';
   res2 jsonb;
   res jsonb; v_exp uuid; v_err text; v_n int; v_ok boolean; v_detail text;
   x record; y record; bal record; rv record; rp record;
@@ -1028,10 +1122,55 @@ BEGIN
     INSERT INTO _results VALUES (94, 'probe P aborted (rows 22-23 missing)', false, SQLSTATE || ' ' || SQLERRM);
   END;
   v_detail := pg_get_functiondef('public.post_supplier_tax_invoice(uuid, integer)'::regprocedure);
-  INSERT INTO _results VALUES (24, 'P post_supplier_tax_invoice loop (b) passes r.movement_id as the 10th argument (old 9-arg shape gone)',
-    v_detail LIKE '%_stock_receipt_reversal(v_tenant, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost,%v_at,'
-                  || chr(10) || '      r.movement_id);%'
-      AND v_detail NOT LIKE '%v_at);%', NULL);
+  INSERT INTO _results VALUES (24, 'P post_supplier_tax_invoice loop (b) picks the lot with _sti_reversal_lot and passes it as the 10th argument (old 9-arg shape gone)',
+    v_detail LIKE '%v_lot := _sti_reversal_lot(v_tenant, p_id, r.inventory_item_id, r.site_id, r.movement_id, r.quantity, v_at);%'
+      AND v_detail LIKE '%_stock_receipt_reversal(v_tenant, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost,%'
+                         || 'THEN v_at + interval ''1 microsecond'' ELSE v_at END,' || chr(10) || '      v_lot);%'
+      -- the audit trail keeps the receipt row it reverses
+      AND v_detail LIKE '%VALUES (v_tenant, p_id, r.po_id, r.movement_id, rv.movement_id,%', NULL);
+
+  -- ================= probe Q: receipt lot already drained by a cut =================
+  -- The loop-(b)-shaped call: _sti_reversal_lot exactly as loop (b) calls it, then the
+  -- reversal with the date rule loop (b) applies, then the reversals row as loop (b) writes it.
+  BEGIN
+    INSERT INTO _results VALUES (28, 'Q setup: QR holds 1 of 4 (cut linked to it), QL 4, Q0 5; balance = replay 10',
+      pg_temp.t10_lot(v_iq, v_s, v_qr) = 1 AND pg_temp.t10_lot(v_iq, v_s, v_ql) = 4 AND pg_temp.t10_lot(v_iq, v_s, v_q0) = 5
+        AND (_replay_stock_lots(v_iq, v_s)).qty = 10,
+      pg_temp.t10_card(v_iq, v_s));
+
+    -- a receipt lot that still holds the qty is picked as before (G: GR is whole -- probe P
+    -- already reversed it, so ask for G0's whole 5 against G0 itself)
+    INSERT INTO _results VALUES (29, 'Q helper: a receipt lot holding the whole qty is linked (G0 5 for 5); one short is not (QR 1 for 4)',
+      _sti_reversal_lot(v_tenant, v_sti_q, v_ig, v_s, v_g0, 5, v_at) = v_g0
+        AND _sti_reversal_lot(v_tenant, v_sti_q, v_iq, v_s, v_qr, 4, v_at) IS DISTINCT FROM v_qr,
+      NULL);
+
+    v_lot := _sti_reversal_lot(v_tenant, v_sti_q, v_iq, v_s, v_qr, 4, v_at);
+    SELECT * INTO rv FROM _stock_receipt_reversal(v_tenant, v_iq, v_s, 4, 30,
+      'supplier_tax_invoice', v_sti_q, 'dryrun T10 post loop b (drained receipt)',
+      CASE WHEN v_lot IS NOT NULL AND v_lot IS DISTINCT FROM v_qr THEN v_at + interval '1 microsecond' ELSE v_at END,
+      v_lot);
+    INSERT INTO supplier_tax_invoice_reversals (tenant_id, invoice_id, po_id, source_movement_id, reversal_movement_id,
+                                                inventory_item_id, site_id, quantity, unit_cost)
+    VALUES (v_tenant, v_sti_q, gen_random_uuid(), v_qr, rv.movement_id, v_iq, v_s, 4, 30);
+
+    SELECT * INTO x FROM stock_movements WHERE id = rv.movement_id;
+    INSERT INTO _results VALUES (30, 'Q drained receipt: the reversal links the invoice''s own line lot QL (dated v_at + 1 microsecond); reversals.source_movement_id stays QR',
+      v_lot = v_ql AND x.lot_movement_id = v_ql AND x.created_at = v_at + interval '1 microsecond'
+        AND (SELECT source_movement_id FROM supplier_tax_invoice_reversals WHERE reversal_movement_id = rv.movement_id) = v_qr,
+      format('picked=%s ql=%s qr=%s created_at=%s', v_lot, v_ql, v_qr, x.created_at));
+    INSERT INTO _results VALUES (31, 'Q after: QL cancelled (0), unrelated older Q0 untouched (5), QR keeps 1; balance = replay 6, value 80 (linking QR would overflow 3 into Q0)',
+      pg_temp.t10_lot(v_iq, v_s, v_ql) = 0 AND pg_temp.t10_lot(v_iq, v_s, v_q0) = 5 AND pg_temp.t10_lot(v_iq, v_s, v_qr) = 1
+        AND pg_temp.t10_bal_ok(v_iq, v_s) AND rv.new_quantity_on_hand = 6
+        AND (_replay_stock_lots(v_iq, v_s)).fifo_value = 80,
+      pg_temp.t10_card(v_iq, v_s));
+
+    -- nothing of the invoice's own left and the receipt short -> no link
+    INSERT INTO _results VALUES (32, 'Q helper: receipt short and the invoice''s line lot used up -> NULL (oldest-first)',
+      _sti_reversal_lot(v_tenant, v_sti_q, v_iq, v_s, v_qr, 4, v_at) IS NULL, NULL);
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _results VALUES (96, 'probe Q aborted (rows 28-32 missing)', false, SQLSTATE || ' ' || SQLERRM);
+  END;
 
   -- ================= probe S: stacked voids stay exact =================
   BEGIN
@@ -1060,8 +1199,8 @@ BEGIN
   -- ================= probe D: every touched card equals its replay =================
   SELECT bool_and(pg_temp.t10_bal_ok(k, v_s)), string_agg(pg_temp.t10_card(k, v_s), E'\n')
     INTO v_ok, v_detail
-    FROM unnest(ARRAY[v_ia, v_xd, v_xf, v_ib, v_ic, v_ie, v_ig, v_ik]) k;
-  INSERT INTO _results VALUES (19, 'D all eight touched cards: stored balance = _replay_stock_lots (qty, fifo_value/qty)',
+    FROM unnest(ARRAY[v_ia, v_xd, v_xf, v_ib, v_ic, v_ie, v_ig, v_ik, v_iq]) k;
+  INSERT INTO _results VALUES (19, 'D all nine touched cards: stored balance = _replay_stock_lots (qty, fifo_value/qty)',
     coalesce(v_ok, false), v_detail);
 
   -- ================= signatures + grants =================
@@ -1069,7 +1208,9 @@ BEGIN
     to_regprocedure('public._stock_receipt_reversal(uuid, uuid, uuid, numeric, numeric, text, uuid, text, timestamptz)') IS NULL
       AND to_regprocedure('public._stock_receipt_reversal(uuid, uuid, uuid, numeric, numeric, text, uuid, text, timestamptz, uuid)') IS NOT NULL
       AND NOT has_function_privilege('authenticated', 'public._stock_receipt_reversal(uuid, uuid, uuid, numeric, numeric, text, uuid, text, timestamptz, uuid)', 'EXECUTE')
-      AND NOT has_function_privilege('anon', 'public._stock_receipt_reversal(uuid, uuid, uuid, numeric, numeric, text, uuid, text, timestamptz, uuid)', 'EXECUTE'),
+      AND NOT has_function_privilege('anon', 'public._stock_receipt_reversal(uuid, uuid, uuid, numeric, numeric, text, uuid, text, timestamptz, uuid)', 'EXECUTE')
+      AND NOT has_function_privilege('authenticated', 'public._sti_reversal_lot(uuid, uuid, uuid, uuid, uuid, numeric, timestamptz)', 'EXECUTE')
+      AND NOT has_function_privilege('anon', 'public._sti_reversal_lot(uuid, uuid, uuid, uuid, uuid, numeric, timestamptz)', 'EXECUTE'),
     NULL);
   INSERT INTO _results VALUES (21, 'RPC grants kept: post STI / void STI / confirm CN / void CN callable by authenticated, not anon; trigger fn by neither',
     has_function_privilege('authenticated', 'public.post_supplier_tax_invoice(uuid, integer)', 'EXECUTE')

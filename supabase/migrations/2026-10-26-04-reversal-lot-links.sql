@@ -39,9 +39,21 @@
 --                                 it and then UPDATE the new row's lot_movement_id (and cost),
 --                                 the same pattern as post_invoice_stock_deduction v2.
 --
---   post_supplier_tax_invoice     loop (b): each PO-receipt reversal links the receipt row it
---                                 reverses (r.movement_id = the reversals table's
---                                 source_movement_id). Live body otherwise unchanged.
+--   post_supplier_tax_invoice     loop (b): each PO-receipt reversal links a lot chosen by the
+--                                 new helper _sti_reversal_lot: the receipt row it reverses
+--                                 (r.movement_id) when that lot's replayed remainder still
+--                                 holds the whole reversal qty and the receipt is dated on or
+--                                 before the post date; otherwise this invoice's own line lot
+--                                 for the same item + site that loop (a) just posted (the one
+--                                 with the most left); otherwise no link. Linking a consumed
+--                                 receipt lot made _fifo_consume overflow oldest-first into an
+--                                 UNRELATED lot while the invoice's own line lot sat untouched.
+--                                 A reversal linked to a line lot is dated v_at + 1 microsecond
+--                                 so the replay (created_at, id order) always opens the line
+--                                 lot first (both rows would otherwise tie on v_at and the
+--                                 random id would decide). supplier_tax_invoice_reversals
+--                                 .source_movement_id stays r.movement_id (audit trail
+--                                 unchanged). Live body otherwise unchanged.
 
 -- ---------------------------------------------------------------------------
 -- _stock_receipt_reversal
@@ -411,9 +423,57 @@ REVOKE ALL ON FUNCTION public.void_supplier_credit_note(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.void_supplier_credit_note(uuid) TO authenticated;
 
 -- ---------------------------------------------------------------------------
+-- _sti_reversal_lot: which lot a post's PO-receipt reversal cancels (see the header).
+-- Reads the card's FIFO replay as it stands inside the post (loop (a)'s line lots and the
+-- earlier reversals of the same loop included).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public._sti_reversal_lot(
+  p_tenant uuid, p_invoice uuid, p_item uuid, p_site uuid, p_receipt uuid, p_qty numeric, p_at timestamp with time zone)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_lots jsonb; v_lot uuid;
+BEGIN
+  v_lots := (_replay_stock_lots(p_item, p_site)).lots;
+
+  -- 1. the receipt's own lot, when it still holds the whole reversal and is open by p_at
+  IF p_receipt IS NOT NULL
+     AND EXISTS (SELECT 1 FROM stock_movements sm
+                  WHERE sm.id = p_receipt AND sm.tenant_id = p_tenant
+                    AND sm.inventory_item_id = p_item AND sm.site_id = p_site AND sm.created_at <= p_at)
+     AND coalesce((SELECT (e->>'qty')::numeric FROM jsonb_array_elements(v_lots) e
+                     WHERE (e->>'movement_id')::uuid = p_receipt), 0) >= p_qty THEN
+    RETURN p_receipt;
+  END IF;
+
+  -- 2. this invoice's own line lot for the same item + site (posted by loop (a)), most left first
+  SELECT (e->>'movement_id')::uuid INTO v_lot
+    FROM jsonb_array_elements(v_lots) e
+   WHERE (e->>'qty')::numeric > 0
+     AND (e->>'movement_id')::uuid IN (
+           SELECT i.posted_movement_id
+             FROM supplier_tax_invoice_items i
+             JOIN stock_movements sm ON sm.id = i.posted_movement_id
+            WHERE i.invoice_id = p_invoice AND i.tenant_id = p_tenant
+              AND sm.inventory_item_id = p_item AND sm.site_id = p_site)
+   ORDER BY (e->>'qty')::numeric DESC, e->>'movement_id'
+   LIMIT 1;
+
+  -- 3. none: no link (replay takes oldest-first)
+  RETURN v_lot;
+END $function$;
+
+REVOKE ALL ON FUNCTION public._sti_reversal_lot(uuid, uuid, uuid, uuid, uuid, numeric, timestamp with time zone)
+  FROM PUBLIC, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- post_supplier_tax_invoice: the LIVE body (pulled 2026-10-26) with ONE change in loop (b):
--- the PO-receipt reversal passes the receipt row it reverses (r.movement_id, also stored as
--- supplier_tax_invoice_reversals.source_movement_id) as p_lot. Nothing else changes.
+-- the PO-receipt reversal passes the lot _sti_reversal_lot picks (the receipt row it
+-- reverses, else this invoice's own line lot, else none) as p_lot, dated v_at + 1 microsecond
+-- when it is a line lot. supplier_tax_invoice_reversals.source_movement_id stays
+-- r.movement_id. Nothing else changes.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.post_supplier_tax_invoice(p_id uuid, p_expected_revision integer)
  RETURNS jsonb
@@ -427,6 +487,7 @@ DECLARE
   v_chk JSONB; v_block TEXT; v_keys JSONB; v_result JSONB; v_created JSONB := '[]'::jsonb;
   v_at TIMESTAMPTZ;
   l RECORD; r RECORD; k RECORD; mv RECORD; rv RECORD;
+  v_lot UUID;   -- [2026-10-26-04]
   v_prev TEXT; v_sub NUMERIC; v_warns JSONB := '[]'::jsonb;
   v_lines INT := 0; v_revs INT := 0; v_stamped INT := 0;
 BEGIN
@@ -489,9 +550,13 @@ BEGIN
 
   -- (b) reverse the linked POs' real receipts at their original cost
   FOR r IN SELECT * FROM _sti_receipt_movements(p_id, v_tenant) LOOP
+    -- [2026-10-26-04] cancel the receipt's own lot while it still holds the whole qty, else
+    -- this invoice's own line lot (dated 1 microsecond later so the replay opens it first)
+    v_lot := _sti_reversal_lot(v_tenant, p_id, r.inventory_item_id, r.site_id, r.movement_id, r.quantity, v_at);
     SELECT * INTO rv FROM _stock_receipt_reversal(v_tenant, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost,
-      'supplier_tax_invoice', p_id, 'กลับรายการรับเข้า ' || r.po_number || ' (ใบกำกับ ' || inv.invoice_no || ')', v_at,
-      r.movement_id);   -- [2026-10-26-04] cancel this receipt's own lot
+      'supplier_tax_invoice', p_id, 'กลับรายการรับเข้า ' || r.po_number || ' (ใบกำกับ ' || inv.invoice_no || ')',
+      CASE WHEN v_lot IS NOT NULL AND v_lot IS DISTINCT FROM r.movement_id THEN v_at + interval '1 microsecond' ELSE v_at END,
+      v_lot);
     INSERT INTO supplier_tax_invoice_reversals (tenant_id, invoice_id, po_id, source_movement_id, reversal_movement_id,
                                                 inventory_item_id, site_id, quantity, unit_cost)
     VALUES (v_tenant, p_id, r.po_id, r.movement_id, rv.movement_id, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost);
