@@ -658,7 +658,21 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   // DP/DM document lookups. Invoice numbers are resolved from reference_id
   // (never from the PI-/PO- notes text, which goes stale if an invoice is
   // renumbered after its cut -- IN2608-065 -> IN2608-006 did exactly that).
+  const docById = useMemo(() => new Map((stockDocuments || []).map(d => [d.id, d])), [stockDocuments])
   const docNumberById = useMemo(() => new Map((stockDocuments || []).map(d => [d.id, d.doc_number])), [stockDocuments])
+  const docTypeOf = (mv) => docById.get(mv.stockDocumentId)?.doc_type || null
+  // FG production receipt: legacy cuts carry PI-/PO- notes; MO-chain cuts
+  // (null notes) cite the MO document instead.
+  const isProductionMovement = (mv) => mv.referenceType === 'invoice' && (isProductionRef(mv.notes) || (mv.type === 'purchase_in' && docTypeOf(mv) === 'MO'))
+  // MO number for a raw-material row: its DM's parent MO, else the
+  // invoice's MO (docsByInvoice). Null for legacy (pre-MO) cuts.
+  const moNumberFor = (mv) => {
+    const doc = docById.get(mv.stockDocumentId)
+    if (doc?.doc_type === 'MO') return doc.doc_number
+    const parent = doc?.parent_document_id ? docById.get(doc.parent_document_id) : null
+    if (parent?.doc_type === 'MO') return parent.doc_number
+    return (mv.referenceType === 'invoice' && docsByInvoice.get(mv.referenceId)?.mo) || null
+  }
   const docsByInvoice = useMemo(() => {
     const m = new Map()
     for (const d of stockDocuments || []) m.set(d.invoice_id, { ...m.get(d.invoice_id), [d.doc_type.toLowerCase()]: d.doc_number })
@@ -666,13 +680,24 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   }, [stockDocuments])
   const invoiceNumberById = useMemo(() => new Map((invoiceNumbers || []).map(i => [i.id, i.invoice_number])), [invoiceNumbers])
   const invoiceFilterFor = (invoiceId) => ({ invoiceId, invoiceNumber: invoiceNumberById.get(invoiceId) || '', ...docsByInvoice.get(invoiceId) })
-  const docLabel = (mv) => {
-    const doc = docNumberById.get(mv.stockDocumentId)
-    if (!doc) return null
-    const inv = mv.referenceType === 'invoice' ? invoiceNumberById.get(mv.referenceId) : null
-    return inv ? `${doc} · ${inv}` : doc
+  // Document number only -- the invoice stays linked via reference_id but
+  // leaves the visible label (owner decision 7).
+  const docLabel = (mv) => docNumberById.get(mv.stockDocumentId) || null
+  const filterLabel = (f) => {
+    if (!f) return ''
+    const docs = [f.mo, reportKind === 'finished_goods' ? f.dp : f.dm].filter(Boolean)
+    return docs.length ? docs.join(' · ') : (f.invoiceNumber || '')
   }
-  const filterLabel = (f) => [reportKind === 'finished_goods' ? f.dp : f.dm, f.invoiceNumber].filter(Boolean).join(' · ')
+  // Report 3 (raw materials) drilled into one invoice/MO: the 3-line card.
+  const rmPerMoView = reportKind === 'raw_material' && !!referenceFilter
+  const movementLabel = (mv) => {
+    if (rmPerMoView && mv.type === 'sale_out') {
+      const mo = moNumberFor(mv)
+      return mo ? `เบิกไปผลิต อ้างอิง ${mo}` : 'เบิกไปผลิต'
+    }
+    if (mv.type === 'purchase_in' && docTypeOf(mv) === 'MO') return '🏭 รับจากการผลิต'
+    return LEDGER_MOVEMENT_LABELS[mv.type] || mv.type
+  }
 
   const effectiveCategoryId = reportKind === 'finished_goods' ? null : (categoryFilter || null)
 
@@ -700,9 +725,31 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
       return rows.filter(r => r.itemId === itemFilter.itemId)
     }
     if (!referenceFilter) return rows
-    return rows
-      .map(r => ({ ...r, movements: r.movements.filter(mv => movementMatchesInvoice(mv, referenceFilter)) }))
-      .filter(r => r.movements.length)
+    if (reportKind !== 'raw_material') {
+      return rows
+        .map(r => ({ ...r, movements: r.movements.filter(mv => movementMatchesInvoice(mv, referenceFilter)) }))
+        .filter(r => r.movements.length)
+    }
+    // Report 3 per-MO drill-down (owner decision 8): ยอดยกมา → เบิกไปผลิต
+    // rows → ยอดคงเหลือ. The central-stock transfer_out/transfer_in pair
+    // nets to zero per item, so it is hidden here (period views keep it).
+    // ยอดยกมา is the item's balance just before this cut's first shown row;
+    // ยอดคงเหลือ is that balance after the shown rows.
+    const isTransfer = (mv) => mv.type === 'transfer_in' || mv.type === 'transfer_out'
+    const signed = (mv, k) => (mv.direction === 'in' ? 1 : -1) * mv[k]
+    return rows.map(r => {
+      const shown = r.movements.filter(mv => movementMatchesInvoice(mv, referenceFilter) && !isTransfer(mv))
+      if (!shown.length) return null
+      const before = r.movements.slice(0, r.movements.indexOf(shown[0]))
+      const openingQty = r.openingQty + before.reduce((s, mv) => s + signed(mv, 'qty'), 0)
+      const openingValue = r.openingValue + before.reduce((s, mv) => s + signed(mv, 'value'), 0)
+      const sum = (dir, k) => shown.filter(mv => mv.direction === dir).reduce((s, mv) => s + mv[k], 0)
+      const inQty = sum('in', 'qty'), inValue = sum('in', 'value'), outQty = sum('out', 'qty'), outValue = sum('out', 'value')
+      return {
+        ...r, movements: shown, openingQty, openingValue, inQty, inValue, outQty, outValue,
+        closingQty: openingQty + inQty - outQty, closingValue: openingValue + inValue - outValue,
+      }
+    }).filter(Boolean)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, referenceFilter, itemFilter, reportKind, invoiceNumbers])
 
@@ -743,22 +790,24 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
     const events = []
     for (const row of finishedGoodsRows) {
       for (const mv of row.movements) {
-        if (mv.type !== 'purchase_in' || mv.referenceType !== 'invoice' || !isProductionRef(mv.notes)) continue
+        // Legacy cuts: PI- notes. MO-chain cuts: null notes, row cites an MO.
+        if (mv.type !== 'purchase_in' || !isProductionMovement(mv)) continue
         const docs = docsByInvoice.get(mv.referenceId) || {}
         events.push({
           itemId: row.itemId, code: row.code, name: row.name, unit: row.unit, invoiceId: mv.referenceId,
-          invoiceNumber: invoiceNumberById.get(mv.referenceId) || mv.notes.replace(/^P[IO]-/, ''),
-          dp: docs.dp || '', dm: docs.dm || '', date: mv.date, value: mv.value,
+          invoiceNumber: invoiceNumberById.get(mv.referenceId) || (mv.notes || '').replace(/^P[IO]-/, ''),
+          mo: docs.mo || '', dp: docs.dp || '', dm: docs.dm || '', date: mv.date, value: mv.value,
         })
       }
     }
     return events
-  }, [finishedGoodsRows, docsByInvoice, invoiceNumberById])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finishedGoodsRows, docsByInvoice, docById, invoiceNumberById])
 
   const sortedFgEvents = useMemo(() => {
     const q = fgSearch.trim().toLowerCase()
     const filtered = q
-      ? productionEvents.filter(e => [e.dp, e.dm, e.code, e.name, e.invoiceNumber].some(v => v.toLowerCase().includes(q)))
+      ? productionEvents.filter(e => [e.mo, e.dp, e.dm, e.code, e.name, e.invoiceNumber].some(v => v.toLowerCase().includes(q)))
       : productionEvents
     return [...filtered].sort((a, b) => {
       const va = a[fgSortCol] ?? ''
@@ -771,7 +820,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const sortedRmEvents = useMemo(() => {
     const q = rmSearch.trim().toLowerCase()
     const filtered = q
-      ? productionEvents.filter(e => [e.dp, e.dm, e.code, e.name, e.invoiceNumber].some(v => v.toLowerCase().includes(q)))
+      ? productionEvents.filter(e => [e.mo, e.dp, e.dm, e.code, e.name, e.invoiceNumber].some(v => v.toLowerCase().includes(q)))
       : productionEvents
     return [...filtered].sort((a, b) => {
       const va = a[rmSortCol] ?? ''
@@ -843,7 +892,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             </td>
           </tr>
           <tr style={{ fontStyle: 'italic', color: 'var(--text3)' }}>
-            <td>{new Date(dateFrom).toLocaleDateString('th-TH')}</td>
+            <td>{new Date(rmPerMoView && r.movements[0] ? r.movements[0].date : dateFrom).toLocaleDateString('th-TH')}</td>
             <td>ยอดยกมา</td>
             <td>—</td>
             <td className="font-mono">{fmtQty(r.openingQty)}</td>
@@ -856,9 +905,9 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
           {withRunning.map((mv, i) => (
             <tr key={i}>
               <td>{new Date(mv.date).toLocaleDateString('th-TH')}</td>
-              <td>{LEDGER_MOVEMENT_LABELS[mv.type] || mv.type}</td>
+              <td>{movementLabel(mv)}</td>
               <td>
-                {interactive && isProductionRef(mv.notes) && mv.referenceType === 'invoice' ? (
+                {interactive && isProductionMovement(mv) ? (
                   <button className="btn-ghost" style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
                     onClick={() => jumpToMaterials(mv)} title="ดูรายการวัตถุดิบที่ตัดสำหรับใบแจ้งหนี้นี้">
                     {docLabel(mv) || mv.notes} →
@@ -876,7 +925,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             </tr>
           ))}
           <tr style={{ fontWeight: 700, borderTop: '1.5px solid var(--border)' }}>
-            <td colSpan={3}>ยอดคงเหลือสิ้นงวด</td>
+            <td colSpan={3}>{rmPerMoView ? 'ยอดคงเหลือ' : 'ยอดคงเหลือสิ้นงวด'}</td>
             <td className="font-mono">{fmtQty(r.inQty)}</td>
             <td className="font-mono">{fmt(r.inValue)}</td>
             <td className="font-mono">{fmtQty(r.outQty)}</td>

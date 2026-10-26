@@ -676,6 +676,27 @@ describe('computeStockLedgerReport', () => {
     expect(nonMatching).toHaveLength(0)
   })
 
+  it('no OB and no pre-period history: every row opens at exactly 0 qty / 0 value', () => {
+    // Review Focus 5: a tenant with no opening-balance document and no
+    // movements before dateFrom must render a clean ยอดยกมา of zero,
+    // not undefined/NaN, for both a stock-in item and a stock-out item.
+    const rows = computeStockLedgerReport({
+      movements: [
+        m({ inventory_item_id: 'item-rm', movement_type: 'purchase_in', quantity: 5, unit_cost: 100, created_at: '2026-09-02T10:00:00Z' }),
+        m({ inventory_item_id: 'item-fg', movement_type: 'sale_out', quantity: 1, unit_cost: 500, created_at: '2026-09-03T10:00:00Z', stock_document_id: 'doc-dp' }),
+      ],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows).toHaveLength(2)
+    for (const r of rows) {
+      expect(r.openingQty).toBe(0)
+      expect(r.openingValue).toBe(0)
+    }
+    const fg = rows.find(r => r.itemId === 'item-fg')
+    expect(fg).toMatchObject({ outQty: 1, closingQty: -1, closingValue: -500 })
+    expect(fg.movements[0].stockDocumentId).toBe('doc-dp')
+  })
+
   it('a movement after dateTo is excluded entirely (not opening, not in-range)', () => {
     const rows = computeStockLedgerReport({
       movements: [m({ created_at: '2026-10-05T10:00:00Z' })],
