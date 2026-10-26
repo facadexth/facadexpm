@@ -16,9 +16,13 @@
 --   C  C1 the helper with / without p_lot + a refused foreign lot; C2 po_unreceive through
 --      the real trigger (UPDATE purchase_orders status received -> cancelled) links each
 --      reversal to its receipt; C3 the trigger body text carries the link pass.
+--   P  post_supplier_tax_invoice loop (b): the exact 10-argument call it now makes, with the
+--      receipt id, links the reversal to the receipt (= reversals.source_movement_id); the
+--      live function text carries r.movement_id as the 10th argument. (A full post needs a
+--      PO / expense / amount fixture that passes _sti_check -- out of proportion here.)
 --   D  every touched card's stored balance equals _replay_stock_lots.
 -- Block 1 (fixtures, no auth) and block 2 (RPC probes as a FacadeX OWNER/ADMIN; each probe
--- group in its own exception sub-block that records a FAIL row 90-93) are separate.
+-- group in its own exception sub-block that records a FAIL row 90-94) are separate.
 BEGIN;
 
 -- ===== migration body =====================================================
@@ -61,9 +65,9 @@ BEGIN;
 --                                 it and then UPDATE the new row's lot_movement_id (and cost),
 --                                 the same pattern as post_invoice_stock_deduction v2.
 --
--- Not changed here (reported to the controller): post_supplier_tax_invoice still calls the
--- helper without p_lot, so the PO-receipt reversals it writes stay unlinked (replay takes
--- them oldest-first).
+--   post_supplier_tax_invoice     loop (b): each PO-receipt reversal links the receipt row it
+--                                 reverses (r.movement_id = the reversals table's
+--                                 source_movement_id). Live body otherwise unchanged.
 
 -- ---------------------------------------------------------------------------
 -- _stock_receipt_reversal
@@ -434,6 +438,148 @@ END $wrap$;
 
 REVOKE ALL ON FUNCTION public.void_supplier_credit_note(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.void_supplier_credit_note(uuid) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- post_supplier_tax_invoice: the LIVE body (pulled 2026-10-26) with ONE change in loop (b):
+-- the PO-receipt reversal passes the receipt row it reverses (r.movement_id, also stored as
+-- supplier_tax_invoice_reversals.source_movement_id) as p_lot. Nothing else changes.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.post_supplier_tax_invoice(p_id uuid, p_expected_revision integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant UUID := current_tenant_id();
+  inv supplier_tax_invoices%ROWTYPE;
+  v_chk JSONB; v_block TEXT; v_keys JSONB; v_result JSONB; v_created JSONB := '[]'::jsonb;
+  v_at TIMESTAMPTZ;
+  l RECORD; r RECORD; k RECORD; mv RECORD; rv RECORD;
+  v_prev TEXT; v_sub NUMERIC; v_warns JSONB := '[]'::jsonb;
+  v_lines INT := 0; v_revs INT := 0; v_stamped INT := 0;
+BEGIN
+  IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders') AND tenant_can_write()) THEN RAISE EXCEPTION 'insufficient_privilege'; END IF;
+  SELECT * INTO inv FROM supplier_tax_invoices WHERE id = p_id AND tenant_id = v_tenant FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'invoice_not_found'; END IF;
+  IF inv.status <> 'draft' THEN RAISE EXCEPTION 'not_draft'; END IF;
+  -- the draft changed after the preview the user looked at (or no revision was passed)
+  IF p_expected_revision IS DISTINCT FROM inv.revision THEN RAISE EXCEPTION 'stale_preview'; END IF;
+
+  -- fixed lock order: invoice -> POs by id -> balances by (item, site)
+  PERFORM 1 FROM purchase_orders
+   WHERE tenant_id = v_tenant AND id IN (SELECT po_id FROM supplier_tax_invoice_pos WHERE invoice_id = p_id)
+   ORDER BY id FOR UPDATE;
+  PERFORM 1 FROM purchase_orders WHERE tenant_id = v_tenant AND id IN (SELECT po_id FROM supplier_tax_invoice_receipts WHERE invoice_id = p_id AND tenant_id = v_tenant) ORDER BY id FOR UPDATE;   -- 2026-10-09-05
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('item', t.inventory_item_id, 'site', t.site_id)), '[]'::jsonb)
+    INTO v_keys FROM _sti_touched_keys(p_id, v_tenant) t;
+  -- Make sure every touched (item, site) has a balance row BEFORE locking, in (item, site) order: the locks below then
+  -- always land on existing rows (no lost update / deadlock between two posts on a brand-new key). `created` remembers
+  -- which rows we made, so the snapshot still says "did not exist" (before 0@0, no stamp) and void restores exactly that.
+  WITH ins AS (
+    INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
+    SELECT v_tenant, t.inventory_item_id, t.site_id, 0, 0, now() FROM _sti_touched_keys(p_id, v_tenant) t
+     ORDER BY t.inventory_item_id, t.site_id
+    ON CONFLICT (inventory_item_id, site_id) DO NOTHING
+    RETURNING inventory_item_id, site_id)
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('item', ins.inventory_item_id, 'site', ins.site_id)), '[]'::jsonb) INTO v_created FROM ins;
+  PERFORM 1 FROM inventory_stock_balances b
+   WHERE b.tenant_id = v_tenant
+     AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_keys) e
+                  WHERE (e->>'item')::uuid = b.inventory_item_id AND (e->>'site')::uuid = b.site_id)
+   ORDER BY b.inventory_item_id, b.site_id FOR UPDATE;
+
+  v_chk := _sti_check(p_id, v_tenant);
+  SELECT t.e->>'code' INTO v_block
+    FROM jsonb_array_elements(v_chk->'checks') WITH ORDINALITY AS t(e, ord)
+   WHERE (t.e->>'blocking')::boolean ORDER BY t.ord LIMIT 1;
+  IF v_block IS NOT NULL THEN RAISE EXCEPTION '%', v_block; END IF;
+
+  v_at := (inv.invoice_date + time '12:00') AT TIME ZONE 'Asia/Bangkok';   -- ruling A4
+
+  -- Snapshot the pre-post balance of every touched (item, site) so void can restore it exactly (ruling C1).
+  -- Void exactness needs: no stock movement on these keys between post and void (else void_inexact).
+  INSERT INTO supplier_tax_invoice_snapshots (tenant_id, invoice_id, inventory_item_id, site_id, before_qty, before_wac, before_updated_at)
+  SELECT v_tenant, p_id, t.inventory_item_id, t.site_id, COALESCE(b.quantity_on_hand, 0), COALESCE(b.weighted_average_cost, 0),
+         CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_created) e
+                            WHERE (e->>'item')::uuid = t.inventory_item_id AND (e->>'site')::uuid = t.site_id)
+              THEN NULL ELSE b.updated_at END
+    FROM _sti_touched_keys(p_id, v_tenant) t
+    LEFT JOIN inventory_stock_balances b ON b.inventory_item_id = t.inventory_item_id AND b.site_id = t.site_id AND b.tenant_id = v_tenant;
+
+  -- (a) invoice lines first, so the common case never dips below zero
+  FOR l IN SELECT * FROM _sti_stock_lines(p_id, v_tenant) LOOP
+    SELECT * INTO mv FROM record_stock_movement(l.inventory_item_id, l.site_id, 'purchase_in', l.base_qty, l.base_unit_cost,
+                                                'supplier_tax_invoice', p_id, 'ใบกำกับ ' || inv.invoice_no);
+    UPDATE stock_movements SET created_at = v_at WHERE id = mv.movement_id AND tenant_id = v_tenant;
+    UPDATE supplier_tax_invoice_items SET posted_movement_id = mv.movement_id WHERE id = l.line_id AND tenant_id = v_tenant;
+    v_lines := v_lines + 1;
+  END LOOP;
+
+  -- (b) reverse the linked POs' real receipts at their original cost
+  FOR r IN SELECT * FROM _sti_receipt_movements(p_id, v_tenant) LOOP
+    SELECT * INTO rv FROM _stock_receipt_reversal(v_tenant, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost,
+      'supplier_tax_invoice', p_id, 'กลับรายการรับเข้า ' || r.po_number || ' (ใบกำกับ ' || inv.invoice_no || ')', v_at,
+      r.movement_id);   -- [2026-10-26-04] cancel this receipt's own lot
+    INSERT INTO supplier_tax_invoice_reversals (tenant_id, invoice_id, po_id, source_movement_id, reversal_movement_id,
+                                                inventory_item_id, site_id, quantity, unit_cost)
+    VALUES (v_tenant, p_id, r.po_id, r.movement_id, rv.movement_id, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost);
+    v_revs := v_revs + 1;
+  END LOOP;
+
+  -- Stamp every touched balance row with a post-unique updated_at, then record the post-post state incl. that stamp.
+  UPDATE inventory_stock_balances b SET updated_at = clock_timestamp()
+    FROM supplier_tax_invoice_snapshots s
+   WHERE s.invoice_id = p_id AND s.tenant_id = v_tenant AND b.tenant_id = v_tenant
+     AND b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id;
+  UPDATE supplier_tax_invoice_snapshots s
+     SET after_qty = COALESCE((SELECT b.quantity_on_hand FROM inventory_stock_balances b
+                                WHERE b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id AND b.tenant_id = v_tenant), 0),
+         after_wac = COALESCE((SELECT b.weighted_average_cost FROM inventory_stock_balances b
+                                WHERE b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id AND b.tenant_id = v_tenant), 0),
+         after_updated_at = (SELECT b.updated_at FROM inventory_stock_balances b
+                              WHERE b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id AND b.tenant_id = v_tenant)
+   WHERE s.invoice_id = p_id AND s.tenant_id = v_tenant;
+
+  -- (c) stamp the invoice number on each PO's expense; amounts untouched (ruling A6)
+  FOR k IN SELECT l2.id AS link_id, p.id AS po_id, p.expense_id
+             FROM supplier_tax_invoice_pos l2 JOIN purchase_orders p ON p.id = l2.po_id AND p.tenant_id = v_tenant
+            WHERE l2.invoice_id = p_id ORDER BY p.id LOOP
+    v_sub := _po_goods_subtotal(k.po_id, v_tenant);
+    UPDATE supplier_tax_invoice_pos SET po_subtotal = v_sub WHERE id = k.link_id;
+    IF k.expense_id IS NOT NULL THEN
+      SELECT invoice_no INTO v_prev FROM expenses WHERE id = k.expense_id AND tenant_id = v_tenant FOR UPDATE;
+      IF FOUND THEN
+        UPDATE expenses
+           SET invoice_no = inv.invoice_no,
+               notes = concat_ws(' | ', NULLIF(btrim(notes), ''),
+                         'ใบกำกับภาษี ' || inv.invoice_no || ' (เลขเดิม: ' || COALESCE(NULLIF(btrim(v_prev), ''), '-') || ')')
+         WHERE id = k.expense_id AND tenant_id = v_tenant;
+        UPDATE supplier_tax_invoice_pos
+           SET expense_id = k.expense_id, prev_invoice_no = v_prev, stamped_invoice_no = inv.invoice_no
+         WHERE id = k.link_id;
+        v_stamped := v_stamped + 1;
+      ELSE
+        -- the PO points at an expense that no longer exists: say so instead of silently skipping
+        v_warns := v_warns || jsonb_build_object('code', 'expense_missing', 'blocking', false, 'po_id', k.po_id);
+      END IF;
+    END IF;
+  END LOOP;
+  v_stamped := v_stamped + _sti_stamp_other_bills(p_id, v_tenant, inv.invoice_no);   -- 2026-10-09-03
+  v_stamped := v_stamped + _sti_stamp_receipt_bills(p_id, v_tenant, inv.invoice_no);   -- 2026-10-09-05
+
+  v_result := jsonb_build_object(
+    'lines_posted', v_lines, 'receipts_reversed', v_revs, 'expenses_stamped', v_stamped,
+    'po_sum', v_chk->'po_sum', 'diff', v_chk->'diff', 'checks', (v_chk->'checks') || v_warns,
+    'negative', _sti_negatives(v_tenant, v_keys));
+  UPDATE supplier_tax_invoices
+     SET status = 'posted', posted_at = now(), posted_by = auth.email(), match_diff = (v_chk->>'diff')::numeric, post_result = v_result
+   WHERE id = p_id;
+  RETURN v_result;
+END $function$;
+
+REVOKE ALL ON FUNCTION public.post_supplier_tax_invoice(uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.post_supplier_tax_invoice(uuid, integer) TO authenticated;
 -- ===== end migration body =================================================
 
 -- ===== probes =============================================================
@@ -505,6 +651,7 @@ DECLARE
   v_p0 uuid; v_l1 uuid; v_d0 uuid; v_l2 uuid; v_f0 uuid; v_fr uuid; v_fx uuid;
   v_b1 uuid; v_b2 uuid; v_c0 uuid; v_r1 uuid; v_r2 uuid; v_e1 uuid; v_e2 uuid;
   v_sti_a uuid; v_sti_b uuid; v_cn1 uuid; v_cn2 uuid; v_po uuid;
+  v_ig uuid; v_g0 uuid; v_gr uuid;
   t_jan1 timestamptz := timestamptz '2026-01-01 10:00+07';
   t_inv_a timestamptz := timestamptz '2026-01-10 12:00+07';
 BEGIN
@@ -604,6 +751,13 @@ BEGIN
   INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
   VALUES (v_tenant, v_ic, v_s, CASE WHEN v_po IS NULL THEN 3 ELSE 10 END, CASE WHEN v_po IS NULL THEN 20 ELSE 29 END, now());
 
+  -- P: post loop (b) shape -- G0 5 @10 (Jan 1), PO receipt GR 4 @30 (Jan 2) that a post reverses
+  INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (v_tenant, 'dryrun-t10-G', 'pcs') RETURNING id INTO v_ig;
+  v_g0 := pg_temp.t10_mv(v_tenant, v_ig, v_s, 'purchase_in', 5, 10, 'dryrun', NULL, t_jan1);
+  v_gr := pg_temp.t10_mv(v_tenant, v_ig, v_s, 'purchase_in', 4, 30, 'dryrun', NULL, timestamptz '2026-01-02 10:00+07');
+  INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
+  VALUES (v_tenant, v_ig, v_s, 9, 175.0 / 9, now());
+
   v_e1 := pg_temp.t10_mv(v_tenant, v_ie, v_s, 'purchase_in', 5, 10, 'dryrun', NULL, t_jan1);
   v_e2 := pg_temp.t10_mv(v_tenant, v_ie, v_s, 'purchase_in', 5, 20, 'dryrun', NULL, timestamptz '2026-01-02 10:00+07');
   INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
@@ -612,7 +766,8 @@ BEGIN
   INSERT INTO _ids VALUES ('s', v_s), ('ia', v_ia), ('xd', v_xd), ('xf', v_xf), ('ib', v_ib), ('ic', v_ic), ('ie', v_ie),
     ('p0', v_p0), ('l1', v_l1), ('d0', v_d0), ('l2', v_l2), ('f0', v_f0), ('fr', v_fr), ('fx', v_fx),
     ('b1', v_b1), ('b2', v_b2), ('c0', v_c0), ('r1', v_r1), ('r2', v_r2), ('e1', v_e1), ('e2', v_e2),
-    ('sti_a', v_sti_a), ('sti_b', v_sti_b), ('cn1', v_cn1), ('cn2', v_cn2), ('po', v_po);
+    ('sti_a', v_sti_a), ('sti_b', v_sti_b), ('cn1', v_cn1), ('cn2', v_cn2), ('po', v_po),
+    ('ig', v_ig), ('g0', v_g0), ('gr', v_gr);
   INSERT INTO _ctx VALUES (v_email);
 END $$;
 
@@ -646,6 +801,10 @@ DECLARE
   v_cn1 uuid := (SELECT id FROM _ids WHERE k = 'cn1');
   v_cn2 uuid := (SELECT id FROM _ids WHERE k = 'cn2');
   v_po uuid := (SELECT id FROM _ids WHERE k = 'po');
+  v_sti_b uuid := (SELECT id FROM _ids WHERE k = 'sti_b');
+  v_ig uuid := (SELECT id FROM _ids WHERE k = 'ig');
+  v_g0 uuid := (SELECT id FROM _ids WHERE k = 'g0');
+  v_gr uuid := (SELECT id FROM _ids WHERE k = 'gr');
   res jsonb; v_exp uuid; v_err text; v_n int; v_ok boolean; v_detail text;
   x record; y record; bal record; rv record; rp record;
 BEGIN
@@ -806,11 +965,40 @@ BEGIN
     v_detail LIKE '%SELECT sm.id, sm.quantity, sm.unit_cost FROM stock_movements sm%'
       AND v_detail LIKE '%v_note, now(),%m.id);%', NULL);
 
+  -- ================= probe P: post_supplier_tax_invoice loop (b) =================
+  -- A full post needs _sti_check to pass (PO + expense + amount-match fixture); instead the
+  -- exact call loop (b) now makes is run with the receipt id, the reversals row is written
+  -- as loop (b) writes it, and the live function text is checked for the 10th argument.
+  BEGIN
+    SELECT * INTO rv FROM _stock_receipt_reversal(v_tenant, v_ig, v_s, 4, 30,
+      'supplier_tax_invoice', v_sti_b, 'dryrun T10 post loop b', timestamptz '2026-01-05 12:00+07', v_gr);
+    INSERT INTO supplier_tax_invoice_reversals (tenant_id, invoice_id, po_id, source_movement_id, reversal_movement_id,
+                                                inventory_item_id, site_id, quantity, unit_cost)
+    VALUES (v_tenant, v_sti_b, gen_random_uuid(), v_gr, rv.movement_id, v_ig, v_s, 4, 30);
+    INSERT INTO _results VALUES (22, 'P loop-(b) call: the receipt_reversal row links the receipt (= reversals.source_movement_id)',
+      (SELECT sm.lot_movement_id = r.source_movement_id AND sm.lot_movement_id = v_gr
+         FROM supplier_tax_invoice_reversals r JOIN stock_movements sm ON sm.id = r.reversal_movement_id
+        WHERE r.reversal_movement_id = rv.movement_id),
+      format('reversal=%s lot=%s gr=%s', rv.movement_id,
+             (SELECT lot_movement_id FROM stock_movements WHERE id = rv.movement_id), v_gr));
+    INSERT INTO _results VALUES (23, 'P balance = replay: receipt GR cancelled by its link, G0 5 @10 left (unlinked oldest-first would leave 1 @10 + 4 @30)',
+      pg_temp.t10_bal_ok(v_ig, v_s) AND pg_temp.t10_nlots(v_ig, v_s) = 1 AND pg_temp.t10_lot(v_ig, v_s, v_g0) = 5
+        AND rv.new_quantity_on_hand = 5 AND rv.new_weighted_average_cost = 10,
+      pg_temp.t10_card(v_ig, v_s));
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _results VALUES (94, 'probe P aborted (rows 22-23 missing)', false, SQLSTATE || ' ' || SQLERRM);
+  END;
+  v_detail := pg_get_functiondef('public.post_supplier_tax_invoice(uuid, integer)'::regprocedure);
+  INSERT INTO _results VALUES (24, 'P post_supplier_tax_invoice loop (b) passes r.movement_id as the 10th argument (old 9-arg shape gone)',
+    v_detail LIKE '%_stock_receipt_reversal(v_tenant, r.inventory_item_id, r.site_id, r.quantity, r.unit_cost,%v_at,'
+                  || chr(10) || '      r.movement_id);%'
+      AND v_detail NOT LIKE '%v_at);%', NULL);
+
   -- ================= probe D: every touched card equals its replay =================
   SELECT bool_and(pg_temp.t10_bal_ok(k, v_s)), string_agg(pg_temp.t10_card(k, v_s), E'\n')
     INTO v_ok, v_detail
-    FROM unnest(ARRAY[v_ia, v_xd, v_xf, v_ib, v_ic, v_ie]) k;
-  INSERT INTO _results VALUES (19, 'D all six touched cards: stored balance = _replay_stock_lots (qty, fifo_value/qty)',
+    FROM unnest(ARRAY[v_ia, v_xd, v_xf, v_ib, v_ic, v_ie, v_ig]) k;
+  INSERT INTO _results VALUES (19, 'D all seven touched cards: stored balance = _replay_stock_lots (qty, fifo_value/qty)',
     coalesce(v_ok, false), v_detail);
 
   -- ================= signatures + grants =================
