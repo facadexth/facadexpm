@@ -1,5 +1,5 @@
 -- DRY RUN of supabase/datafix/2026-10-26-05-fifo-switchover.sql -- always rolls back.
--- Controller runs it on CHANG AFTER migrations 2026-10-26-01 .. -04 are live, as ONE call.
+-- Controller runs it on CHANG AFTER migrations 2026-10-26-01 .. -05 are live, as ONE call.
 -- Body between BEGIN and the VERIFICATION marker is the real file verbatim (its header
 -- comment explains every step). Prints ONE result set:
 --   TOTAL / SUMMARY / DELTA   the report the owner reads before the real run

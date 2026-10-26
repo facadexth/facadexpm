@@ -1,5 +1,5 @@
 -- Refit the posted WAC invoice cuts as FIFO under an MO (FIFO + MO/OB stock documents,
--- task 13, the last datafix). Run AFTER migrations 2026-10-26-01 .. -04, the task-11
+-- task 13, the last datafix). Run AFTER migrations 2026-10-26-01 .. -05, the task-11
 -- switch-over (-05) and the task-12 FacadeX OB (-06). Run the .dryrun.sql copy first:
 -- same body, it only reports (never aborts on a FAIL row) and ends in ROLLBACK.
 --

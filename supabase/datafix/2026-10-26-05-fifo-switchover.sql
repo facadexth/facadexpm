@@ -1,5 +1,5 @@
 -- FIFO switch-over datafix, ALL tenants (FIFO + MO/OB stock documents, task 11).
--- Run AFTER migrations 2026-10-26-01 .. -04 are live, in the maintenance window,
+-- Run AFTER migrations 2026-10-26-01 .. -05 are live, in the maintenance window,
 -- before anyone posts. Run the .dryrun.sql copy first: it is this file inside
 -- BEGIN .. ROLLBACK plus a verification block, and prints the same report.
 -- The file is wrapped in an explicit BEGIN; .. COMMIT; (report SELECT just before the
