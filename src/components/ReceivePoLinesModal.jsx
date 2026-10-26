@@ -233,7 +233,7 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, s
               const bal = (stockBalances || []).find(b => b.inventory_item_id === p.inventoryItemId && b.site_id === stockSiteId)
               const oldQty = Number(bal?.quantity_on_hand || 0)
               const newWac = computeWeightedAverageCost(oldQty, Number(bal?.weighted_average_cost || 0), p.baseQty, p.unitCostPerBase)
-              return <div key={p.poItemId} style={{ marginTop: 4 }}>📦 {p.name}: +{fmt(p.baseQty)} {p.baseUnit} → คงเหลือ {fmt(oldQty + p.baseQty)} {p.baseUnit} @ เฉลี่ย {fmt(newWac)}/{p.baseUnit}</div>
+              return <div key={p.poItemId} style={{ marginTop: 4 }}>📦 {p.name}: +{fmt(p.baseQty)} {p.baseUnit} → คงเหลือ {fmt(oldQty + p.baseQty)} {p.baseUnit} @ ต้นทุน/หน่วย {fmt(newWac)}/{p.baseUnit}</div>
             })}
           </div>
         )}

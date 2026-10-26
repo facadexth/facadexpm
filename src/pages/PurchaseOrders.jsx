@@ -1516,7 +1516,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                     const newWac = computeWeightedAverageCost(oldQty, oldWac, plan.baseQty, plan.unitCostPerBase)
                     return (
                       <div key={i} style={{ marginTop: 4 }}>
-                        📦 {plan.name}: +{fmt(plan.baseQty)} {plan.baseUnit} → คงเหลือ {fmt(newQty)} {plan.baseUnit} @ เฉลี่ย {fmt(newWac)}/{plan.baseUnit}
+                        📦 {plan.name}: +{fmt(plan.baseQty)} {plan.baseUnit} → คงเหลือ {fmt(newQty)} {plan.baseUnit} @ ต้นทุน/หน่วย {fmt(newWac)}/{plan.baseUnit}
                       </div>
                     )
                   })}

@@ -40,7 +40,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
               <th style={{ textAlign: 'right' }}>+ จากใบกำกับ</th>
               <th style={{ textAlign: 'right' }}>- กลับรายการใบสั่งซื้อ</th>
               <th style={{ textAlign: 'right' }}>คงเหลือหลัง</th>
-              <th style={{ textAlign: 'right' }}>ต้นทุนเฉลี่ยหลัง</th>
+              <th style={{ textAlign: 'right' }}>ต้นทุน/หน่วยหลัง</th>
             </tr>
           </thead>
           <tbody>

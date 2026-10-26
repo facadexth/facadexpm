@@ -155,7 +155,7 @@ export const CHECK_TEXT = {
   expense_changed: 'เลขที่ใบกำกับในรายจ่ายถูกแก้หลังบันทึก — ไม่ได้คืนเลขเดิม',
   po_data_not_finite: 'ข้อมูลใบสั่งซื้อหรือการรับของมีค่าที่ไม่ใช่ตัวเลข — แก้ข้อมูลก่อนจึงจะบันทึกได้',
   expense_missing: 'ไม่พบรายจ่ายของใบสั่งซื้อนี้ — ไม่ได้ประทับเลขที่ใบกำกับ',
-  void_inexact: 'สต็อกมีการเคลื่อนไหวหลังบันทึกใบกำกับ — ยกเลิกแล้ว แต่ต้นทุนเฉลี่ยอาจไม่เท่าเดิมทุกบาท',
+  void_inexact: 'สต็อกมีการเคลื่อนไหวหลังบันทึกใบกำกับ — ยกเลิกแล้ว แต่ต้นทุน/หน่วยอาจไม่เท่าเดิมทุกบาท',
   bad_header: 'ข้อมูลหัวใบกำกับไม่ครบหรือไม่ถูกต้อง',
   ...DELIVERY_CHECK_TEXT,
 }
@@ -277,7 +277,7 @@ export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCou
     : `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${reversingPoCount(poCount, preview?.checks)} ใบ`]
   for (const r of preview?.rows || []) {
     out.push(`${r.negative ? '⚠️ ' : ''}${r.item_name} @ ${r.site_name}: คงเหลือ ${fmtQty(r.before_qty)} → ${fmtQty(r.after_qty)} ${r.base_unit || ''}`.trim()
-      + ` · ต้นทุนเฉลี่ย ${fmtWac(r.before_wac)} → ${fmtWac(r.after_wac)}`
+      + ` · ต้นทุน/หน่วย ${fmtWac(r.before_wac)} → ${fmtWac(r.after_wac)}`
       + ` · รับเข้าใหม่ +${fmtQty(r.add_qty)} · กลับรายการ -${fmtQty(r.remove_qty)}`
       + (r.negative ? ' (สต็อกจะติดลบ)' : ''))
   }

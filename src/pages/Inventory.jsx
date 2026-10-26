@@ -1146,7 +1146,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
               </>
             )}
             <footer className="doc-footer">
-              <p>จัดทำตามมาตรา 87(3) แห่งประมวลรัษฎากร และประกาศอธิบดีกรมสรรพากรเกี่ยวกับภาษีมูลค่าเพิ่ม (ฉบับที่ 89) พ.ศ. 2542 — คำนวณต้นทุนด้วยวิธีถัวเฉลี่ยเคลื่อนที่ (Weighted Average Cost)</p>
+              <p>จัดทำตามมาตรา 87(3) แห่งประมวลรัษฎากร และประกาศอธิบดีกรมสรรพากรเกี่ยวกับภาษีมูลค่าเพิ่ม (ฉบับที่ 89) พ.ศ. 2542 — คำนวณต้นทุนด้วยวิธีเข้าก่อนออกก่อน (FIFO)</p>
               <p>พิมพ์จากระบบ CHANG เมื่อ {new Date().toLocaleDateString('th-TH')}</p>
             </footer>
           </div>
@@ -1367,7 +1367,7 @@ function InventoryFull() {
       { header: 'คลัง', accessor: r => r.multiSite ? `${r.multiSite.length} คลัง` : (r.balance ? (r.balance.sites?.name || '') : (centralSite?.name || 'ส่วนกลาง')) },
       { header: 'ปริมาณ', accessor: r => r.multiSite ? aggregateBalances(r.multiSite).qty : (r.balance?.quantity_on_hand ?? 0) },
       { header: 'หน่วย', accessor: r => r.item.base_unit },
-      { header: 'ราคา/หน่วย', accessor: r => r.multiSite ? aggregateBalances(r.multiSite).avgCost : (r.balance?.weighted_average_cost ?? 0) },
+      { header: 'ต้นทุน/หน่วย', accessor: r => r.multiSite ? aggregateBalances(r.multiSite).avgCost : (r.balance?.weighted_average_cost ?? 0) },
       { header: 'มูลค่ารวม', accessor: r => r.multiSite ? aggregateBalances(r.multiSite).value : (r.balance?.quantity_on_hand ?? 0) * (r.balance?.weighted_average_cost ?? 0) },
       { header: 'แหล่งที่มาล่าสุด', accessor: r => r.multiSite ? resolveSource(r.item.id) : (r.balance ? resolveSource(r.item.id, r.balance.site_id) : '') },
     ]
@@ -1483,7 +1483,7 @@ function InventoryFull() {
                   <th className="sortable" onClick={() => itemToggleSort('name')}>ชื่อ{itemSi('name')}</th>
                   <th className="sortable" onClick={() => itemToggleSort('_category')}>หมวดหมู่{itemSi('_category')}</th>
                   <th className="sortable" onClick={() => itemToggleSort('active')}>สถานะ{itemSi('active')}</th>
-                  <th>คลัง</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th>
+                  <th>คลัง</th><th>ปริมาณ</th><th>ต้นทุน/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th>
                 </tr></thead>
                 <tbody>
                   {tableRows.map(({ item, balance, isFirstForItem, multiSite }) => (
@@ -1647,7 +1647,7 @@ function InventoryFull() {
             <div className="modal-body">
               <CardTable map={INV_WH_MAP}>
                 <table>
-                  <thead><tr><th>คลัง</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่า</th></tr></thead>
+                  <thead><tr><th>คลัง</th><th>ปริมาณ</th><th>ต้นทุน/หน่วย</th><th>มูลค่า</th></tr></thead>
                   <tbody>
                     {warehousePopup.balances.map(b => (
                       <tr key={b.id}>
