@@ -436,7 +436,10 @@ function InvoiceDeductionRow({ invoice, categories, items, centralSite, defaultS
 
           // Finished goods carry what the FIFO cut really cost: scale the
           // planned material value by actual-cut / planned.
-          const actualFactor = plan && plan.totalTargetValue > 0 ? plan.totalDeductedValue / plan.totalTargetValue : 1
+          // On a retry whose raw material is already posted, the fresh plan
+          // reads the drained stock and would under-value FG: use 1 instead.
+          const actualFactor = rmAlreadyDone ? 1
+            : plan && plan.totalTargetValue > 0 ? plan.totalDeductedValue / plan.totalTargetValue : 1
           const fgPlan = computeFinishedGoodsProductionPlan({ billedLines, materialPct: parseFloat(materialPct) || 0, actualFactor })
 
           for (const step of fgPlan.steps) {
