@@ -556,15 +556,19 @@ function InvoiceDeductionRow({ invoice, categories, items, centralSite, defaultS
 
 const TAX_REPORT_KINDS = [
   {
-    key: 'finished_goods', label: '1. รายงานการตัดสินค้าสำเร็จรูป', badge: 'รายงานที่ 1',
+    key: 'finished_goods', label: '1. รายงานการตัดสินค้าสำเร็จรูป (FG)', badge: 'รายงานที่ 1',
     subtitle: 'บัตรสินค้า — สินค้าสำเร็จรูป (งานตามสัญญาที่ผลิตและขายในแต่ละใบแจ้งหนี้)',
   },
   {
-    key: 'raw_material', label: '2. รายงานตัดวัตถุดิบ', badge: 'รายงานที่ 2',
+    key: 'mo', label: '2. ใบสั่งผลิต (MO)', badge: 'รายงานที่ 2',
+    subtitle: 'ใบสั่งผลิตทั้งหมด — เป้ามูลค่าตาม % ที่ตั้งไว้ เทียบเบิกจริง',
+  },
+  {
+    key: 'raw_material', label: '3. รายงานตัดวัตถุดิบ (RM)', badge: 'รายงานที่ 3',
     subtitle: 'บัตรสินค้า — วัตถุดิบและวัสดุประกอบ (อลูมิเนียม กระจก อุปกรณ์ และอื่นๆ)',
   },
   {
-    key: 'all', label: '3. รายงานสินค้าและวัตถุดิบ (รวม)', badge: 'รายงานที่ 3',
+    key: 'all', label: '4. รายงานสินค้าและวัตถุดิบ (รวม)', badge: 'รายงานที่ 4',
     subtitle: 'บัตรสินค้า — รวมสินค้าสำเร็จรูปและวัตถุดิบทุกรายการในรอบระยะเวลาเดียวกัน',
   },
 ]
@@ -599,7 +603,7 @@ const LEDGER_MOVEMENT_LABELS = {
 function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const today = new Date().toISOString().slice(0, 10)
   const monthStart = today.slice(0, 8) + '01'
-  const [reportKind, setReportKind] = useState('all')
+  const [reportKind, setReportKind] = useState('finished_goods')
   const [dateFrom, setDateFrom] = useState(monthStart)
   const [dateTo, setDateTo] = useState(today)
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -670,7 +674,9 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
 
   const effectiveCategoryId = reportKind === 'finished_goods' ? null : (categoryFilter || null)
 
-  const rows = useMemo(() => computeStockLedgerReport({
+  // Tab 2 (MO) is not a stock-card ledger -- computeStockLedgerReport only
+  // knows 'finished_goods' / 'raw_material' / 'all', so never hand it 'mo'.
+  const rows = useMemo(() => reportKind === 'mo' ? [] : computeStockLedgerReport({
     movements: movements || [], items: allItems || [], dateFrom, dateTo,
     itemKindFilter: reportKind, categoryId: effectiveCategoryId,
   }), [movements, allItems, dateFrom, dateTo, reportKind, effectiveCategoryId])
@@ -825,7 +831,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             <td colSpan={9} style={{ fontWeight: 700, background: 'var(--accent-soft, rgba(0,0,0,0.04))', color: 'var(--accent)' }}>
               {onItemClick ? (
                 <button className="btn-ghost" style={{ padding: 0, font: 'inherit', fontWeight: 700, color: 'var(--accent)', textDecoration: 'underline' }}
-                  onClick={() => onItemClick(r)} title="ดูประวัติทั้งหมดของรายการนี้ในรายงานที่ 3">
+                  onClick={() => onItemClick(r)} title="ดูประวัติทั้งหมดของรายการนี้ในรายงานที่ 4">
                   {r.code} — {r.name} →
                 </button>
               ) : (
@@ -933,7 +939,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <label className="label">จาก <input className="input input-sm" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></label>
         <label className="label">ถึง <input className="input input-sm" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></label>
-        {reportKind !== 'finished_goods' && (
+        {reportKind !== 'finished_goods' && reportKind !== 'mo' && (
           <div style={{ minWidth: 220, maxWidth: 260 }}>
             <SearchableSelect value={categoryFilter} onChange={setCategoryFilter} placeholder="ทุกหมวดหมู่"
               options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
@@ -951,7 +957,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             <button className="btn-ghost" style={{ padding: 0, lineHeight: 1 }} onClick={clearItemFilter}>✕</button>
           </span>
         )}
-        {!showFgList && !showRmList && (
+        {!showFgList && !showRmList && reportKind !== 'mo' && (
           <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => window.print()}>🖨️ พิมพ์ / PDF</button>
         )}
       </div>
@@ -1023,6 +1029,8 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             </table>
           </CardTable>
         </>
+      ) : reportKind === 'mo' ? (
+        <div className="card" style={{ padding: 14, color: 'var(--text3)' }}>กำลังจะมาใน task ถัดไป</div>
       ) : reportKind === 'raw_material' ? (
         <>
           <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
