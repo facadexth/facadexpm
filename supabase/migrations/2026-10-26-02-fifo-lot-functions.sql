@@ -158,8 +158,13 @@ REVOKE ALL ON FUNCTION public._replay_stock_lots(uuid, uuid) FROM PUBLIC, anon, 
 --                       -- taking more would push the card negative somewhere
 --                       between then and today (same discipline as
 --                       inventory_balances_as_of)
---   lots              = the layers on hand at that moment, cost-less ones
---                       skipped, total capped at `cap` by trimming the newest
+--   lots              = the layers on hand at that moment, each limited to
+--                       its OWN lowest remaining qty from then to today (a
+--                       later, already-posted out linked to that layer must
+--                       still find its stock there, or its recorded price
+--                       would silently move to another layer at replay),
+--                       cost-less ones skipped, total capped at `cap` by
+--                       trimming the newest
 --   quantity_on_hand  = Σ lots.qty (exactly what may be taken)
 --   first_received_at = first receipt up to that moment (FIFO item order)
 -- Only cards with something to take come back. One jsonb array, so the API's
@@ -183,6 +188,7 @@ DECLARE
   l_id uuid[]; l_at timestamptz[]; l_cost numeric[]; l_qty numeric[];
   snapped boolean; at_qty numeric; at_qtys numeric[]; at_n int;
   min_after numeric; first_at timestamptz; v_lots jsonb; v_sum numeric;
+  lot_min numeric[]; v_eff numeric[]; i int;
 BEGIN
   IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders')) THEN
     RAISE EXCEPTION 'insufficient_privilege';
@@ -202,9 +208,16 @@ BEGIN
   LOOP
     IF m.sentinel OR k_item IS DISTINCT FROM m.inventory_item_id OR k_site IS DISTINCT FROM m.site_id THEN
       IF k_item IS NOT NULL THEN
-        IF NOT snapped THEN at_qty := qty; at_qtys := l_qty; at_n := coalesce(array_length(l_id, 1), 0); END IF;
-        -- layers pushed after the cutoff (index > at_n) did not exist at that moment
-        v_lots := _fifo_pickable_lots(l_id[1:at_n], l_at[1:at_n], l_cost[1:at_n], at_qtys[1:at_n],
+        IF NOT snapped THEN
+          at_qty := qty; at_qtys := l_qty; at_n := coalesce(array_length(l_id, 1), 0); lot_min := at_qtys;
+        END IF;
+        -- layers pushed after the cutoff (index > at_n) did not exist at that moment;
+        -- each snapshot layer offers only what it keeps from then to today
+        v_eff := '{}';
+        FOR i IN 1 .. at_n LOOP
+          v_eff := v_eff || least(at_qtys[i], lot_min[i]);
+        END LOOP;
+        v_lots := _fifo_pickable_lots(l_id[1:at_n], l_at[1:at_n], l_cost[1:at_n], v_eff,
                                       least(at_qty, coalesce(min_after, at_qty)));
         SELECT coalesce(sum((e->>'qty')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lots) e;
         IF v_sum > 0 THEN
@@ -217,11 +230,13 @@ BEGIN
       qty := 0; deficit := 0;
       l_id := '{}'; l_at := '{}'; l_cost := '{}'; l_qty := '{}';
       snapped := false; at_qty := NULL; at_qtys := NULL; at_n := 0; min_after := NULL; first_at := NULL;
+      lot_min := NULL;
     END IF;
 
     IF m.created_at > v_at AND NOT snapped THEN
       -- state at the invoice moment
       snapped := true; at_qty := qty; at_qtys := l_qty; at_n := coalesce(array_length(l_id, 1), 0);
+      lot_min := at_qtys;
     END IF;
 
     -- same replay as _replay_stock_lots
@@ -249,6 +264,10 @@ BEGIN
       END IF;
     ELSE
       min_after := least(coalesce(min_after, qty), qty);
+      -- per-layer low-water mark of the snapshot layers (an empty layer counts as 0)
+      FOR i IN 1 .. at_n LOOP
+        lot_min[i] := least(lot_min[i], greatest(l_qty[i], 0));
+      END LOOP;
     END IF;
   END LOOP;
 

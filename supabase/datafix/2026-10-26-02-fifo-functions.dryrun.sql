@@ -12,8 +12,13 @@
 --   I3  overshoot past every layer: no throw, deficit paid back by the next lot.
 --   I4  linked overshoot -> remainder oldest-first; adjustment -/+; receipt_reversal
 --       whose linked layer is already empty.
---   I5  inventory_lots_as_of: zero-cost layer excluded; min-after cap trims the
---       NEWEST layer.
+--   I5  inventory_lots_as_of: zero-cost layer excluded; a layer is limited to what
+--       a later linked out leaves of it.
+--   I6  reviewer case: a later out linked to the OLDEST lot -> as of an earlier
+--       date the pickable lots are [B 2, A 10], not [B 10, A 2].
+-- Block 1 (setup + replay probes) and block 2 (RPC probes, wrapped in an
+-- exception handler that records row 99 FAIL) are separate, so an auth problem in
+-- block 2 still prints block 1's rows.
 -- Plus inventory_lots_as_of on I1 at day 0 / day 1 / before any stock, the exact
 -- jsonb key names of both functions, and grants. inventory_lots_as_of runs as a
 -- FacadeX OWNER/ADMIN via a transaction-local request.jwt.claims.
@@ -181,8 +186,13 @@ REVOKE ALL ON FUNCTION public._replay_stock_lots(uuid, uuid) FROM PUBLIC, anon, 
 --                       -- taking more would push the card negative somewhere
 --                       between then and today (same discipline as
 --                       inventory_balances_as_of)
---   lots              = the layers on hand at that moment, cost-less ones
---                       skipped, total capped at `cap` by trimming the newest
+--   lots              = the layers on hand at that moment, each limited to
+--                       its OWN lowest remaining qty from then to today (a
+--                       later, already-posted out linked to that layer must
+--                       still find its stock there, or its recorded price
+--                       would silently move to another layer at replay),
+--                       cost-less ones skipped, total capped at `cap` by
+--                       trimming the newest
 --   quantity_on_hand  = Σ lots.qty (exactly what may be taken)
 --   first_received_at = first receipt up to that moment (FIFO item order)
 -- Only cards with something to take come back. One jsonb array, so the API's
@@ -206,6 +216,7 @@ DECLARE
   l_id uuid[]; l_at timestamptz[]; l_cost numeric[]; l_qty numeric[];
   snapped boolean; at_qty numeric; at_qtys numeric[]; at_n int;
   min_after numeric; first_at timestamptz; v_lots jsonb; v_sum numeric;
+  lot_min numeric[]; v_eff numeric[]; i int;
 BEGIN
   IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders')) THEN
     RAISE EXCEPTION 'insufficient_privilege';
@@ -225,9 +236,16 @@ BEGIN
   LOOP
     IF m.sentinel OR k_item IS DISTINCT FROM m.inventory_item_id OR k_site IS DISTINCT FROM m.site_id THEN
       IF k_item IS NOT NULL THEN
-        IF NOT snapped THEN at_qty := qty; at_qtys := l_qty; at_n := coalesce(array_length(l_id, 1), 0); END IF;
-        -- layers pushed after the cutoff (index > at_n) did not exist at that moment
-        v_lots := _fifo_pickable_lots(l_id[1:at_n], l_at[1:at_n], l_cost[1:at_n], at_qtys[1:at_n],
+        IF NOT snapped THEN
+          at_qty := qty; at_qtys := l_qty; at_n := coalesce(array_length(l_id, 1), 0); lot_min := at_qtys;
+        END IF;
+        -- layers pushed after the cutoff (index > at_n) did not exist at that moment;
+        -- each snapshot layer offers only what it keeps from then to today
+        v_eff := '{}';
+        FOR i IN 1 .. at_n LOOP
+          v_eff := v_eff || least(at_qtys[i], lot_min[i]);
+        END LOOP;
+        v_lots := _fifo_pickable_lots(l_id[1:at_n], l_at[1:at_n], l_cost[1:at_n], v_eff,
                                       least(at_qty, coalesce(min_after, at_qty)));
         SELECT coalesce(sum((e->>'qty')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lots) e;
         IF v_sum > 0 THEN
@@ -240,11 +258,13 @@ BEGIN
       qty := 0; deficit := 0;
       l_id := '{}'; l_at := '{}'; l_cost := '{}'; l_qty := '{}';
       snapped := false; at_qty := NULL; at_qtys := NULL; at_n := 0; min_after := NULL; first_at := NULL;
+      lot_min := NULL;
     END IF;
 
     IF m.created_at > v_at AND NOT snapped THEN
       -- state at the invoice moment
       snapped := true; at_qty := qty; at_qtys := l_qty; at_n := coalesce(array_length(l_id, 1), 0);
+      lot_min := at_qtys;
     END IF;
 
     -- same replay as _replay_stock_lots
@@ -272,6 +292,10 @@ BEGIN
       END IF;
     ELSE
       min_after := least(coalesce(min_after, qty), qty);
+      -- per-layer low-water mark of the snapshot layers (an empty layer counts as 0)
+      FOR i IN 1 .. at_n LOOP
+        lot_min[i] := least(lot_min[i], greatest(l_qty[i], 0));
+      END LOOP;
     END IF;
   END LOOP;
 
@@ -285,6 +309,10 @@ GRANT EXECUTE ON FUNCTION public.inventory_lots_as_of(date, uuid[]) TO authentic
 
 -- ===== probes =============================================================
 CREATE TEMP TABLE _results (n int, check_name text, ok boolean, detail text);
+CREATE TEMP TABLE _ids (k text PRIMARY KEY, id uuid);
+CREATE TEMP TABLE _ctx (email text);
+
+-- Block 1: setup + _replay_stock_lots probes (no auth needed).
 
 DO $$
 DECLARE
@@ -294,6 +322,7 @@ DECLARE
   i1 uuid; i2 uuid; i3 uuid; i4 uuid; i5 uuid;
   a1 uuid; b1 uuid; o1 uuid; a2 uuid; b2 uuid;
   x3 uuid; y3 uuid; p4 uuid; q4 uuid; r4 uuid; z5 uuid; l15 uuid; l25 uuid;
+  i6 uuid; b6 uuid; a6 uuid;
   r0 record; r1 record; r2 record; r3 record; r4r record;
   e jsonb;
 BEGIN
@@ -306,6 +335,7 @@ BEGIN
   INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (v_tenant, 'dryrun-fifo-I3', 'pcs') RETURNING id INTO i3;
   INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (v_tenant, 'dryrun-fifo-I4', 'pcs') RETURNING id INTO i4;
   INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (v_tenant, 'dryrun-fifo-I5', 'pcs') RETURNING id INTO i5;
+  INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (v_tenant, 'dryrun-fifo-I6', 'pcs') RETURNING id INTO i6;
 
   -- ---------- I1: Review Focus 2 ----------
   INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, created_by, created_at)
@@ -329,10 +359,9 @@ BEGIN
     (4, 'I1 A still consumed by exactly 4 (6 left @100), same as before the back-date',
         (r1.lots->1->>'qty')::numeric = 6 AND (r1.lots->1->>'unit_cost')::numeric = 100
           AND (r1.lots->1->>'qty')::numeric = (r0.lots->0->>'qty')::numeric, (r1.lots->1)::text),
-    (5, 'I1 out row still names lot A, whose cost is 100 (out price did not move)',
-        (SELECT sm.lot_movement_id = a1 AND l.unit_cost = 100
-           FROM stock_movements sm JOIN stock_movements l ON l.id = sm.lot_movement_id WHERE sm.id = o1),
-        NULL),
+    (5, 'I1 back-date adds exactly B''s 10x80 = 800 to fifo_value (the out still costs A''s 100, none taken from B)',
+        r1.fifo_value - r0.fifo_value = 800,
+        format('before=%s after=%s', r0.fifo_value, r1.fifo_value)),
     (6, 'I1 qty 16, fifo_value 1400 (10x80 + 6x100), min_qty 0',
         r1.qty = 16 AND r1.fifo_value = 1400 AND r1.min_qty = 0,
         format('qty=%s value=%s min=%s', r1.qty, r1.fifo_value, r1.min_qty)),
@@ -352,7 +381,8 @@ BEGIN
   r2 := _replay_stock_lots(i2, v_site);
   INSERT INTO _results VALUES
     (9, 'I2 control: unlinked out goes oldest-first -> B 6, A 10, value 1480 (6x80 + 10x100)',
-        (r2.lots->0->>'movement_id')::uuid = b2 AND (r2.lots->0->>'qty')::numeric = 6
+        jsonb_array_length(r2.lots) = 2
+          AND (r2.lots->0->>'movement_id')::uuid = b2 AND (r2.lots->0->>'qty')::numeric = 6
           AND (r2.lots->1->>'movement_id')::uuid = a2 AND (r2.lots->1->>'qty')::numeric = 10
           AND r2.fifo_value = 1480,
         r2.lots::text);
@@ -401,24 +431,62 @@ BEGIN
   VALUES (v_tenant, i5, v_site, 'purchase_in', 5, 10, 'dryrun', 'dryrun', timestamptz '2026-01-01 09:00+07') RETURNING id INTO l15;
   INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, created_by, created_at)
   VALUES (v_tenant, i5, v_site, 'purchase_in', 5, 20, 'dryrun', 'dryrun', timestamptz '2026-01-01 10:00+07') RETURNING id INTO l25;
-  INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, created_by, created_at)
-  VALUES (v_tenant, i5, v_site, 'sale_out', 7, 10, 'dryrun', 'dryrun', timestamptz '2026-01-03 10:00+07');  -- after the cutoff: 12 -> 5
+  INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, created_by, created_at, lot_movement_id)
+  VALUES (v_tenant, i5, v_site, 'sale_out', 3, 20, 'dryrun', 'dryrun', timestamptz '2026-01-03 10:00+07', l25);  -- after the cutoff: L2 5 -> 2
 
-  -- ---------- inventory_lots_as_of (as a FacadeX owner/admin) ----------
+  -- ---------- I6: a later linked out already took most of the OLDEST lot ----------
+  -- B 10 @80 (Jan 1), A 10 @100 (Jan 2), a Jan-10 out of 8 linked to B. As of Jan 5 the
+  -- card cap is 12, but B only keeps 2 from Jan 5 to today -> pickable [B 2, A 10].
+  INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, created_by, created_at)
+  VALUES (v_tenant, i6, v_site, 'purchase_in', 10, 80, 'dryrun', 'dryrun', timestamptz '2026-01-01 10:00+07') RETURNING id INTO b6;
+  INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, created_by, created_at)
+  VALUES (v_tenant, i6, v_site, 'purchase_in', 10, 100, 'dryrun', 'dryrun', timestamptz '2026-01-02 10:00+07') RETURNING id INTO a6;
+  INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, created_by, created_at, lot_movement_id)
+  VALUES (v_tenant, i6, v_site, 'sale_out', 8, 80, 'dryrun', 'dryrun', timestamptz '2026-01-10 10:00+07', b6);
+
+  INSERT INTO _ids VALUES ('site', v_site), ('i1', i1), ('i3', i3), ('i5', i5), ('i6', i6),
+    ('a1', a1), ('b1', b1), ('y3', y3), ('l15', l15), ('l25', l25), ('a6', a6), ('b6', b6);
+  INSERT INTO _ctx VALUES (v_email);
+END $$;
+
+-- Block 2: inventory_lots_as_of probes, as a FacadeX owner/admin. Wrapped so a
+-- privilege or runtime error records a FAIL row instead of aborting the script
+-- (block 1's rows above still print).
+DO $$
+DECLARE
+  v_tenant uuid := '1b9affc4-2136-4ed1-b168-a36e6624e743';  -- FacadeX
+  v_site uuid := (SELECT id FROM _ids WHERE k = 'site');
+  v_email text := (SELECT email FROM _ctx);
+  i1 uuid := (SELECT id FROM _ids WHERE k = 'i1');
+  i3 uuid := (SELECT id FROM _ids WHERE k = 'i3');
+  i5 uuid := (SELECT id FROM _ids WHERE k = 'i5');
+  i6 uuid := (SELECT id FROM _ids WHERE k = 'i6');
+  a1 uuid := (SELECT id FROM _ids WHERE k = 'a1');
+  b1 uuid := (SELECT id FROM _ids WHERE k = 'b1');
+  y3 uuid := (SELECT id FROM _ids WHERE k = 'y3');
+  l15 uuid := (SELECT id FROM _ids WHERE k = 'l15');
+  a6 uuid := (SELECT id FROM _ids WHERE k = 'a6');
+  b6 uuid := (SELECT id FROM _ids WHERE k = 'b6');
+  e jsonb;
+BEGIN
   PERFORM set_config('request.jwt.claims', json_build_object('email', v_email, 'role', 'authenticated')::text, true);
+  BEGIN
   INSERT INTO _results VALUES (12, 'caller resolves to FacadeX with stock access',
     current_tenant_id() = v_tenant AND is_admin_or_owner() AND has_module_access('purchase_orders'), v_email);
 
-  -- I5 as of 2026-01-01: on hand Z 2 (@0), L1 5 (@10), L2 5 (@20) = 12; min after = 5
-  -- -> Z skipped, cap 5 trims the newest (L2) -> [L1 5 @10]
+  -- I5 as of 2026-01-01: on hand Z 2 (@0), L1 5 (@10), L2 5 (@20) = 12; the Jan-3 out
+  -- linked to L2 leaves it 2 -> Z skipped (no cost), L2 limited to 2 -> [L1 5 @10, L2 2 @20]
+  -- (card cap = min(12, 9) = 9 does not bind)
   e := NULL;
   SELECT x INTO e FROM jsonb_array_elements(inventory_lots_as_of(date '2026-01-01', ARRAY[v_site])) x
    WHERE (x->>'inventory_item_id')::uuid = i5;
   INSERT INTO _results VALUES
-    (13, 'I5 as of day 0: zero-cost lot excluded, cap 5 trims newest -> [L1 5 @10], quantity_on_hand 5',
-        e IS NOT NULL AND (e->>'quantity_on_hand')::numeric = 5 AND jsonb_array_length(e->'lots') = 1
+    (13, 'I5 as of day 0: zero-cost lot excluded, L2 limited by its later linked out -> [L1 5 @10, L2 2 @20], quantity_on_hand 7',
+        e IS NOT NULL AND (e->>'quantity_on_hand')::numeric = 7 AND jsonb_array_length(e->'lots') = 2
           AND (e->'lots'->0->>'movement_id')::uuid = l15 AND (e->'lots'->0->>'qty')::numeric = 5
-          AND (e->'lots'->0->>'unit_cost')::numeric = 10,
+          AND (e->'lots'->0->>'unit_cost')::numeric = 10
+          AND (e->'lots'->1->>'movement_id')::uuid = (SELECT id FROM _ids WHERE k = 'l25')
+          AND (e->'lots'->1->>'qty')::numeric = 2,
         e::text),
     (14, 'I5 first_received_at = first receipt (the zero-cost adjustment, as inventory_balances_as_of counts it)',
         (e->>'first_received_at')::timestamptz = timestamptz '2026-01-01 08:00+07', e->>'first_received_at');
@@ -484,6 +552,21 @@ BEGIN
           AND NOT has_function_privilege('authenticated', 'public._fifo_consume(uuid[], numeric[], uuid, numeric)', 'EXECUTE')
           AND NOT has_function_privilege('authenticated', 'public._fifo_pickable_lots(uuid[], timestamptz[], numeric[], numeric[], numeric)', 'EXECUTE'),
         NULL);
+
+  -- I6: per-layer low-water mark (a later linked out keeps its lot)
+  e := NULL;
+  SELECT x INTO e FROM jsonb_array_elements(inventory_lots_as_of(date '2026-01-05', ARRAY[v_site])) x
+   WHERE (x->>'inventory_item_id')::uuid = i6;
+  INSERT INTO _results VALUES
+    (23, 'I6 as of Jan 5: B limited to the 2 the Jan-10 linked out leaves -> [B 2 @80, A 10 @100], quantity_on_hand 12',
+        e IS NOT NULL AND (e->>'quantity_on_hand')::numeric = 12 AND jsonb_array_length(e->'lots') = 2
+          AND (e->'lots'->0->>'movement_id')::uuid = b6 AND (e->'lots'->0->>'qty')::numeric = 2
+          AND (e->'lots'->1->>'movement_id')::uuid = a6 AND (e->'lots'->1->>'qty')::numeric = 10,
+        e::text);
+  EXCEPTION WHEN OTHERS THEN
+    -- the sub-block's own rows are rolled back with it; say why
+    INSERT INTO _results VALUES (99, 'inventory_lots_as_of probes aborted (rows 12-23 missing)', false, SQLSTATE || ' ' || SQLERRM);
+  END;
 END $$;
 
 SELECT n, CASE WHEN coalesce(ok, false) THEN 'PASS' ELSE 'FAIL' END AS result, check_name, detail
