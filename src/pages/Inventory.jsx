@@ -318,18 +318,25 @@ function InvoiceDeductionRow({ invoice, categories, items, centralSite, defaultS
   // Stock as of the invoice date (owner, 2026-10-17): the cut is dated to the
   // invoice date, so it may only take what was in stock then AND stays in
   // stock ever since -- otherwise a back-dated invoice takes goods that only
-  // arrived later and the stock card goes negative in between. Cost is the
-  // average cost on that date. Loaded when the row opens.
+  // arrived later and the stock card goes negative in between. Cost comes
+  // from the FIFO lots still open on that date. Loaded when the row opens.
   const [asOf, setAsOf] = useState(null) // { balances, firstReceivedAt } | { error }
   useEffect(() => {
     if (!expanded || !invoice.date) return
     let cancelled = false
     setAsOf(null)
     const siteIds = [invoice.site_id, centralSite?.id].filter(Boolean)
-    supabase.rpc('inventory_balances_as_of', { p_date: invoice.date, p_site_ids: siteIds }).then(({ data, error }) => {
+    // FIFO (2026-10-26): inventory_lots_as_of returns one jsonb array element
+    // per item+site with its lots oldest first; the planner prices from the
+    // lots and tags each cut with the lot's movement id.
+    supabase.rpc('inventory_lots_as_of', { p_date: invoice.date, p_site_ids: siteIds }).then(({ data, error }) => {
       if (cancelled) return
       if (error) { setAsOf({ error: error.message }); return }
-      const rows = (data || []).map(r => ({ ...r, quantity_on_hand: Number(r.quantity_on_hand), weighted_average_cost: Number(r.weighted_average_cost) }))
+      const rows = (Array.isArray(data) ? data : []).map(r => ({
+        ...r,
+        quantity_on_hand: Number(r.quantity_on_hand),
+        lots: (r.lots || []).map(l => ({ ...l, qty: Number(l.qty), unit_cost: Number(l.unit_cost) })),
+      }))
       setAsOf({ balances: rows, firstReceivedAt: Object.fromEntries(rows.map(r => [`${r.inventory_item_id}|${r.site_id}`, r.first_received_at])) })
     })
     return () => { cancelled = true }
@@ -379,12 +386,15 @@ function InvoiceDeductionRow({ invoice, categories, items, centralSite, defaultS
       // One call per movement took 30+ minutes for an invoice spread over
       // ~2,400 central-stock items and left it half-posted if the tab closed.
       const movements = []
-      const mv = (inventoryItemId, siteId, type, quantity, unitCost, notes) => movements.push({
+      // lotMovementId: the FIFO lot a raw-material row draws from (null on the
+      // transfer_in / site sale_out legs of a central triplet). FG rows omit it.
+      const mv = (inventoryItemId, siteId, type, quantity, unitCost, notes, lotMovementId) => movements.push({
         inventory_item_id: inventoryItemId, site_id: siteId, movement_type: type, quantity, unit_cost: unitCost, notes,
+        ...(lotMovementId !== undefined ? { lot_movement_id: lotMovementId } : {}),
       })
 
       if (!rmAlreadyDone && plan) {
-        for (const step of plan.steps) mv(step.inventoryItemId, step.siteId, step.type, step.quantity, step.unitCost, null)
+        for (const step of plan.steps) mv(step.inventoryItemId, step.siteId, step.type, step.quantity, step.unitCost, null, step.lotMovementId ?? null)
       }
 
       // Finished-goods "produce and sell" (additive to the raw-material
@@ -422,7 +432,10 @@ function InvoiceDeductionRow({ invoice, categories, items, centralSite, defaultS
           if (fgErr) throw fgErr
           const itemIdByQuotationItemId = new Map((existingFg || []).map(r => [r.quotation_item_id, r.id]))
 
-          const fgPlan = computeFinishedGoodsProductionPlan({ billedLines, materialPct: parseFloat(materialPct) || 0 })
+          // Finished goods carry what the FIFO cut really cost: scale the
+          // planned material value by actual-cut / planned.
+          const actualFactor = plan && plan.totalTargetValue > 0 ? plan.totalDeductedValue / plan.totalTargetValue : 1
+          const fgPlan = computeFinishedGoodsProductionPlan({ billedLines, materialPct: parseFloat(materialPct) || 0, actualFactor })
 
           for (const step of fgPlan.steps) {
             let itemId = itemIdByQuotationItemId.get(step.quotationItemId)
@@ -436,17 +449,23 @@ function InvoiceDeductionRow({ invoice, categories, items, centralSite, defaultS
               itemId = created.id
               itemIdByQuotationItemId.set(step.quotationItemId, itemId)
             }
-            mv(itemId, invoice.site_id, 'purchase_in', 1, step.value, `PI-${invoice.invoice_number}`)
-            mv(itemId, invoice.site_id, 'sale_out', 1, step.value, `PO-${invoice.invoice_number}`)
+            // No PI-/PO- notes any more: the MO (production in) and DP (sale)
+            // documents carry the reference. Legacy rows keep their notes.
+            mv(itemId, invoice.site_id, 'purchase_in', 1, step.value, null)
+            mv(itemId, invoice.site_id, 'sale_out', 1, step.value, null)
           }
         }
       }
 
       if (!movements.length) { alert('ไม่มีรายการให้ตัดสต็อก'); return }
 
-      const { data: posted, error: postErr } = await supabase.rpc('post_invoice_stock_deduction', { p_invoice_id: invoice.id, p_movements: movements })
+      const { data: posted, error: postErr } = await supabase.rpc('post_invoice_stock_deduction', {
+        p_invoice_id: invoice.id, p_movements: movements,
+        p_target_total: (parseFloat(invoice.subtotal) || 0) * (parseFloat(materialPct) || 0) / 100,
+        p_target_splits: numericSplits,
+      })
       if (postErr) throw postErr
-      alert(`ตัดสต็อกแล้ว — ${[posted?.dp, posted?.dm].filter(Boolean).join(' / ')}`)
+      alert(`ตัดสต็อกแล้ว — ${[posted?.mo, posted?.dm, posted?.dp].filter(Boolean).join(' / ')}`)
 
       if (plan && plan.totalShortfall > 0.01) {
         alert(`ตัดสต็อกสำเร็จบางส่วน — ขาดอีก ${fmt(plan.totalShortfall)} บาท (สต็อกไม่พอทั้งที่ไซท์งานและส่วนกลาง)`)
