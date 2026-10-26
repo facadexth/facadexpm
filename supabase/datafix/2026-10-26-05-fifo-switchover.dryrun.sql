@@ -246,7 +246,7 @@ WITH card AS (
 )
 INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, item_code, item_name, site_name,
                         old_qty, new_qty, old_value, new_value, delta, detail, tenant_id)
-SELECT 0, '(all tenants)', 0, 'TOTAL', 0, NULL, NULL, NULL, NULL, NULL, NULL,
+SELECT 0, '(all tenants)'::text, 0, 'TOTAL', 0, NULL::text, NULL::text, NULL::text, NULL::text, NULL::numeric, NULL::numeric,
        round(sum(p.old_value), 2), round(sum(p.new_value), 2), round(sum(p.new_value - p.old_value), 2),
        format('tenants %s | cards %s (changed %s) | links STI-post %s, STI-void %s, replay %s | deficit (left unlinked) %s',
               count(*), sum(p.n_cards), sum(p.n_changed),
@@ -255,7 +255,7 @@ SELECT 0, '(all tenants)', 0, 'TOTAL', 0, NULL, NULL, NULL, NULL, NULL, NULL,
        NULL::uuid
 FROM per_tenant p LEFT JOIN lk USING (tenant_id) LEFT JOIN ul USING (tenant_id)
 UNION ALL
-SELECT 1, coalesce(t.company_name, p.tenant_id::text), 1, 'SUMMARY', 0, NULL, NULL, NULL, NULL, NULL, NULL,
+SELECT 1, coalesce(t.company_name, p.tenant_id::text), 1, 'SUMMARY', 0, NULL::text, NULL::text, NULL::text, NULL::text, NULL::numeric, NULL::numeric,
        round(p.old_value, 2), round(p.new_value, 2), round(p.new_value - p.old_value, 2),
        format('cards %s (changed %s) | links STI-post %s, STI-void %s, replay %s | deficit (left unlinked) %s',
               p.n_cards, p.n_changed, coalesce(lk.n_post, 0), coalesce(lk.n_void, 0), coalesce(lk.n_replay, 0),
@@ -265,10 +265,10 @@ FROM per_tenant p
 LEFT JOIN tenants t ON t.id = p.tenant_id
 LEFT JOIN lk USING (tenant_id) LEFT JOIN ul USING (tenant_id)
 UNION ALL
-SELECT 1, coalesce(t.company_name, c.tenant_id::text), 2, 'DELTA', -abs(c.new_value - c.old_value), NULL,
+SELECT 1, coalesce(t.company_name, c.tenant_id::text), 2, 'DELTA', -abs(c.new_value - c.old_value), NULL::text,
        ii.code, ii.name, s.name,
        c.old_qty, c.new_qty, round(c.old_value, 2), round(c.new_value, 2), round(c.new_value - c.old_value, 2),
-       CASE WHEN c.new_qty <> c.old_qty THEN 'qty changed too (stored qty did not match the ledger)' END,
+       CASE WHEN c.new_qty <> c.old_qty THEN 'qty changed too (stored qty did not match the ledger)'::text END,
        c.tenant_id
 FROM card c
 LEFT JOIN tenants t ON t.id = c.tenant_id
@@ -375,7 +375,7 @@ FROM (
 -- spot sample: the 5 largest |delta| cards per tenant, with their remaining lots
 INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, item_code, item_name, site_name,
                         old_qty, new_qty, old_value, new_value, delta, detail, tenant_id)
-SELECT 1, coalesce(t.company_name, z.tenant_id::text), 4, 'SAMPLE', z.ord, NULL, ii.code, ii.name, s.name,
+SELECT 1, coalesce(t.company_name, z.tenant_id::text), 4, 'SAMPLE', z.ord, NULL::text, ii.code, ii.name, s.name,
        z.old_qty, z.new_qty, round(z.old_value, 2), round(z.new_value, 2), round(z.new_value - z.old_value, 2),
        format('min running qty %s | lots %s', z.min_qty, z.lots::text),
        z.tenant_id
