@@ -2,8 +2,9 @@
 -- Run AFTER migrations 2026-10-26-01 .. -04 are live, in the maintenance window,
 -- before anyone posts. Run the .dryrun.sql copy first: it is this file inside
 -- BEGIN .. ROLLBACK plus a verification block, and prints the same report.
--- Run the whole file as ONE call (one implicit transaction): any RAISE below aborts
--- everything, nothing half-done stays behind.
+-- The file is wrapped in an explicit BEGIN; .. COMMIT; (report SELECT just before the
+-- COMMIT), so it stays atomic even through a runner that splits statements: any RAISE
+-- below aborts everything, nothing half-done stays behind.
 --
 -- What it does, for every tenant:
 --   1. Remembers each balance row's pre-fix qty / WAC (old value = qty x WAC).
@@ -63,6 +64,8 @@
 -- No function is created; scratch state lives in session temp tables (TRUNCATEd at
 -- the start so a second run in the same session starts clean).
 
+BEGIN;
+
 -- ===== scratch ===============================================================
 CREATE TEMP TABLE IF NOT EXISTS _fx_keys (tenant_id uuid, item uuid, site uuid, PRIMARY KEY (item, site));
 CREATE TEMP TABLE IF NOT EXISTS _fx_before (item uuid, site uuid, qty numeric, wac numeric, PRIMARY KEY (item, site));
@@ -73,7 +76,7 @@ CREATE TEMP TABLE IF NOT EXISTS _fx_after (tenant_id uuid, item uuid, site uuid,
   wac numeric, min_qty numeric, lots jsonb, PRIMARY KEY (item, site));
 CREATE TEMP TABLE IF NOT EXISTS _fx_report (tenant_sort int, tenant_name text, sec int, section text, ord numeric,
   result text, item_code text, item_name text, site_name text, old_qty numeric, new_qty numeric,
-  old_value numeric, new_value numeric, delta numeric, detail text);
+  old_value numeric, new_value numeric, delta numeric, detail text, tenant_id uuid);
 TRUNCATE _fx_keys, _fx_before, _fx_links, _fx_unlinked, _fx_pre, _fx_after, _fx_report;
 
 -- ===== 1. every card + its pre-fix stored balance ============================
@@ -297,20 +300,22 @@ WITH card AS (
   FROM card c GROUP BY c.tenant_id
 )
 INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, item_code, item_name, site_name,
-                        old_qty, new_qty, old_value, new_value, delta, detail)
+                        old_qty, new_qty, old_value, new_value, delta, detail, tenant_id)
 SELECT 0, '(all tenants)', 0, 'TOTAL', 0, NULL, NULL, NULL, NULL, NULL, NULL,
        round(sum(p.old_value), 2), round(sum(p.new_value), 2), round(sum(p.new_value - p.old_value), 2),
        format('tenants %s | cards %s (changed %s) | links STI-post %s, STI-void %s, replay %s | deficit (left unlinked) %s',
               count(*), sum(p.n_cards), sum(p.n_changed),
               coalesce(sum(lk.n_post), 0), coalesce(sum(lk.n_void), 0), coalesce(sum(lk.n_replay), 0),
-              coalesce(sum(ul.n_deficit), 0))
+              coalesce(sum(ul.n_deficit), 0)),
+       NULL::uuid
 FROM per_tenant p LEFT JOIN lk USING (tenant_id) LEFT JOIN ul USING (tenant_id)
 UNION ALL
 SELECT 1, coalesce(t.company_name, p.tenant_id::text), 1, 'SUMMARY', 0, NULL, NULL, NULL, NULL, NULL, NULL,
        round(p.old_value, 2), round(p.new_value, 2), round(p.new_value - p.old_value, 2),
        format('cards %s (changed %s) | links STI-post %s, STI-void %s, replay %s | deficit (left unlinked) %s',
               p.n_cards, p.n_changed, coalesce(lk.n_post, 0), coalesce(lk.n_void, 0), coalesce(lk.n_replay, 0),
-              coalesce(ul.n_deficit, 0))
+              coalesce(ul.n_deficit, 0)),
+       p.tenant_id
 FROM per_tenant p
 LEFT JOIN tenants t ON t.id = p.tenant_id
 LEFT JOIN lk USING (tenant_id) LEFT JOIN ul USING (tenant_id)
@@ -318,7 +323,8 @@ UNION ALL
 SELECT 1, coalesce(t.company_name, c.tenant_id::text), 2, 'DELTA', -abs(c.new_value - c.old_value), NULL,
        ii.code, ii.name, s.name,
        c.old_qty, c.new_qty, round(c.old_value, 2), round(c.new_value, 2), round(c.new_value - c.old_value, 2),
-       CASE WHEN c.new_qty <> c.old_qty THEN 'qty changed too (stored qty did not match the ledger)' END
+       CASE WHEN c.new_qty <> c.old_qty THEN 'qty changed too (stored qty did not match the ledger)' END,
+       c.tenant_id
 FROM card c
 LEFT JOIN tenants t ON t.id = c.tenant_id
 LEFT JOIN inventory_items ii ON ii.id = c.item
@@ -329,4 +335,6 @@ WHERE abs(c.new_value - c.old_value) > 0.01;
 SELECT tenant_name AS tenant, section, result, item_code, item_name, site_name AS site,
        old_qty, new_qty, old_value, new_value, delta, detail
 FROM _fx_report
-ORDER BY tenant_sort, tenant_name, sec, ord, item_code;
+ORDER BY tenant_sort, tenant_name, tenant_id, sec, ord, item_code;
+
+COMMIT;

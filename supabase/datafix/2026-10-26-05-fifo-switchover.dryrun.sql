@@ -21,7 +21,7 @@ CREATE TEMP TABLE IF NOT EXISTS _fx_after (tenant_id uuid, item uuid, site uuid,
   wac numeric, min_qty numeric, lots jsonb, PRIMARY KEY (item, site));
 CREATE TEMP TABLE IF NOT EXISTS _fx_report (tenant_sort int, tenant_name text, sec int, section text, ord numeric,
   result text, item_code text, item_name text, site_name text, old_qty numeric, new_qty numeric,
-  old_value numeric, new_value numeric, delta numeric, detail text);
+  old_value numeric, new_value numeric, delta numeric, detail text, tenant_id uuid);
 TRUNCATE _fx_keys, _fx_before, _fx_links, _fx_unlinked, _fx_pre, _fx_after, _fx_report;
 
 -- ===== 1. every card + its pre-fix stored balance ============================
@@ -245,20 +245,22 @@ WITH card AS (
   FROM card c GROUP BY c.tenant_id
 )
 INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, item_code, item_name, site_name,
-                        old_qty, new_qty, old_value, new_value, delta, detail)
+                        old_qty, new_qty, old_value, new_value, delta, detail, tenant_id)
 SELECT 0, '(all tenants)', 0, 'TOTAL', 0, NULL, NULL, NULL, NULL, NULL, NULL,
        round(sum(p.old_value), 2), round(sum(p.new_value), 2), round(sum(p.new_value - p.old_value), 2),
        format('tenants %s | cards %s (changed %s) | links STI-post %s, STI-void %s, replay %s | deficit (left unlinked) %s',
               count(*), sum(p.n_cards), sum(p.n_changed),
               coalesce(sum(lk.n_post), 0), coalesce(sum(lk.n_void), 0), coalesce(sum(lk.n_replay), 0),
-              coalesce(sum(ul.n_deficit), 0))
+              coalesce(sum(ul.n_deficit), 0)),
+       NULL::uuid
 FROM per_tenant p LEFT JOIN lk USING (tenant_id) LEFT JOIN ul USING (tenant_id)
 UNION ALL
 SELECT 1, coalesce(t.company_name, p.tenant_id::text), 1, 'SUMMARY', 0, NULL, NULL, NULL, NULL, NULL, NULL,
        round(p.old_value, 2), round(p.new_value, 2), round(p.new_value - p.old_value, 2),
        format('cards %s (changed %s) | links STI-post %s, STI-void %s, replay %s | deficit (left unlinked) %s',
               p.n_cards, p.n_changed, coalesce(lk.n_post, 0), coalesce(lk.n_void, 0), coalesce(lk.n_replay, 0),
-              coalesce(ul.n_deficit, 0))
+              coalesce(ul.n_deficit, 0)),
+       p.tenant_id
 FROM per_tenant p
 LEFT JOIN tenants t ON t.id = p.tenant_id
 LEFT JOIN lk USING (tenant_id) LEFT JOIN ul USING (tenant_id)
@@ -266,7 +268,8 @@ UNION ALL
 SELECT 1, coalesce(t.company_name, c.tenant_id::text), 2, 'DELTA', -abs(c.new_value - c.old_value), NULL,
        ii.code, ii.name, s.name,
        c.old_qty, c.new_qty, round(c.old_value, 2), round(c.new_value, 2), round(c.new_value - c.old_value, 2),
-       CASE WHEN c.new_qty <> c.old_qty THEN 'qty changed too (stored qty did not match the ledger)' END
+       CASE WHEN c.new_qty <> c.old_qty THEN 'qty changed too (stored qty did not match the ledger)' END,
+       c.tenant_id
 FROM card c
 LEFT JOIN tenants t ON t.id = c.tenant_id
 LEFT JOIN inventory_items ii ON ii.id = c.item
@@ -292,11 +295,12 @@ WITH outs AS (
 ), tn AS (
   SELECT DISTINCT tenant_id FROM _fx_keys
 )
-INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, detail)
+INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, detail, tenant_id)
 SELECT 1, coalesce(t.company_name, tn.tenant_id::text), 3, 'CHECK', 1,
        CASE WHEN coalesce(o.n_unexplained, 0) = 0 THEN 'PASS' ELSE 'FAIL' END,
        format('unlinked out-rows: deficit %s, negative adjustments %s (never linked), unexplained %s (must be 0)',
-              coalesce(o.n_deficit, 0), coalesce(o.n_adjustment, 0), coalesce(o.n_unexplained, 0))
+              coalesce(o.n_deficit, 0), coalesce(o.n_adjustment, 0), coalesce(o.n_unexplained, 0)),
+       tn.tenant_id
 FROM tn
 LEFT JOIN tenants t ON t.id = tn.tenant_id
 LEFT JOIN (
@@ -308,11 +312,12 @@ LEFT JOIN (
 ) o ON o.tenant_id = tn.tenant_id;
 
 -- every stored balance = a FRESH replay (re-run here, not the copy in _fx_after)
-INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, detail)
+INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, detail, tenant_id)
 SELECT 1, coalesce(t.company_name, x.tenant_id::text), 3, 'CHECK', 2,
        CASE WHEN x.n_bad = 0 THEN 'PASS' ELSE 'FAIL' END,
        format('balances equal _replay_stock_lots: %s of %s cards (mismatches %s, missing balance rows %s)',
-              x.n - x.n_bad, x.n, x.n_bad, x.n_missing)
+              x.n - x.n_bad, x.n, x.n_bad, x.n_missing),
+       x.tenant_id
 FROM (
   SELECT k.tenant_id, count(*) AS n,
          count(*) FILTER (WHERE b.inventory_item_id IS NULL
@@ -342,7 +347,7 @@ FROM (SELECT count(*) AS n
         JOIN stock_movements t ON t.id = sm.lot_movement_id
        WHERE t.tenant_id <> sm.tenant_id OR t.inventory_item_id <> sm.inventory_item_id OR t.site_id <> sm.site_id
           OR NOT (CASE WHEN t.movement_type IN ('purchase_in', 'transfer_in', 'sale_reversal', 'adjustment')
-                       THEN t.quantity ELSE -t.quantity END > 0)) z
+                       THEN coalesce(t.quantity, 0) ELSE -coalesce(t.quantity, 0) END > 0)) z
 UNION ALL
 SELECT 0, '(all tenants)', 3, 'CHECK', 3,
        CASE WHEN n_lost = 0 THEN 'PASS' ELSE 'FAIL' END,
@@ -369,10 +374,11 @@ FROM (
 
 -- spot sample: the 5 largest |delta| cards per tenant, with their remaining lots
 INSERT INTO _fx_report (tenant_sort, tenant_name, sec, section, ord, result, item_code, item_name, site_name,
-                        old_qty, new_qty, old_value, new_value, delta, detail)
+                        old_qty, new_qty, old_value, new_value, delta, detail, tenant_id)
 SELECT 1, coalesce(t.company_name, z.tenant_id::text), 4, 'SAMPLE', z.ord, NULL, ii.code, ii.name, s.name,
        z.old_qty, z.new_qty, round(z.old_value, 2), round(z.new_value, 2), round(z.new_value - z.old_value, 2),
-       format('min running qty %s | lots %s', z.min_qty, z.lots::text)
+       format('min running qty %s | lots %s', z.min_qty, z.lots::text),
+       z.tenant_id
 FROM (
   SELECT a.tenant_id, a.item, a.site, a.min_qty, a.lots,
          coalesce(b.qty, 0) AS old_qty, a.qty AS new_qty,
@@ -391,6 +397,7 @@ WHERE z.rn <= 5 AND abs(z.new_value - z.old_value) > 0.01;
 SELECT tenant_name AS tenant, section, result, item_code, item_name, site_name AS site,
        old_qty, new_qty, old_value, new_value, delta, detail
 FROM _fx_report
-ORDER BY tenant_sort, tenant_name, sec, ord, item_code;
+ORDER BY tenant_sort, tenant_name, tenant_id, sec, ord, item_code;
+
 
 ROLLBACK;
