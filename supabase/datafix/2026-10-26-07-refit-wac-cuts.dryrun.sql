@@ -3,9 +3,12 @@
 --     are only reported, so the whole report always prints. Hard guards (unexpected
 --     rows, foreign keys into the cut, missing owner/site) still RAISE.
 --   * ends in ROLLBACK: nothing is kept.
+-- Same OPERATIONAL PRECONDITIONS as the real file (see below): run the refit before any
+-- v2 (MO) cut is posted in a month that still holds v1 targets, or the number pre-check
+-- refuses; the real run is all-or-nothing across every target and tenant.
 -- Read: DISCOVERED (targets + the numbers they will get), NUMBER_PRECHECK, NUMBERS,
--- CATEGORY / ITEM / RM_TOTAL (old vs new values), FG, MO, LINKS, BALANCES, MIN_QTY,
--- UNLINKED. Every row must be PASS (ITEM may be WARN) before the real run.
+-- CATEGORY / ITEM / RM_TOTAL (old vs new values), FG, MO, LINKS, NOTE, BALANCES, MIN_QTY,
+-- UNLINKED. Every row must be PASS (ITEM may be WARN, NOTE is INFO) before the real run.
 --
 -- Refit the posted WAC invoice cuts as FIFO under an MO (FIFO + MO/OB stock documents,
 -- task 13, the last datafix). Run AFTER migrations 2026-10-26-01 .. -04, the task-11
@@ -17,6 +20,16 @@
 -- FacadeX IN2601-001 (DM2601-001 + DP2601-001); cuts the owner posts before ship are
 -- picked up the same way. An invoice whose DM/DP have no movements at all is NOT a cut:
 -- it is reported (WARN) and left untouched.
+-- TENANT SCOPE: the code intentionally covers ALL tenants (in practice FacadeX only);
+-- the dry-run's DISCOVERED rows show exactly which invoices / tenants it will touch.
+--
+-- OPERATIONAL PRECONDITIONS (read before running):
+--   * Run this refit BEFORE any v2 (MO) cut is posted in a month that still holds v1
+--     targets. A v2 cut in that month takes a later DM/DP number of the same prefix,
+--     so the old numbers can no longer come back and the number pre-check refuses
+--     (the real run aborts before changing anything).
+--   * The run is ALL-OR-NOTHING across every target and every tenant: one guard hit,
+--     number mismatch or FAIL row aborts the whole transaction, nothing is kept.
 --
 -- Owner decisions applied:
 --   * The old WAC documents and ALL their movements are removed for good ("ไม่เก็บ
@@ -50,7 +63,10 @@
 --   short item cannot shrink its category's total.
 --   Finished goods: one purchase_in + sale_out pair per ORIGINAL FG item (same item, site
 --   and qty), notes NULL; values scaled so Σ FG = Σ raw material actually issued, split
---   in proportion to the original FG values (an FG-only cut keeps its values).
+--   in proportion to the original FG values (by qty when the original FG values are
+--   all 0; an FG-only cut keeps its values).
+--   Re-cut quantities can be fractional where the old cut had whole numbers: the value
+--   is preserved at lot prices, so qty = value / lot price (an INFO row says so).
 --   Posted through post_invoice_stock_deduction v2 (issues MO -> DM -> DP, links lots,
 --   replays the touched balances), as a FacadeX-style OWNER/ADMIN of that tenant via a
 --   transaction-local request.jwt.claims (same pattern as the proven dry-runs).
@@ -62,8 +78,10 @@
 --   older FG layer.
 --
 -- NUMBER REUSE. _issue_stock_document takes max+1 per tenant + prefix. All targets'
--- documents are removed first, then targets are re-posted in post order (invoice date,
--- old DM number, old DP number). The script simulates the numbering BEFORE removing
+-- documents (and ALL their movements, in ONE statement, so cross-target lot links set
+-- by the switch-over go with the set) are removed first, then targets are re-posted in
+-- post order = ascending ORIGINAL document number (old DM number, then old DP number,
+-- then invoice date). The script simulates the numbering BEFORE removing
 -- anything (kept max per prefix + rank of each target that will issue that type) and
 -- asserts every old DM/DP number comes back; after each post it asserts the returned
 -- MO/DM/DP numbers equal the simulated ones. Any mismatch RAISEs (real run) -> nothing
@@ -86,11 +104,12 @@
 --                FG        Σ FG new vs Σ raw material issued         (FAIL > 0.01)
 --                MO        target_total / splits as stored           (FAIL when off)
 --                LINKS     new raw-material out-rows without a lot   (FAIL > 0)
---   per tenant   BALANCES  cards whose balance <> _replay_stock_lots (FAIL if any touched
---                          card is off, or the tenant count grew)
+--   per tenant   BALANCES  cards whose balance <> _replay_stock_lots (FAIL if any, tenant-
+--                          wide: the task-11 switch-over left none)
 --                MIN_QTY   cards whose lowest running qty is now deeper than before
 --                UNLINKED  out-rows without a lot whose layers were NOT all empty and that
---                          are not finished goods (FAIL if the count grew)
+--                          are not finished goods (FAIL if any: the switch-over left none)
+--   per invoice  NOTE      INFO: re-cut quantities may be fractional
 --
 -- Scratch state lives in session temp tables / pg_temp functions (emptied at the start).
 
@@ -386,7 +405,7 @@ BEGIN
 
   -- post order per tenant
   UPDATE _rf_target t SET post_ord = x.rn
-  FROM (SELECT inv, row_number() OVER (PARTITION BY tenant ORDER BY inv_date, dm_old NULLS LAST, dp_old NULLS LAST, inv) AS rn
+  FROM (SELECT inv, row_number() OVER (PARTITION BY tenant ORDER BY dm_old NULLS LAST, dp_old NULLS LAST, inv_date, inv) AS rn
         FROM _rf_target WHERE NOT empty) x
   WHERE x.inv = t.inv;
 
@@ -443,23 +462,27 @@ END $$;
 
 -- ===== 2. remove the old cuts (all targets first, so the numbers free up) ======
 DO $$
-DECLARE t record; n int; v_expect int;
+DECLARE n int; v_expect int; v_invs uuid[];
 BEGIN
-  FOR t IN SELECT inv, inv_number FROM _rf_target WHERE NOT empty ORDER BY tenant, post_ord LOOP
-    EXECUTE 'DE' || 'LETE FROM stock_movements WHERE reference_type = ''invoice'' AND reference_id = $1' USING t.inv;
-    GET DIAGNOSTICS n = ROW_COUNT;
-    SELECT count(*) INTO v_expect FROM _rf_old WHERE inv = t.inv;
-    IF n <> v_expect THEN
-      RAISE EXCEPTION 'refit aborted: % removed % movement(s), captured %', t.inv_number, n, v_expect;
-    END IF;
+  -- ONE statement for every target's movements: the switch-over may have linked one
+  -- old cut's out-row to ANOTHER old cut's transfer_in; within one statement the
+  -- lot_movement_id FK is checked at its end, so such cross-target links go with the set.
+  SELECT coalesce(array_agg(inv), '{}') INTO v_invs FROM _rf_target WHERE NOT empty;
+  IF coalesce(array_length(v_invs, 1), 0) = 0 THEN RETURN; END IF;
 
-    EXECUTE 'DE' || 'LETE FROM stock_documents WHERE invoice_id = $1 AND doc_type IN (''DM'', ''DP'')' USING t.inv;
-    GET DIAGNOSTICS n = ROW_COUNT;
-    SELECT count(*) INTO v_expect FROM _rf_old_docs WHERE inv = t.inv;
-    IF n <> v_expect THEN
-      RAISE EXCEPTION 'refit aborted: % removed % document(s), captured %', t.inv_number, n, v_expect;
-    END IF;
-  END LOOP;
+  EXECUTE 'DE' || 'LETE FROM stock_movements WHERE reference_type = ''invoice'' AND reference_id = ANY ($1)' USING v_invs;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  SELECT count(*) INTO v_expect FROM _rf_old WHERE inv = ANY (v_invs);
+  IF n <> v_expect THEN
+    RAISE EXCEPTION 'refit aborted: removed % movement(s), captured %', n, v_expect;
+  END IF;
+
+  EXECUTE 'DE' || 'LETE FROM stock_documents WHERE invoice_id = ANY ($1) AND doc_type IN (''DM'', ''DP'')' USING v_invs;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  SELECT count(*) INTO v_expect FROM _rf_old_docs WHERE inv = ANY (v_invs);
+  IF n <> v_expect THEN
+    RAISE EXCEPTION 'refit aborted: removed % document(s), captured %', n, v_expect;
+  END IF;
 
   -- the old cut's cards now replay without it (cards the re-cut does not touch again
   -- would otherwise keep a stale balance)
@@ -570,14 +593,18 @@ BEGIN
              jsonb_build_object('inventory_item_id', g.item, 'site_id', g.site,
                'movement_type', CASE k.sub WHEN 1 THEN 'purchase_in' ELSE 'sale_out' END,
                'quantity', g.qty,
-               'unit_cost', CASE WHEN t.rm_old > 0 AND t.fg_old > 0 THEN g.val * v_rm_new / t.fg_old ELSE g.val END / g.qty,
+               'unit_cost', CASE WHEN t.rm_old > 0 AND t.fg_old > 0 THEN g.val * v_rm_new / t.fg_old
+                                 WHEN t.rm_old > 0 THEN v_rm_new * g.qty / g.qty_all   -- old FG all 0: split by qty
+                                 ELSE g.val END / g.qty,
                'notes', NULL) AS m
       FROM (
-        SELECT o.item, o.site, min(o.created_at) AS first_at,
-               sum(o.qty) FILTER (WHERE o.mtype = 'purchase_in') AS qty,
-               sum(o.qty * o.cost) FILTER (WHERE o.mtype = 'purchase_in') AS val
-        FROM _rf_old o WHERE o.inv = t.inv AND o.is_fg
-        GROUP BY o.item, o.site) g
+        SELECT g0.*, sum(g0.qty) OVER () AS qty_all
+        FROM (
+          SELECT o.item, o.site, min(o.created_at) AS first_at,
+                 sum(o.qty) FILTER (WHERE o.mtype = 'purchase_in') AS qty,
+                 sum(o.qty * o.cost) FILTER (WHERE o.mtype = 'purchase_in') AS val
+          FROM _rf_old o WHERE o.inv = t.inv AND o.is_fg
+          GROUP BY o.item, o.site) g0) g
       CROSS JOIN (VALUES (1), (2)) k(sub)
     ) x;
     v_mv := v_mv || v_fg;
@@ -768,10 +795,21 @@ BEGIN
   WHERE NOT t.empty
   GROUP BY t.tenant, t.post_ord, t.inv_number;
 
-  -- per tenant: balances = replay, no deeper dips, no new unexplained unlinked out-rows
+  -- NOTE: value preserved at lot prices -> quantities may be fractional (owner reads this)
+  INSERT INTO _rf_report (tenant, post_ord, sec, section, result, key, detail)
+  SELECT t.tenant, t.post_ord, 9, 'NOTE', 'INFO', t.inv_number,
+         format('re-cut keeps each value at FIFO lot prices, so quantities can be fractional where the old cut had whole numbers: raw-material rows with a fractional qty -- old %s of %s, new %s of %s',
+                (SELECT count(*) FROM _rf_old o WHERE o.inv = t.inv AND NOT o.is_fg AND o.qty <> trunc(o.qty)),
+                (SELECT count(*) FROM _rf_old o WHERE o.inv = t.inv AND NOT o.is_fg),
+                (SELECT count(*) FROM _rf_new n WHERE n.inv = t.inv AND NOT n.is_fg AND n.qty <> trunc(n.qty)),
+                (SELECT count(*) FROM _rf_new n WHERE n.inv = t.inv AND NOT n.is_fg))
+  FROM _rf_target t WHERE NOT t.empty;
+
+  -- per tenant: balances = replay, no deeper dips, no unexplained unlinked out-rows
+  -- (absolute: the task-11 switch-over left 0 of each)
   INSERT INTO _rf_report (tenant, post_ord, sec, section, result, key, name, old_value, new_value, delta, detail)
   SELECT x.tenant, 999, 10, 'BALANCES',
-         CASE WHEN x.touched_bad = 0 AND x.post_bad <= x.pre_bad THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN x.post_bad = 0 THEN 'PASS' ELSE 'FAIL' END,
          NULL, NULL, x.pre_bad, x.post_bad, NULL,
          format('cards whose balance <> replay: before %s, after %s (of them touched by the refit: %s)',
                 x.pre_bad, x.post_bad, x.touched_bad)
@@ -802,7 +840,7 @@ BEGIN
 
   INSERT INTO _rf_report (tenant, post_ord, sec, section, result, key, name, old_value, new_value, delta, detail)
   SELECT tn.tenant, 999, 12, 'UNLINKED',
-         CASE WHEN x.post_unexp <= x.pre_unexp THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN x.post_unexp = 0 THEN 'PASS' ELSE 'FAIL' END,
          NULL, NULL, x.pre_unexp, x.post_unexp, NULL,
          format('out-rows without a lot -- before: deficit %s, finished_goods %s, UNEXPECTED %s | after: deficit %s, finished_goods %s, UNEXPECTED %s',
                 x.pre_def, x.pre_fg, x.pre_unexp, x.post_def, x.post_fg, x.post_unexp)
