@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   normDie, parseThickness, normFinish, pickDefaultLength, q, roleVerdict,
-  buildImport, expectedCounts, renderSql, CATALOGUE_SERIES, SYSTEM_SERIES,
+  buildImport, expectedCounts, renderSql, kgRatesOf, CATALOGUE_SERIES, SYSTEM_SERIES,
 } from './mn-import-lib.mjs'
 
 describe('normDie', () => {
@@ -163,6 +163,10 @@ describe('buildImport', () => {
     expect(sql).toContain(`e_prices        CONSTANT INT := ${e.piece_prices};`)
     expect(sql.trimEnd().endsWith('COMMIT;')).toBe(true)
     expect(sql).not.toMatch(/butt_distance_mm\s*[,)]/) // never written
+    expect(sql).toContain(`e_kgprices      CONSTANT INT := ${e.kg_prices};`)
+    expect(sql).toContain("price_basis) VALUES (c_tenant, c_provider_name, c_short_name, 'per_kg')")
+    expect(e.kg_prices).toBe(kgRatesOf(m).length)
+    expect(kgRatesOf(m).every(r => m.finishes.includes(r.finish))).toBe(true)
     expect(renderSql(buildImport({ ...fixture(), kgOverrides: {} }))).toBe(sql)
   })
 })

@@ -2,13 +2,23 @@
 // Used by scripts/gen-mn-import.mjs; tested by scripts/mn-import-lib.test.mjs. No I/O here, so the output is
 // deterministic for the same inputs (no random ids, no dates from the clock, stable sort orders everywhere).
 
-export const PROVIDER = { name: 'บจก. แม่น้ำเมทอลซัพพลาย', short_name: 'MN', price_basis: 'per_piece' }
+export const PROVIDER = { name: 'บจก. แม่น้ำเมทอลซัพพลาย', short_name: 'MN', price_basis: 'per_kg' } // owner 2026-10-26: MN is priced per kg by colour like every supplier; the price book stays as reference
 export const EFFECTIVE_FROM = '2024-06-17' // price book file name "PriceList2024 (2567-06-17)"; the book prints no other date
 export const PRICE_SOURCE = 'MN price list 2024 เล่ม 14'
 export const CATALOGUE_SOURCE = 'MN catalogue 2021'
 export const DEFAULT_LENGTH_M = 6.4
 export const TENANT_ID = '1b9affc4-2136-4ed1-b168-a36e6624e743' // FacadeX tenant (the NOTICE prints its company_name)
 export const FINISH_ORDER = ['ขาว', 'ชาอ่อน', 'ชาเข้ม', 'ชาดำ', 'สีพ่น', 'ลายไม้', 'ชุบขาว', 'สีชุบดำ']
+// The shop's per-kg rate by colour class lives on provider RATE_PROVIDER (owner chat 2026-10-15). Proposed mapping
+// 2026-10-26, pending owner confirmation; finishes not listed get no kg price (owner question in the report).
+export const RATE_PROVIDER = 'ไฟล์ Aluminium calculation'
+export const MN_KG_RATES = [
+  ['ขาว', 'ANODIZED NA'],
+  ['ชาอ่อน', 'ANODIZED 512'],
+  ['ชาเข้ม', 'ANODIZED 517'],
+  ['ลายไม้', 'POWDER COATING WOOD GRAIN'],
+  ['ชุบขาว', 'ANODIZED NA'],
+]
 
 // ---------- normalisation helpers ----------
 
@@ -386,7 +396,12 @@ export function expectedCounts(m) {
     variants: m.prices.length, // one variant per (die, finish, length) and one price per variant
     piece_prices: m.prices.length,
     series_types: m.typeLinks.length,
+    kg_prices: kgRatesOf(m).length,
   }
+}
+
+export function kgRatesOf(m) {
+  return MN_KG_RATES.filter(([f]) => m.finishes.includes(f)).map(([finish, rateClass]) => ({ finish, rateClass }))
 }
 
 // ---------- SQL ----------
@@ -407,8 +422,10 @@ export function renderSql(m) {
 --   ${e.profiles} profiles (drawing_no = die no.; NULL for the GROUP 01 standard tubes/angles which print no die);
 --   ${e.series_profiles} series-profile links (family = the profile's role); ${e.finishes} finishes (price-book columns as printed);
 --   ${e.variants} profile variants (profile x finish x bar length) each with one alu_piece_prices row effective ${EFFECTIVE_FROM};
+--   (kept as reference only: price_basis is per_kg, owner 2026-10-26);
+--   ${e.kg_prices} kg prices: finishes mapped to a colour class copy the shop's latest rate from provider '${RATE_PROVIDER}'.
 --   ${e.series_types} series-type links (only unambiguous ones; see the report for the rest).
--- NOT set: butt_distance_mm (separate step), hardware / parts (the price book's hardware pages are not extracted), kg prices.
+-- NOT set: butt_distance_mm (separate step), hardware / parts (the price book's hardware pages are not extracted), kg prices of unmapped finishes.
 -- default_length_m = the bar length the price book prints for that die (most common), else ${DEFAULT_LENGTH_M} (assumed, ${m.assumedLength} profiles).
 -- Excluded rows (estimated / conflicting / no die / die not in the 2021 catalogue ...) are listed in the report, not here.
 -- Guarded: aborts unless the tenant is the one holding provider 'ไฟล์ Aluminium calculation', the 2026-10-12-01 and 2026-10-15-01
@@ -439,6 +456,10 @@ ${rows(links, l => [l.series, l.key, l.family])};
 INSERT INTO _mn_finishes VALUES
 ${rows(m.finishes.map((f, i) => ({ f, i })), x => [x.f, x.i + 1])};
 `)
+  out.push(`CREATE TEMP TABLE _mn_kgrates (finish TEXT PRIMARY KEY, rate_class TEXT NOT NULL) ON COMMIT DROP;
+INSERT INTO _mn_kgrates VALUES
+${rows(kgRatesOf(m), r => [r.finish, r.rateClass])};
+`)
   out.push(`CREATE TEMP TABLE _mn_prices (pkey TEXT NOT NULL, finish TEXT NOT NULL, length_m NUMERIC NOT NULL, price NUMERIC NOT NULL, page INT NOT NULL, PRIMARY KEY (pkey, finish, length_m)) ON COMMIT DROP;
 INSERT INTO _mn_prices VALUES
 ${rows(m.prices, p => [p.key, p.finish, p.length_m, p.price, p.page])};
@@ -462,7 +483,8 @@ DECLARE
   e_variants      CONSTANT INT := ${e.variants};
   e_prices        CONSTANT INT := ${e.piece_prices};
   e_types         CONSTANT INT := ${e.series_types};
-  v_tenant_name TEXT; v_provider UUID; v_n INT; v_txt TEXT;
+  e_kgprices      CONSTANT INT := ${e.kg_prices};
+  v_tenant_name TEXT; v_provider UUID; v_rate_provider UUID; v_n INT; v_txt TEXT;
 BEGIN
   SELECT company_name INTO v_tenant_name FROM tenants WHERE id = c_tenant;
   IF v_tenant_name IS NULL THEN RAISE EXCEPTION 'ABORT: tenant % not found', c_tenant; END IF;
@@ -557,6 +579,25 @@ BEGIN
     ON CONFLICT (variant_id, effective_from) DO NOTHING;
   GET DIAGNOSTICS v_n = ROW_COUNT; RAISE NOTICE 'piece prices inserted: % of %', v_n, e_prices;
 
+  -- 6b. price per kg: the shop's rate for the colour class (provider ${RATE_PROVIDER}, provider-wide row, latest date)
+  SELECT id INTO v_rate_provider FROM alu_providers WHERE tenant_id = c_tenant AND name = ${q(RATE_PROVIDER)};
+  CREATE TEMP TABLE _mn_rate ON COMMIT DROP AS
+    SELECT r.finish, r.rate_class, k.price_per_kg, k.effective_from
+      FROM _mn_kgrates r
+      LEFT JOIN alu_finishes rf ON rf.provider_id = v_rate_provider AND rf.name = r.rate_class
+      LEFT JOIN LATERAL (SELECT kp.price_per_kg, kp.effective_from FROM alu_kg_prices kp
+                          WHERE kp.provider_id = v_rate_provider AND kp.finish_id = rf.id AND kp.series_id IS NULL AND kp.profile_id IS NULL
+                          ORDER BY kp.effective_from DESC LIMIT 1) k ON true;
+  SELECT string_agg(rate_class, ', ') INTO v_txt FROM _mn_rate WHERE price_per_kg IS NULL;
+  IF v_txt IS NOT NULL THEN RAISE EXCEPTION 'ABORT: no per-kg rate on % for colour class %', ${q(RATE_PROVIDER)}, v_txt; END IF;
+  INSERT INTO alu_kg_prices (tenant_id, provider_id, finish_id, price_per_kg, effective_from, source)
+    SELECT c_tenant, v_provider, f.id, r.price_per_kg, r.effective_from, 'shop rate ' || r.rate_class || ' (owner 2026-10-26)'
+      FROM _mn_rate r JOIN alu_finishes f ON f.provider_id = v_provider AND f.name = r.finish
+     WHERE NOT EXISTS (SELECT 1 FROM alu_kg_prices k WHERE k.provider_id = v_provider AND k.finish_id = f.id
+                         AND k.series_id IS NULL AND k.profile_id IS NULL AND k.effective_from = r.effective_from)
+     ORDER BY r.finish;
+  GET DIAGNOSTICS v_n = ROW_COUNT; RAISE NOTICE 'kg prices inserted: % of %', v_n, e_kgprices;
+
   -- 7. series <-> door/window type links (unambiguous only)
   INSERT INTO alu_series_types (tenant_id, series_id, type_id)
     SELECT c_tenant, s.id, d.id FROM _mn_types t
@@ -587,7 +628,13 @@ BEGIN
     JOIN door_window_types d ON d.tenant_id = c_tenant AND d.name = t.type_name
     JOIN alu_series_types st ON st.series_id = s.id AND st.type_id = d.id;
   IF v_n <> e_types THEN RAISE EXCEPTION 'ABORT: series-type links present % <> expected %', v_n, e_types; END IF;
-  RAISE NOTICE 'MN IMPORT OK: series %, profiles %, links %, finishes %, variants %, piece prices %, type links %', e_series, e_profiles, e_links, e_finishes, e_variants, e_prices, e_types;
+  SELECT count(*) INTO v_n FROM _mn_rate r JOIN alu_finishes f ON f.provider_id = v_provider AND f.name = r.finish
+    JOIN alu_kg_prices k ON k.provider_id = v_provider AND k.finish_id = f.id AND k.series_id IS NULL AND k.profile_id IS NULL
+                        AND k.effective_from = r.effective_from AND k.price_per_kg = r.price_per_kg;
+  IF v_n <> e_kgprices THEN RAISE EXCEPTION 'ABORT: kg prices present (same rate) % <> expected % — an existing row has another price', v_n, e_kgprices; END IF;
+  SELECT price_basis INTO v_txt FROM alu_providers WHERE id = v_provider;
+  IF v_txt <> ${q(PROVIDER.price_basis)} THEN RAISE EXCEPTION 'ABORT: provider price_basis % <> %', v_txt, ${q(PROVIDER.price_basis)}; END IF;
+  RAISE NOTICE 'MN IMPORT OK: series %, profiles %, links %, finishes %, variants %, piece prices %, type links %, kg prices %', e_series, e_profiles, e_links, e_finishes, e_variants, e_prices, e_types, e_kgprices;
 END $$;
 
 -- Dry run: replace COMMIT with ROLLBACK (the wrapper script does that), read the NOTICE / result lines.
@@ -633,6 +680,7 @@ export function renderReport(m) {
   p(`| alu_finishes | ${e.finishes} |`)
   p(`| alu_profile_variants | ${e.variants} |`)
   p(`| alu_piece_prices | ${e.piece_prices} |`)
+  p(`| alu_kg_prices | ${e.kg_prices} |`)
   p(`| alu_series_types | ${e.series_types} |`)
   p()
   const withDie = m.profiles.filter(x => x.die).length
@@ -754,7 +802,13 @@ export function renderReport(m) {
 
   p('## Finishes (price-book columns, names as printed)')
   p()
-  p(`Imported: ${m.finishes.join(', ')}. Column "N/A" is not imported (its cells are excluded above). No price per kg and no colour code is set.`)
+  p(`Imported: ${m.finishes.join(', ')}. Column "N/A" is not imported (its cells are excluded above). No colour code is set.`)
+  p()
+  p(`Price per kg (owner 2026-10-26: MN is priced per kg by colour; provider price_basis \`per_kg\`, so the piece prices above are kept as reference only and the app does not use them). Rate = the shop's latest provider-wide rate of the colour class on provider "${RATE_PROVIDER}":`)
+  p()
+  p('| finish | rate class |')
+  p('|---|---|')
+  for (const f of m.finishes) { const r = kgRatesOf(m).find(x => x.finish === f); p(`| ${md(f)} | ${r ? md(r.rateClass) : '**ยังไม่กำหนด** (owner question)'} |`) }
   p()
   p('Mapping questions for the owner (the provisional provider uses ANODIZED NA / 512 / 517, POWDER COATING WHITE / BLACK / SAHARA / WOOD GRAIN):')
   p()

@@ -4,13 +4,15 @@
 -- Sources: MN catalogue 2021 (docs/catalogs/mn/mn-aluminium-profile-2021.json: die, name, role, kg/m, wall, width, depth),
 --          MN price list 2024 เล่ม 14 (docs/catalogs/sms/mn-pricelist-2024.json: บาท/เส้น per die x finish x length, pages 3-58),
 --          MN installation guides 1-15 (docs/catalogs/mn-sets/*.json: which dies make up each system).
--- Adds under the FacadeX tenant: provider 'บจก. แม่น้ำเมทอลซัพพลาย' (short_name MN, price_basis per_piece);
+-- Adds under the FacadeX tenant: provider 'บจก. แม่น้ำเมทอลซัพพลาย' (short_name MN, price_basis per_kg);
 --   67 series (42 catalogue groups that have profiles + installation-guide systems with at least one catalogue die);
 --   1218 profiles (drawing_no = die no.; NULL for the GROUP 01 standard tubes/angles which print no die);
 --   1381 series-profile links (family = the profile's role); 7 finishes (price-book columns as printed);
 --   1927 profile variants (profile x finish x bar length) each with one alu_piece_prices row effective 2024-06-17;
+--   (kept as reference only: price_basis is per_kg, owner 2026-10-26);
+--   5 kg prices: finishes mapped to a colour class copy the shop's latest rate from provider 'ไฟล์ Aluminium calculation'.
 --   33 series-type links (only unambiguous ones; see the report for the rest).
--- NOT set: butt_distance_mm (separate step), hardware / parts (the price book's hardware pages are not extracted), kg prices.
+-- NOT set: butt_distance_mm (separate step), hardware / parts (the price book's hardware pages are not extracted), kg prices of unmapped finishes.
 -- default_length_m = the bar length the price book prints for that die (most common), else 6.4 (assumed, 887 profiles).
 -- Excluded rows (estimated / conflicting / no die / die not in the 2021 catalogue ...) are listed in the report, not here.
 -- Guarded: aborts unless the tenant is the one holding provider 'ไฟล์ Aluminium calculation', the 2026-10-12-01 and 2026-10-15-01
@@ -2709,6 +2711,14 @@ INSERT INTO _mn_finishes VALUES
   ('ลายไม้', 6),
   ('ชุบขาว', 7);
 
+CREATE TEMP TABLE _mn_kgrates (finish TEXT PRIMARY KEY, rate_class TEXT NOT NULL) ON COMMIT DROP;
+INSERT INTO _mn_kgrates VALUES
+  ('ขาว', 'ANODIZED NA'),
+  ('ชาอ่อน', 'ANODIZED 512'),
+  ('ชาเข้ม', 'ANODIZED 517'),
+  ('ลายไม้', 'POWDER COATING WOOD GRAIN'),
+  ('ชุบขาว', 'ANODIZED NA');
+
 CREATE TEMP TABLE _mn_prices (pkey TEXT NOT NULL, finish TEXT NOT NULL, length_m NUMERIC NOT NULL, price NUMERIC NOT NULL, page INT NOT NULL, PRIMARY KEY (pkey, finish, length_m)) ON COMMIT DROP;
 INSERT INTO _mn_prices VALUES
   ('BH034', 'ชาอ่อน', 6, 2180, 58),
@@ -4689,7 +4699,8 @@ DECLARE
   e_variants      CONSTANT INT := 1927;
   e_prices        CONSTANT INT := 1927;
   e_types         CONSTANT INT := 33;
-  v_tenant_name TEXT; v_provider UUID; v_n INT; v_txt TEXT;
+  e_kgprices      CONSTANT INT := 5;
+  v_tenant_name TEXT; v_provider UUID; v_rate_provider UUID; v_n INT; v_txt TEXT;
 BEGIN
   SELECT company_name INTO v_tenant_name FROM tenants WHERE id = c_tenant;
   IF v_tenant_name IS NULL THEN RAISE EXCEPTION 'ABORT: tenant % not found', c_tenant; END IF;
@@ -4719,7 +4730,7 @@ BEGIN
   IF v_txt IS NOT NULL THEN RAISE EXCEPTION 'ABORT: another provider already uses short_name %: % (set c_provider_name to it, or rename)', c_short_name, v_txt; END IF;
   SELECT id INTO v_provider FROM alu_providers WHERE tenant_id = c_tenant AND name = c_provider_name;
   IF v_provider IS NULL THEN
-    INSERT INTO alu_providers (tenant_id, name, short_name, price_basis) VALUES (c_tenant, c_provider_name, c_short_name, 'per_piece') RETURNING id INTO v_provider;
+    INSERT INTO alu_providers (tenant_id, name, short_name, price_basis) VALUES (c_tenant, c_provider_name, c_short_name, 'per_kg') RETURNING id INTO v_provider;
     RAISE NOTICE 'provider created: % (%)', c_provider_name, v_provider;
   ELSE
     RAISE NOTICE 'provider exists: % (%), price_basis %', c_provider_name, v_provider, (SELECT price_basis FROM alu_providers WHERE id = v_provider);
@@ -4784,6 +4795,25 @@ BEGIN
     ON CONFLICT (variant_id, effective_from) DO NOTHING;
   GET DIAGNOSTICS v_n = ROW_COUNT; RAISE NOTICE 'piece prices inserted: % of %', v_n, e_prices;
 
+  -- 6b. price per kg: the shop's rate for the colour class (provider ไฟล์ Aluminium calculation, provider-wide row, latest date)
+  SELECT id INTO v_rate_provider FROM alu_providers WHERE tenant_id = c_tenant AND name = 'ไฟล์ Aluminium calculation';
+  CREATE TEMP TABLE _mn_rate ON COMMIT DROP AS
+    SELECT r.finish, r.rate_class, k.price_per_kg, k.effective_from
+      FROM _mn_kgrates r
+      LEFT JOIN alu_finishes rf ON rf.provider_id = v_rate_provider AND rf.name = r.rate_class
+      LEFT JOIN LATERAL (SELECT kp.price_per_kg, kp.effective_from FROM alu_kg_prices kp
+                          WHERE kp.provider_id = v_rate_provider AND kp.finish_id = rf.id AND kp.series_id IS NULL AND kp.profile_id IS NULL
+                          ORDER BY kp.effective_from DESC LIMIT 1) k ON true;
+  SELECT string_agg(rate_class, ', ') INTO v_txt FROM _mn_rate WHERE price_per_kg IS NULL;
+  IF v_txt IS NOT NULL THEN RAISE EXCEPTION 'ABORT: no per-kg rate on % for colour class %', 'ไฟล์ Aluminium calculation', v_txt; END IF;
+  INSERT INTO alu_kg_prices (tenant_id, provider_id, finish_id, price_per_kg, effective_from, source)
+    SELECT c_tenant, v_provider, f.id, r.price_per_kg, r.effective_from, 'shop rate ' || r.rate_class || ' (owner 2026-10-26)'
+      FROM _mn_rate r JOIN alu_finishes f ON f.provider_id = v_provider AND f.name = r.finish
+     WHERE NOT EXISTS (SELECT 1 FROM alu_kg_prices k WHERE k.provider_id = v_provider AND k.finish_id = f.id
+                         AND k.series_id IS NULL AND k.profile_id IS NULL AND k.effective_from = r.effective_from)
+     ORDER BY r.finish;
+  GET DIAGNOSTICS v_n = ROW_COUNT; RAISE NOTICE 'kg prices inserted: % of %', v_n, e_kgprices;
+
   -- 7. series <-> door/window type links (unambiguous only)
   INSERT INTO alu_series_types (tenant_id, series_id, type_id)
     SELECT c_tenant, s.id, d.id FROM _mn_types t
@@ -4814,7 +4844,13 @@ BEGIN
     JOIN door_window_types d ON d.tenant_id = c_tenant AND d.name = t.type_name
     JOIN alu_series_types st ON st.series_id = s.id AND st.type_id = d.id;
   IF v_n <> e_types THEN RAISE EXCEPTION 'ABORT: series-type links present % <> expected %', v_n, e_types; END IF;
-  RAISE NOTICE 'MN IMPORT OK: series %, profiles %, links %, finishes %, variants %, piece prices %, type links %', e_series, e_profiles, e_links, e_finishes, e_variants, e_prices, e_types;
+  SELECT count(*) INTO v_n FROM _mn_rate r JOIN alu_finishes f ON f.provider_id = v_provider AND f.name = r.finish
+    JOIN alu_kg_prices k ON k.provider_id = v_provider AND k.finish_id = f.id AND k.series_id IS NULL AND k.profile_id IS NULL
+                        AND k.effective_from = r.effective_from AND k.price_per_kg = r.price_per_kg;
+  IF v_n <> e_kgprices THEN RAISE EXCEPTION 'ABORT: kg prices present (same rate) % <> expected % — an existing row has another price', v_n, e_kgprices; END IF;
+  SELECT price_basis INTO v_txt FROM alu_providers WHERE id = v_provider;
+  IF v_txt <> 'per_kg' THEN RAISE EXCEPTION 'ABORT: provider price_basis % <> %', v_txt, 'per_kg'; END IF;
+  RAISE NOTICE 'MN IMPORT OK: series %, profiles %, links %, finishes %, variants %, piece prices %, type links %, kg prices %', e_series, e_profiles, e_links, e_finishes, e_variants, e_prices, e_types, e_kgprices;
 END $$;
 
 -- Dry run: replace COMMIT with ROLLBACK (the wrapper script does that), read the NOTICE / result lines.
