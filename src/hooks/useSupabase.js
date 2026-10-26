@@ -1817,7 +1817,7 @@ export function useStockBalances() {
 export function useStockDocuments() {
   return useQuery(async () => fetchAllRows(() => supabase
     .from('stock_documents')
-    .select('id, doc_type, doc_number, doc_date, invoice_id')
+    .select('id, doc_type, doc_number, doc_date, invoice_id, parent_document_id, target_total, target_splits')
     .order('doc_number')))
 }
 

@@ -25,6 +25,8 @@ import CardTable from '../components/CardTable.jsx'
 import MoreActions from '../components/MoreActions.jsx'
 import PhoneFilters from '../components/PhoneFilters.jsx'
 const INV_EVENT_MAP = { title: 'รายการ', amount: 'มูลค่า', sub: ['รหัส', 'เลขที่ใบแจ้งหนี้'], actions: 'last' }
+const INV_MO_LIST_MAP = { title: 'เลขที่', amount: 'เบิกจริง', sub: ['วันที่', 'ใบแจ้งหนี้', 'เป้ามูลค่า', 'ขาด'], actions: 'last' }
+const INV_MO_CAT_MAP = { title: 'หมวดวัตถุดิบ', amount: 'เบิกจริง (บาท)', sub: ['% ที่ตั้ง', 'เป้ามูลค่า (บาท)', 'ขาด (บาท)'] }
 const INV_RMSUM_MAP = { title: 'รายการ', amount: 'มูลค่าที่ตัด', sub: ['รหัส'] }
 const INV_LEDGER_MAP = { title: 0, amount: 8, sub: [1, 2] } // column indexes: header labels are long and some repeat
 const INV_ITEMS_MAP = { title: 'ชื่อ', amount: 'มูลค่ารวม', status: 'สถานะ', sub: ['รหัส', 'หมวดหมู่'], actions: 'last' }
@@ -1030,7 +1032,8 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
           </CardTable>
         </>
       ) : reportKind === 'mo' ? (
-        <div className="card" style={{ padding: 14, color: 'var(--text3)' }}>กำลังจะมาใน task ถัดไป</div>
+        <MoReportView stockDocuments={stockDocuments} movements={movements} invoiceNumbers={invoiceNumbers}
+          categories={categories} items={allItems} tenant={tenant} dateFrom={dateFrom} dateTo={dateTo} />
       ) : reportKind === 'raw_material' ? (
         <>
           <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
@@ -1079,8 +1082,9 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
           shown only inside window.print(). Prints exactly what's on
           screen right now (displayRows) -- see the printTotals comment
           above. The print button itself is hidden on list views, so this
-          only ever fires from a drilled-in detail view or report 3. */}
-      <div className="print-only">
+          only ever fires from a drilled-in detail view or report 3.
+          Tab 2 (MO) renders its own print document inside MoReportView. */}
+      {reportKind !== 'mo' && <div className="print-only">
         <div className="printable-document tax-report-print">
           <div className="sheet-inner">
             <header className="doc-header">
@@ -1159,8 +1163,205 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             </footer>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
+  )
+}
+
+const MO_SHORT_EPS = 0.01
+const thaiLongDate = (d) => d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'
+const numOrNull = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) ? null : Number(v)
+
+// Tab 2: ใบสั่งผลิต (MO). One MO per invoice cut (post_invoice_stock_deduction
+// v2) carries target_total / target_splits; its DM child (parent_document_id =
+// MO) holds the raw-material movements, and FG purchase_in rows cite the MO
+// itself. List view -> click a row -> printable MO.
+function MoReportView({ stockDocuments, movements, invoiceNumbers, categories, items, tenant, dateFrom, dateTo }) {
+  const [selectedId, setSelectedId] = useState(null)
+
+  const invoiceNumberById = useMemo(() => new Map((invoiceNumbers || []).map(i => [i.id, i.invoice_number])), [invoiceNumbers])
+  const categoryNameById = useMemo(() => new Map((categories || []).map(c => [c.id, c.name])), [categories])
+  const itemCategoryById = useMemo(() => new Map((items || []).map(i => [i.id, i.category_id || null])), [items])
+
+  const mos = useMemo(() => {
+    const docs = stockDocuments || []
+    const dmsByMo = new Map()
+    for (const d of docs) {
+      if (d.doc_type !== 'DM' || !d.parent_document_id) continue
+      if (!dmsByMo.has(d.parent_document_id)) dmsByMo.set(d.parent_document_id, [])
+      dmsByMo.get(d.parent_document_id).push(d)
+    }
+    const movementsByDoc = new Map()
+    for (const m of movements || []) {
+      if (!m.stock_document_id) continue
+      if (!movementsByDoc.has(m.stock_document_id)) movementsByDoc.set(m.stock_document_id, [])
+      movementsByDoc.get(m.stock_document_id).push(m)
+    }
+    const mvValue = (m) => (Number(m.quantity) || 0) * (Number(m.unit_cost) || 0)
+
+    return docs
+      .filter(d => d.doc_type === 'MO' && (!d.doc_date || (d.doc_date >= dateFrom && d.doc_date <= dateTo)))
+      .map(mo => {
+        const dms = dmsByMo.get(mo.id) || []
+        // Actual = sale_out rows on the DM children ONLY. A central-site take
+        // posts transfer_out -> transfer_in -> sale_out; the transfer pair
+        // nets to zero economically and sale_out is the real consumption, so
+        // counting every row would double/triple-count the same material.
+        const dmSaleOuts = dms.flatMap(dm => (movementsByDoc.get(dm.id) || []).filter(m => m.movement_type === 'sale_out'))
+        const actualByCat = new Map()
+        for (const m of dmSaleOuts) {
+          const cat = itemCategoryById.get(m.inventory_item_id) || null
+          actualByCat.set(cat, (actualByCat.get(cat) || 0) + mvValue(m))
+        }
+        const actual = dmSaleOuts.reduce((s, m) => s + mvValue(m), 0)
+        // FG purchase_in rows cite the MO directly (the DP holds the FG sale_out side).
+        const fgIns = (movementsByDoc.get(mo.id) || []).filter(m => m.movement_type === 'purchase_in')
+        const fgValue = fgIns.reduce((s, m) => s + mvValue(m), 0)
+        const siteNames = [...new Set([...fgIns, ...dmSaleOuts].map(m => m.sites?.name).filter(Boolean))]
+        const target = numOrNull(mo.target_total)
+        // target_splits = {categoryId: pct of the material value}; per-category
+        // target = target_total × pct / 100. Null on legacy MOs.
+        const splits = mo.target_splits && typeof mo.target_splits === 'object' ? mo.target_splits : null
+        const catIds = new Set([...(splits ? Object.keys(splits) : []), ...actualByCat.keys()])
+        const categoryRows = [...catIds].map(catId => {
+          const pct = splits ? numOrNull(splits[catId]) : null
+          const catTarget = target !== null && pct !== null ? target * pct / 100 : null
+          const catActual = actualByCat.get(catId) || 0
+          return {
+            catId, name: (catId && categoryNameById.get(catId)) || 'อื่น ๆ', pct, target: catTarget, actual: catActual,
+            short: catTarget !== null ? Math.max(0, catTarget - catActual) : null,
+          }
+        }).sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1) || a.name.localeCompare(b.name, 'th'))
+        return {
+          id: mo.id, docNumber: mo.doc_number, date: mo.doc_date,
+          invoiceNumber: mo.invoice_id ? (invoiceNumberById.get(mo.invoice_id) || null) : null,
+          dmNumbers: dms.map(d => d.doc_number), siteNames,
+          target, actual, short: target !== null ? Math.max(0, target - actual) : null,
+          fgCount: fgIns.length, fgValue, categoryRows,
+        }
+      })
+      .sort((a, b) => String(b.docNumber || '').localeCompare(String(a.docNumber || '')))
+  }, [stockDocuments, movements, itemCategoryById, categoryNameById, invoiceNumberById, dateFrom, dateTo])
+
+  const selected = selectedId ? mos.find(m => m.id === selectedId) : null
+  const shortStyle = (v) => v !== null && v > MO_SHORT_EPS ? { color: 'var(--red)', fontWeight: 600 } : undefined
+  const money = (v) => v === null ? '—' : fmt(v)
+
+  if (!selected) {
+    return (
+      <CardTable map={INV_MO_LIST_MAP}>
+        <table>
+          <thead>
+            <tr><th>เลขที่</th><th>วันที่</th><th>ใบแจ้งหนี้</th><th>เป้ามูลค่า</th><th>เบิกจริง</th><th>ขาด</th><th></th></tr>
+          </thead>
+          <tbody>
+            {mos.map(m => (
+              <tr key={m.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedId(m.id)}>
+                <td>{m.docNumber}</td>
+                <td>{m.date ? new Date(m.date).toLocaleDateString('th-TH') : '—'}</td>
+                <td>{m.invoiceNumber || '—'}</td>
+                <td className="font-mono">{money(m.target)}</td>
+                <td className="font-mono">{fmt(m.actual)}</td>
+                <td className="font-mono" style={shortStyle(m.short)}>{money(m.short)}</td>
+                <td style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>ดูใบสั่งผลิต →</td>
+              </tr>
+            ))}
+            {!mos.length && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีใบสั่งผลิตในช่วงเวลาที่เลือก</td></tr>}
+          </tbody>
+        </table>
+      </CardTable>
+    )
+  }
+
+  const kvRows = [
+    ['ผลิตเพื่อ', [selected.invoiceNumber, selected.siteNames.join(', ')].filter(Boolean).join(' · ') || '—'],
+    ['เอกสารเบิก', selected.dmNumbers.join(', ') || '—'],
+    ['รับสำเร็จรูปเข้า', selected.fgCount ? `งานตามสัญญา ${selected.fgCount.toLocaleString('th-TH')} งาน = ${fmt(selected.fgValue)} บาท` : '—'],
+  ]
+  // รวม row's ขาด is total-level (target_total − Σ actual), matching the list's
+  // ขาด column -- an over-pull in one category offsets a short one elsewhere.
+  const renderMoTable = (print) => (
+    <table className={print ? 'ledger' : undefined}>
+      <thead>
+        {print && (
+          <tr className="print-repeat-row">
+            <td colSpan={5}>
+              <span className="print-repeat-company">{tenant?.company_name}</span>
+              <span className="print-repeat-sep">·</span>
+              <span className="print-repeat-report">ใบสั่งผลิต {selected.docNumber}</span>
+            </td>
+          </tr>
+        )}
+        <tr><th>หมวดวัตถุดิบ</th><th>% ที่ตั้ง</th><th>เป้ามูลค่า (บาท)</th><th>เบิกจริง (บาท)</th><th>ขาด (บาท)</th></tr>
+      </thead>
+      <tbody>
+        {selected.categoryRows.map(r => (
+          <tr key={r.catId ?? 'none'}>
+            <td>{r.name}</td>
+            <td className="font-mono">{r.pct === null ? '—' : `${fmtQty(r.pct)}%`}</td>
+            <td className="font-mono">{money(r.target)}</td>
+            <td className="font-mono">{fmt(r.actual)}</td>
+            <td className={`font-mono${r.short !== null && r.short > MO_SHORT_EPS ? ' mo-short' : ''}`} style={print ? undefined : shortStyle(r.short)}>{money(r.short)}</td>
+          </tr>
+        ))}
+        {!selected.categoryRows.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการเบิกวัตถุดิบ</td></tr>}
+        <tr style={{ fontWeight: 700, borderTop: '1.5px solid var(--border)' }}>
+          <td>รวม</td>
+          <td className="font-mono">{selected.categoryRows.some(r => r.pct !== null) ? `${fmtQty(selected.categoryRows.reduce((s, r) => s + (r.pct || 0), 0))}%` : '—'}</td>
+          <td className="font-mono">{money(selected.target)}</td>
+          <td className="font-mono">{fmt(selected.actual)}</td>
+          <td className={`font-mono${selected.short !== null && selected.short > MO_SHORT_EPS ? ' mo-short' : ''}`} style={print ? undefined : shortStyle(selected.short)}>{money(selected.short)}</td>
+        </tr>
+      </tbody>
+    </table>
+  )
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn btn-sm btn-ghost" onClick={() => setSelectedId(null)}>← กลับไปที่รายการ</button>
+        <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => window.print()}>🖨️ พิมพ์ / PDF</button>
+      </div>
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 17 }}>ใบสั่งผลิต {selected.docNumber}</div>
+          <div style={{ color: 'var(--text3)' }}>{thaiLongDate(selected.date)}</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 14px', marginBottom: 14, fontSize: 13.5 }}>
+          {kvRows.map(([k, v]) => <Fragment key={k}><span style={{ color: 'var(--text3)' }}>{k}</span><span>{v}</span></Fragment>)}
+        </div>
+        <CardTable map={INV_MO_CAT_MAP}>{renderMoTable(false)}</CardTable>
+      </div>
+
+      <div className="print-only">
+        <div className="printable-document tax-report-print">
+          <div className="sheet-inner">
+            <header className="doc-header">
+              <div className="company-block">
+                <div className="company-name">{tenant?.company_name}</div>
+                {tenant?.tax_id && <div className="company-meta">เลขประจำตัวผู้เสียภาษีอากร {tenant.tax_id}</div>}
+                {tenant?.address && <div className="company-meta">{tenant.address}</div>}
+              </div>
+              <div className="report-block">
+                <span className="report-badge">รายงานที่ 2</span>
+                <h1>ใบสั่งผลิต {selected.docNumber}</h1>
+                <p className="report-period">{thaiLongDate(selected.date)}</p>
+              </div>
+            </header>
+            <div className="summary-bar" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+              {kvRows.map(([k, v]) => (
+                <div key={k} className="summary-cell"><span className="summary-label">{k}</span><span className="summary-value">{v}</span></div>
+              ))}
+            </div>
+            <div className="table-wrap">{renderMoTable(true)}</div>
+            <footer className="doc-footer">
+              <p>คำนวณต้นทุนด้วยวิธีเข้าก่อนออกก่อน (FIFO)</p>
+              <p>พิมพ์จากระบบ CHANG เมื่อ {new Date().toLocaleDateString('th-TH')}</p>
+            </footer>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
 

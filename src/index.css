@@ -657,6 +657,8 @@ th.sortable:hover { color: var(--accent); }
   .tax-report-print .table-wrap { max-height: none !important; overflow: visible !important; border: none !important; }
   .tax-report-print table { width: 100%; }
   .tax-report-print tr.item-header-row { break-after: avoid; }
+  /* MO tab: ขาด > 0.01 stays red on paper (the td color rule above is !important). */
+  .tax-report-print td.mo-short { color: #b42318 !important; font-weight: 600; }
 }
 
 /* Number inputs: no spinner by default (prices, money, percent...). Quantity
