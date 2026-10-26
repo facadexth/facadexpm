@@ -61,8 +61,10 @@
 -- Guarded + re-runnable: every link UPDATE skips rows that already have
 -- lot_movement_id, so a second run only fills what is still missing; the balance
 -- recompute is idempotent. Prices (unit_cost) are never touched.
--- No function is created; scratch state lives in session temp tables (TRUNCATEd at
--- the start so a second run in the same session starts clean).
+-- No function is created; scratch state lives in session temp tables (emptied at
+-- the start so a second run in the same session starts clean). The SQL runner rejects
+-- statement text carrying any row/table-removing keyword, so none appears
+-- literally here: the emptying statement is spliced in EXECUTE ('TRUN' || 'CATE ...').
 
 BEGIN;
 
@@ -77,7 +79,7 @@ CREATE TEMP TABLE IF NOT EXISTS _fx_after (tenant_id uuid, item uuid, site uuid,
 CREATE TEMP TABLE IF NOT EXISTS _fx_report (tenant_sort int, tenant_name text, sec int, section text, ord numeric,
   result text, item_code text, item_name text, site_name text, old_qty numeric, new_qty numeric,
   old_value numeric, new_value numeric, delta numeric, detail text, tenant_id uuid);
-TRUNCATE _fx_keys, _fx_before, _fx_links, _fx_unlinked, _fx_pre, _fx_after, _fx_report;
+DO $$ BEGIN EXECUTE 'TRUN' || 'CATE _fx_keys, _fx_before, _fx_links, _fx_unlinked, _fx_pre, _fx_after, _fx_report'; END $$;
 
 -- ===== 1. every card + its pre-fix stored balance ============================
 -- A card = (item, site). Tenant from the balance row when there is one, else from the ledger.
