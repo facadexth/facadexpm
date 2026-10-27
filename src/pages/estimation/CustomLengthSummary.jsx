@@ -40,7 +40,7 @@ export default function CustomLengthSummary({ plan, compare, prices, kgPerM, set
                   {r.unplaced > 0 && <div style={{ fontSize: 11, color: 'var(--red)' }}>ตัดไม่ได้ {r.unplaced} ท่อน</div>}
                 </td>
                 <td className="font-mono">{r.kgPerM == null ? '—' : f2(r.kgPerM)}</td>
-                <td className="font-mono">{r.baseBars == null ? '—' : `${r.baseBars} / ${f2(r.baseKg)}`}</td>
+                <td className="font-mono">{!r.baseFeasible ? <span style={{ color: 'var(--red)' }}>{stockL} ตัดไม่ได้</span> : r.baseBars == null ? '—' : `${r.baseBars} / ${f2(r.baseKg)}`}</td>
                 <td className="font-mono">
                   {r.bestLength == null ? '—' : Math.abs(r.bestLength - settings.stock_length_m) < 1e-9 ? `${stockL} ดีอยู่แล้ว` : `${f2(r.bestLength)} ม.`}
                   {r.bestSavingKg > 0 && <> <span className="badge" style={{ color: 'var(--green)' }}>−{f2(r.bestSavingKg)} กก.</span></>}
@@ -50,12 +50,15 @@ export default function CustomLengthSummary({ plan, compare, prices, kgPerM, set
                 <td className="font-mono">{r.offcutBars}</td>
                 <td className="font-mono">{f2(r.kg)}</td>
                 <td className="font-mono">{r.cost == null ? '—' : fmt(r.cost)}</td>
-                {canEdit && <td>{r.canUse && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => run(() => onUse(r.profile_id, r.bestLength))}>ใช้ {f2(r.bestLength)}</button>}</td>}
+                {canEdit && <td>{r.canUse && <>
+                  <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => run(() => onUse(r.profile_id, r.bestLength))}>ใช้ {f2(r.bestLength)}</button>
+                  {r.sharedProfile && <div style={note}>ใช้กับทุกสีของหน้าตัดนี้</div>}
+                </>}</td>}
               </tr>
             ))}
           </tbody>
           <tfoot><tr>
-            <td colSpan={7}><b>รวม</b></td><td className="font-mono"><b>{f2(m.useKg)}</b></td>
+            <td colSpan={7}><b>รวม</b></td><td className="font-mono"><b>{f2(m.totalKg)}</b></td>
             <td className="font-mono"><b>{m.cost == null ? '—' : fmt(m.cost)}</b></td>{canEdit && <td />}
           </tr></tfoot>
         </table>
@@ -64,7 +67,10 @@ export default function CustomLengthSummary({ plan, compare, prices, kgPerM, set
         ? <div className="alert alert-warning" style={{ fontSize: 13 }}>สั่งความยาวพิเศษรวม <b className="font-mono">{f2(plan.customKg)}</b> กก. ไม่ถึงขั้นต่ำ <b className="font-mono">{Number(settings.custom_moq_kg).toLocaleString('en-US')}</b> กก. — ใช้เส้น {stockL} ม. ทั้งโครงการ</div>
         : m.savingKg > 1e-6
           ? <div className="alert alert-success" style={{ fontSize: 13 }}>สั่งความยาวพิเศษรวม <b className="font-mono">{f2(plan.customKg)}</b> กก. · ประหยัด <b className="font-mono">{f2(m.savingKg)}</b> กก.{m.savingBaht != null && <> ≈ <b className="font-mono">{fmt(m.savingBaht)}</b> ฿</>} เทียบกับ {stockL} ม.</div>
-          : <div style={{ fontSize: 12, color: 'var(--text3)' }}>ความยาวพิเศษไม่ช่วยลดน้ำหนักที่ซื้อ — ใช้ {stockL} ม.</div>}
+          : !m.anyCustom
+            ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>ความยาวพิเศษไม่ช่วยลดน้ำหนักที่ซื้อ — ใช้ {stockL} ม.</div>
+            : <div style={{ fontSize: 12, color: 'var(--text2)' }}>สั่งความยาวพิเศษรวม <b className="font-mono">{f2(plan.customKg)}</b> กก.</div>}
+      {plan.reason !== 'moq' && m.excluded > 0 && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ไม่รวม {m.excluded} หน้าตัดที่ {stockL} ม. ตัดไม่ได้ (ไม่นำมาเทียบน้ำหนักที่ประหยัด)</div>}
     </div>
   )
 }

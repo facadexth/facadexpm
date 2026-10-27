@@ -43,4 +43,17 @@ describe('CustomLengthSummary', () => {
     const html = render({ reason: 'moq', customKg: 5, moqMet: false, groups: [group({ length_m: 6, custom: false })] }, { settings: { stock_length_m: 6, custom_moq_kg: 1000 } })
     expect(html).toContain('ใช้เส้น 6.00 ม. ทั้งโครงการ')
   })
+  it('a group the stock bar cannot cut says so and is left out of the saving; the stock fallback line only when nothing is custom', () => {
+    const cmp = { ...compare, 'p2|f1': { base: { length_m: 6.4, newBars: 0, kg: 0, feasible: false }, best: { length_m: 6.6, newBars: 1, kg: 6.6 } } }
+    const groups = [group({ length_m: 6.4, custom: false, kg: 12.8 }), group({ key: 'p2|f1', profile_id: 'p2', length_m: 6.6, custom: true, kg: 6.6, bars: [{}] })]
+    const html = render({ reason: null, customKg: 6.6, moqMet: true, groups }, { compare: cmp })
+    expect(html).toContain('6.40 ตัดไม่ได้')
+    expect(html).toContain('ไม่รวม 1 หน้าตัดที่ 6.40 ม. ตัดไม่ได้')
+    expect(html).not.toContain('ความยาวพิเศษไม่ช่วยลดน้ำหนักที่ซื้อ')
+    expect(html).toContain('สั่งความยาวพิเศษรวม <b class="font-mono">6.60</b> กก.')
+  })
+  it('notes that a length applies to every colour of a shared profile', () => {
+    const html = render({ reason: null, customKg: 0, moqMet: true, groups: [group({ length_m: 6.4, custom: false }), group({ key: 'p1|f2', finish_id: 'f2', length_m: 6.4, custom: false })] })
+    expect(html).toContain('ใช้กับทุกสีของหน้าตัดนี้')
+  })
 })

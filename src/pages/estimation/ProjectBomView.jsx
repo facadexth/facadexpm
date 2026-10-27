@@ -65,8 +65,9 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const offcutsReady = !offcutsFirst || !!offcutsQ.data || !!offcutsQ.error
   const plan = useMemo(() => (tooMany || !stockRows || !offcutsReady ? null : buildCutPlan({ entries, mode: cutMode, settings, kgPerM, offcutsByGroup: offcuts, overrides, groupInfo })),
     [tooMany, stockRows, offcutsReady, entries, cutMode, settings, kgPerM, offcuts, overrides, groupInfo])
-  const compare = useMemo(() => (isCustom && plan ? lengthCompare({ entries, settings, kgPerM, offcutsByGroup: offcuts }) : null),
-    [isCustom, plan, entries, settings, kgPerM, offcuts])
+  // Independent of the per-profile overrides: saving a length does not recompute the whole length search.
+  const compare = useMemo(() => (isCustom && !tooMany && offcutsReady ? lengthCompare({ entries, settings, kgPerM, offcutsByGroup: offcuts }) : null),
+    [isCustom, tooMany, offcutsReady, entries, settings, kgPerM, offcuts])
   const prices = useMemo(() => cutGroupPricePerKg({ groupInfo, index, seriesMap, asOf: project.price_as_of, kgPerM }), [groupInfo, index, seriesMap, project.price_as_of, kgPerM])
   const rangeM = useMemo(() => (isCustom ? rangeLengths(settings) : null), [isCustom, settings])
 

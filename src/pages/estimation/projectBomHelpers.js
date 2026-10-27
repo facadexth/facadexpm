@@ -187,6 +187,7 @@ export function cutGroupPricePerKg({ groupInfo, index, seriesMap, asOf, kgPerM }
 
 // Per group: the stock-length baseline and the least-kg length over stock + the custom range, ignoring per-profile
 // overrides and the minimum order (the plan applies those). best is null when the profile has no weight or no length cuts all.
+// base.feasible is false when some piece does not fit the stock bar (its kg then leaves those pieces out: not comparable).
 export function lengthCompare({ entries, settings, kgPerM, offcutsByGroup }) {
   const stockL = Number(settings.stock_length_m)
   const cands = [stockL, ...rangeLengths(settings)]
@@ -197,26 +198,34 @@ export function lengthCompare({ entries, settings, kgPerM, offcutsByGroup }) {
     const kg = (kgPerM || {})[k]
     const base = evaluateLength(pieces, stockL, settings, off, kg)
     const best = Number(kg) > 0 ? bestLength(pieces, cands, settings, off, kg) : null
-    out[k] = { base: brief(base), best: best ? brief(best) : null }
+    out[k] = { base: { ...brief(base), feasible: base.feasible }, best: best ? brief(best) : null }
   }
   return out
 }
 
 // Rows and totals of CustomLengthSummary. prices = cutGroupPricePerKg; a row's cost is null when unpriced, and the
 // baht saving is null when any group whose kg changed is unpriced (never a partial sum shown as the whole).
+// The saving is summed only over groups the stock bar can cut completely; the others are counted in `excluded`.
 export function customLengthSummaryModel({ plan, compare, prices, kgPerM }) {
-  let baseKg = 0, useKg = 0, savingBaht = 0
-  const rows = (plan.groups || []).map(g => {
+  let baseKg = 0, useKg = 0, savingBaht = 0, excluded = 0
+  const groups = plan.groups || []
+  const perProfile = {}
+  for (const g of groups) perProfile[g.profile_id] = (perProfile[g.profile_id] || 0) + 1
+  const rows = groups.map(g => {
     const c = (compare || {})[g.key] || { base: null, best: null }
     const price = (prices || {})[g.key] ?? null
+    const baseFeasible = !c.base || c.base.feasible !== false
     const bKg = c.base ? c.base.kg : g.kg
-    baseKg += bKg; useKg += g.kg
-    if (Math.abs(bKg - g.kg) > 1e-6) savingBaht = price == null || savingBaht == null ? null : savingBaht + (bKg - g.kg) * price
+    if (baseFeasible) {
+      baseKg += bKg; useKg += g.kg
+      if (Math.abs(bKg - g.kg) > 1e-6) savingBaht = price == null || savingBaht == null ? null : savingBaht + (bKg - g.kg) * price
+    } else excluded++
     const best = c.best
     return {
       key: g.key, profile_id: g.profile_id, name: g.name, die_no: g.die_no, finish_name: g.finish_name,
-      kgPerM: (kgPerM || {})[g.key] ?? null, baseBars: c.base ? c.base.newBars : null, baseKg: bKg,
-      bestLength: best ? best.length_m : null, bestSavingKg: best && c.base && c.base.kg - best.kg > 1e-6 ? c.base.kg - best.kg : 0,
+      kgPerM: (kgPerM || {})[g.key] ?? null, baseBars: c.base ? c.base.newBars : null, baseKg: bKg, baseFeasible,
+      sharedProfile: perProfile[g.profile_id] > 1,
+      bestLength: best ? best.length_m : null, bestSavingKg: best && c.base && baseFeasible && c.base.kg - best.kg > 1e-6 ? c.base.kg - best.kg : 0,
       useLength: g.length_m, custom: !!g.custom, newBars: g.bars.length, offcutBars: g.offcutBars.length, kg: g.kg,
       cost: price == null ? null : g.kg * price,
       no_weight: !!g.no_weight, overrideRejected: !!g.overrideRejected, unplaced: g.unplaced.length,
@@ -225,7 +234,8 @@ export function customLengthSummaryModel({ plan, compare, prices, kgPerM }) {
     }
   })
   const cost = rows.every(r => r.cost != null) ? rows.reduce((s, r) => s + r.cost, 0) : null
-  return { rows, baseKg, useKg, cost, savingKg: baseKg - useKg, savingBaht }
+  const totalKg = rows.reduce((s, r) => s + r.kg, 0)
+  return { rows, baseKg, useKg, totalKg, cost, savingKg: baseKg - useKg, savingBaht, excluded, anyCustom: groups.some(g => g.custom) }
 }
 
 // "ใช้ทั้งหมด": one length per profile (stock overrides are per profile) -- the best of its heaviest colour group --

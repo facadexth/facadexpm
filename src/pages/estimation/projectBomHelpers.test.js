@@ -203,6 +203,13 @@ describe('lengthCompare', () => {
     expect(c['p1|f1'].best.length_m).toBe(6.25)
     expect(c['p1|f1'].best.kg).toBeCloseTo(6.25)
   })
+  it('a piece longer than the stock bar marks the baseline infeasible', () => {
+    const long = [{ ...entries[0], bom: { profileLines: [line({ length_m: 6.6, quantity: 1 })], gridLines: [] } }]
+    const c = lengthCompare({ entries: long, settings: s, kgPerM: { 'p1|f1': 1 }, offcutsByGroup: {} })
+    expect(c['p1|f1'].base.feasible).toBe(false)
+    expect(c['p1|f1'].best.length_m).toBe(6.6)
+    expect(lengthCompare({ entries, settings: s, kgPerM: { 'p1|f1': 1 }, offcutsByGroup: {} })['p1|f1'].base.feasible).toBe(true)
+  })
   it('no weight -> no best length', () => {
     const c = lengthCompare({ entries, settings: s, kgPerM: {}, offcutsByGroup: {} })
     expect(c['p1|f1'].best).toBeNull()
@@ -224,6 +231,27 @@ describe('customLengthSummaryModel', () => {
     const m = customLengthSummaryModel({ plan: { reason: null, customKg: 12.5, groups: [g()] }, compare, prices: { 'p1|f1': null }, kgPerM: { 'p1|f1': 1 } })
     expect(m.rows[0].cost).toBeNull()
     expect(m.savingBaht).toBeNull()
+  })
+})
+
+describe('customLengthSummaryModel with a group the stock bar cannot cut', () => {
+  it('leaves that group out of the saving and counts it', () => {
+    const plan = { reason: null, customKg: 19.3, groups: [g(), g({ key: 'p2|f1', profile_id: 'p2', length_m: 6.6, kg: 6.6, bars: [{}] })] }
+    const compare = {
+      'p1|f1': { base: { length_m: 6.4, newBars: 2, kg: 12.8, feasible: true }, best: { length_m: 6.25, newBars: 2, kg: 12.5 } },
+      'p2|f1': { base: { length_m: 6.4, newBars: 0, kg: 0, feasible: false }, best: { length_m: 6.6, newBars: 1, kg: 6.6 } },
+    }
+    const m = customLengthSummaryModel({ plan, compare, prices: { 'p1|f1': 100, 'p2|f1': 100 }, kgPerM: { 'p1|f1': 1, 'p2|f1': 1 } })
+    expect(m.excluded).toBe(1)
+    expect(m.savingKg).toBeCloseTo(0.3)
+    expect(m.savingBaht).toBeCloseTo(30)
+    expect(m.totalKg).toBeCloseTo(19.1)
+    expect(m.anyCustom).toBe(true)
+    expect(m.rows[1]).toMatchObject({ baseFeasible: false, bestSavingKg: 0 })
+  })
+  it('flags a profile used in more than one colour', () => {
+    const plan = { reason: null, customKg: 0, groups: [g(), g({ key: 'p1|f2', finish_id: 'f2' }), g({ key: 'p2|f1', profile_id: 'p2' })] }
+    expect(customLengthSummaryModel({ plan, compare: {}, prices: {}, kgPerM: {} }).rows.map(r => r.sharedProfile)).toEqual([true, true, false])
   })
 })
 
