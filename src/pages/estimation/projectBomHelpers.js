@@ -280,3 +280,21 @@ export function itemsWithForeignColour(items, index, providerId) {
     return !!f && f.provider_id !== providerId
   })
 }
+
+// Row label of identical bars on the cut sheet: nos are 1-based bar numbers from groupIdenticalBars.
+export function barNosLabel(nos) {
+  const n = (nos || []).length
+  if (n <= 1) return `เส้นที่ ${nos && nos[0]}`
+  const consecutive = nos.every((x, i) => i === 0 || x === nos[i - 1] + 1)
+  return consecutive ? `เส้นที่ ${nos[0]}–${nos[n - 1]} × ${n}` : `เส้นที่ ${nos.join(', ')} × ${n}`
+}
+
+// opening_no -> colour index, in order of first appearance (offcut bars, then new bars, group by group), so an
+// opening keeps one colour across every profile of the cut sheet.
+export function openingColorIndex(plan) {
+  const m = new Map()
+  for (const g of (plan && plan.groups) || []) for (const b of [...(g.offcutBars || []), ...(g.bars || [])]) {
+    for (const p of b.pieces || []) if (!m.has(p.opening_no)) m.set(p.opening_no, m.size)
+  }
+  return m
+}

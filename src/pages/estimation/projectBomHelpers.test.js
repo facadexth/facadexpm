@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
   cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis,
+  barNosLabel, openingColorIndex,
 } from './projectBomHelpers.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
 
@@ -274,5 +275,23 @@ describe('bomStockBasis', () => {
   })
   it('a project job keeps its per-profile lengths but never the project-wide length (same basis as the cut plan)', () => {
     expect(bomStockBasis('custom', ps)).toEqual({ byProfile: { p1: 6.25 }, projectM: null })
+  })
+})
+
+describe('cut sheet labels', () => {
+  it('labels a single bar, a consecutive run and a scattered set', () => {
+    expect(barNosLabel([3])).toBe('เส้นที่ 3')
+    expect(barNosLabel([1, 2])).toBe('เส้นที่ 1–2 × 2')
+    expect(barNosLabel([4, 5, 6, 7])).toBe('เส้นที่ 4–7 × 4')
+    expect(barNosLabel([1, 4, 7])).toBe('เส้นที่ 1, 4, 7 × 3')
+  })
+  it('numbers openings in order of first appearance across the plan, offcut bars first', () => {
+    const pc = no => ({ opening_no: no })
+    const plan = { groups: [
+      { offcutBars: [{ pieces: [pc('W-03')] }], bars: [{ pieces: [pc('W-01'), pc('W-03')] }] },
+      { offcutBars: [], bars: [{ pieces: [pc('W-02'), pc('W-01')] }] },
+    ] }
+    expect(openingColorIndex(plan)).toEqual(new Map([['W-03', 0], ['W-01', 1], ['W-02', 2]]))
+    expect(openingColorIndex(null).size).toBe(0)
   })
 })

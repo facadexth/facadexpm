@@ -5,8 +5,8 @@ import { useMemo, useState } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { buildProjectBom, stockForProject } from '../../lib/projectBom.js'
 import { reasonText } from '../../lib/reasonText.js'
-import { buildCutPlan, rangeLengths } from '../../lib/cutPlan.js'
-import { useProjectStock, useOffcuts, offcutsByGroup } from '../../hooks/useEstimation2b.js'
+import { buildCutPlan, rangeLengths, issuePayload } from '../../lib/cutPlan.js'
+import { useProjectStock, useOffcuts, offcutsByGroup, useCutPlans, issueCutPlan, voidCutPlan } from '../../hooks/useEstimation2b.js'
 import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
   lengthCompare, bestLengthsByProfile, bomStockBasis,
@@ -16,6 +16,7 @@ import BomProfilesTable from './BomProfilesTable.jsx'
 import CutOptimizerPanel from './CutOptimizerPanel.jsx'
 import CutModeField from './CutModeField.jsx'
 import CustomLengthSummary from './CustomLengthSummary.jsx'
+import CutSheetView from './CutSheetView.jsx'
 import ProviderCompare from './ProviderCompare.jsx'
 
 const PartsTable = ({ rows }) => (
@@ -40,6 +41,14 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const stockRows = stockQ.data
   const offcutsQ = useOffcuts()
   const [offcutsFirst, setOffcutsFirst] = useState(true)
+  const plansQ = useCutPlans()
+  // The project's issued cut plan (at most one: unique index on status 'issued'); undefined while loading.
+  const issued = plansQ.data ? (plansQ.data.find(r => r.project_id === project.id && r.status === 'issued') || null) : undefined
+  // Offcut keys whose keep default the user flipped on the stickers (Task 9 renders the ticks); sent with the issue.
+  const [flipped, setFlipped] = useState(() => new Set())
+  // onFlip goes to the StickerSheet (Task 9); not used on this screen yet.
+  const onFlip = key => setFlipped(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next })
+  const [cutBusy, setCutBusy] = useState(false)
   // 'stock' = normal job (market bar only), 'custom' = project job (custom lengths). No column yet = 'stock'.
   const cutMode = project.cut_mode === 'custom' ? 'custom' : 'stock'
   const isCustom = cutMode === 'custom'
@@ -77,6 +86,17 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
     try { for (const t of bestLengthsByProfile(plan, compare)) await saveProfileStock(project.id, t.profile_id, t.length_m) }
     finally { await stockQ.refetch() }
   }
+
+  // Issue / void, then reload the plans and the offcut stock either way (a failed issue may mean an offcut was taken).
+  const runCut = async fn => {
+    setCutBusy(true)
+    try { await fn(); setFlipped(new Set()) } catch (e) { alert(e.message) } finally {
+      await Promise.all([plansQ.refetch(), offcutsQ.refetch()])
+      setCutBusy(false)
+    }
+  }
+  const issuePlan = () => runCut(() => issueCutPlan(project.id, issuePayload(plan, flipped)))
+  const voidPlan = () => runCut(() => voidCutPlan(issued.id))
 
   if (stockQ.error) return <div className="alert alert-error">โหลดความยาวเส้นไม่สำเร็จ: {String(stockQ.error)}</div>
   if (!items.length) return <div style={{ color: 'var(--text3)', padding: 20 }}>ยังไม่มีรายการในโปรเจกต์</div>
@@ -123,6 +143,10 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
       </Section>
 
       {isCustom && <CutOptimizerPanel profiles={bom.profiles} seriesMap={seriesMap} index={index} settings={settings} asOf={project.price_as_of} rangeM={rangeM} canEdit={canEdit} onUseLength={saveProfile} />}
+
+      {plansQ.error
+        ? <div className="alert alert-error">โหลดใบตัดไม่สำเร็จ: {String(plansQ.error.message || plansQ.error)}</div>
+        : issued !== undefined && <CutSheetView plan={plan} issued={issued} settings={settings} canEdit={canEdit} busy={cutBusy} onIssue={issuePlan} onVoid={voidPlan} />}
 
       <Section title="2. อุปกรณ์และชิ้นส่วน">
         {hardware.length > 0 && <><div style={{ fontSize: 12, color: 'var(--text3)' }}>อุปกรณ์ (hardware)</div><PartsTable rows={hardware} /></>}
