@@ -18,6 +18,11 @@ export const DEFAULT_SETTINGS = {
   shim_part_id: null,
   screw_part_id: null,
   plug_part_id: null,
+  // custom-length order from the mill: allowed bar length range / step (m) and the minimum order weight (kg)
+  custom_len_min_m: 4,
+  custom_len_max_m: 7,
+  custom_len_step_m: 0.05,
+  custom_moq_kg: 1000,
 }
 
 const num = (v, fallback, ok) => { const n = Number(v); return v !== null && v !== undefined && v !== '' && Number.isFinite(n) && ok(n) ? n : fallback }
@@ -26,6 +31,9 @@ const num = (v, fallback, ok) => { const n = Number(v); return v !== null && v !
 export function mergeSettings(row) {
   const r = row || {}
   const d = DEFAULT_SETTINGS
+  let lenMin = num(r.custom_len_min_m, d.custom_len_min_m, n => n > 0)
+  let lenMax = num(r.custom_len_max_m, d.custom_len_max_m, n => n > 0)
+  if (lenMax < lenMin) { lenMin = d.custom_len_min_m; lenMax = d.custom_len_max_m }
   return {
     stock_length_m: num(r.stock_length_m, d.stock_length_m, n => n > 0),
     kerf_square_mm: num(r.kerf_square_mm, d.kerf_square_mm, n => n >= 0),
@@ -42,5 +50,9 @@ export function mergeSettings(row) {
     shim_part_id: r.shim_part_id || null,
     screw_part_id: r.screw_part_id || null,
     plug_part_id: r.plug_part_id || null,
+    custom_len_min_m: lenMin,
+    custom_len_max_m: lenMax,
+    custom_len_step_m: num(r.custom_len_step_m, d.custom_len_step_m, n => n > 0),
+    custom_moq_kg: num(r.custom_moq_kg, d.custom_moq_kg, n => n >= 0),
   }
 }

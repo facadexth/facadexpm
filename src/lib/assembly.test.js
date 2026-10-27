@@ -48,7 +48,7 @@ describe('applyJoints', () => {
     expect(run({ ...base, joint_id: 'j1', length_rule_type: 'height_minus', length_deduction_mm: 10 }).components[0]).toMatchObject({ length_rule_type: 'height_minus', length_deduction_mm: 98.9 })
   })
   it('a component without a joint is unchanged except for a default square cut', () => {
-    expect(run(base).components[0]).toEqual({ ...base, cut_style: 'square' })
+    expect(run(base).components[0]).toEqual({ ...base, cut_style: 'square', cut_ends: 0, joint_name: null })
   })
   it('an unresolvable joint leaves the component as written and reports why', () => {
     const r = run({ ...base, joint_id: 'gone' })

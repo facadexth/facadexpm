@@ -48,3 +48,15 @@ describe('mergeSettings upper limit (final-fix 5)', () => {
     expect(mergeSettings({ default_round_step: 5000 }).default_round_step).toBe(5000)
   })
 })
+
+describe('custom-length defaults', () => {
+  it('no row gives 4 / 7 / 0.05 / 1000', () => {
+    expect(mergeSettings({})).toMatchObject({ custom_len_min_m: 4, custom_len_max_m: 7, custom_len_step_m: 0.05, custom_moq_kg: 1000 })
+  })
+  it('a 0 step falls back; 0 MOQ is allowed; max below min resets both', () => {
+    expect(mergeSettings({ custom_len_step_m: 0 }).custom_len_step_m).toBe(0.05)
+    expect(mergeSettings({ custom_moq_kg: '0' }).custom_moq_kg).toBe(0)
+    expect(mergeSettings({ custom_len_min_m: '5', custom_len_max_m: '6.5' })).toMatchObject({ custom_len_min_m: 5, custom_len_max_m: 6.5 })
+    expect(mergeSettings({ custom_len_min_m: 8, custom_len_max_m: 6 })).toMatchObject({ custom_len_min_m: 4, custom_len_max_m: 7 })
+  })
+})

@@ -436,3 +436,13 @@ describe('computeBomForOpening -- fixed_length_mm', () => {
     expect(run([comp({ fixed_length_mm: null })]).profileLines[0].length_m).toBe(1.8)
   })
 })
+
+describe('computeBomForOpening -- end cut data', () => {
+  it('a profile line carries the cut style, cut ends, notch and joint name; a grid line is square', () => {
+    const components = [{ role_name: 'กรอบบานตั้ง', profile_family: 'Frame-General', length_rule_type: 'height', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, cut_style: 'notch', cut_ends: 1, notch_width_mm: 20, notch_depth_mm: 8, joint_name: 'บาก' }]
+    const template = baseTemplate({ grid_row_weights: [0.5, 0.5], grid_horizontal_rail_family: 'Frame-General' })
+    const result = computeBomForOpening(baseOpening(), template, components, [], stubPricing([PROFILE], FINISH), GLASS)
+    expect(result.profileLines[0]).toMatchObject({ cut_style: 'notch', cut_ends: 1, notch_width_mm: 20, notch_depth_mm: 8, joint_name: 'บาก' })
+    expect(result.gridLines[0]).toMatchObject({ cut_style: 'square', cut_ends: 0, notch_width_mm: null, notch_depth_mm: null, joint_name: null })
+  })
+})

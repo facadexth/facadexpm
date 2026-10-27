@@ -42,9 +42,13 @@ export function computeComponentLength(rule, deductionMm, widthM, heightM, facto
 
 // A component may carry its own thickness (frame vs sash, only where the type allows it; see assembly.applyRoleThickness);
 // otherwise the opening's single thickness applies.
-function priceProfileLine({ role_name, family, length_m, quantity, pricing, opening, thickness_mm, cut_style }) {
+// Every line (component or grid) carries the same end shape for the cut sheet: cut_style, cut_ends (0|1|2 ends cut that
+// way, the rest square), the notch size and the joint name. A grid line has none of these, so it reads square / 0 / null.
+function priceProfileLine({ role_name, family, length_m, quantity, pricing, opening, thickness_mm, cut_style, cut_ends, notch_width_mm, notch_depth_mm, joint_name }) {
   const line = pricing.profileLine({ role_name, family, length_m, quantity, thickness_mm: thickness_mm != null ? thickness_mm : opening.thickness_mm, opening })
-  return { ...line, cut_style: cut_style || 'square' }
+  const style = cut_style || 'square'
+  return { ...line, cut_style: style, cut_ends: style === 'square' ? 0 : (Number(cut_ends) === 1 ? 1 : 2),
+    notch_width_mm: notch_width_mm ?? null, notch_depth_mm: notch_depth_mm ?? null, joint_name: joint_name ?? null }
 }
 
 // `pricing` comes from aluCatalogPricing.makeCatalogPricing(); callers must pass a real asOf date (a null asOf lets future-dated price rows through).
@@ -77,7 +81,8 @@ export function computeBomForOpening(opening, template, components, hardware, pr
       ? (Number(c.fixed_length_mm) / 1000) * factorOf(c.length_factor) - endOf(c.end_deduction_mm) / 1000
       : computeComponentLength(c.length_rule_type, c.length_deduction_mm, opening.width_m, opening.height_m, factorOf(c.length_factor), endOf(c.end_deduction_mm))
     const quantity = c.quantity_basis === 'per_cell' ? c.quantity_value * rowCount * columnCount : c.quantity_value
-    return priceProfileLine({ role_name: c.role_name, family: c.profile_family, length_m, quantity, pricing, opening, thickness_mm: c.thickness_mm, cut_style: c.cut_style })
+    return priceProfileLine({ role_name: c.role_name, family: c.profile_family, length_m, quantity, pricing, opening, thickness_mm: c.thickness_mm, cut_style: c.cut_style,
+      cut_ends: c.cut_ends, notch_width_mm: c.notch_width_mm, notch_depth_mm: c.notch_depth_mm, joint_name: c.joint_name })
   })
 
   const unresolvedProfileLines = [...profileLines, ...gridLines].filter(l => !l.resolved)

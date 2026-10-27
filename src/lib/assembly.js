@@ -38,26 +38,34 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
   for (const c of components || []) {
     if (c.profile_family && !(c.profile_family in familyThickness)) familyThickness[c.profile_family] = c.thickness_mm != null ? c.thickness_mm : thicknessMm
   }
-  const miterMains = new Set((joints || []).filter(j => j.cut_style === 'miter45' && j.main_family).map(j => j.main_family))
+  // main family -> name of the first mitre joint that mitres it (the cut sheet shows which joint cut the bar)
+  const miterName = new Map()
+  for (const j of joints || []) {
+    if (j.cut_style === 'miter45' && j.main_family && !miterName.has(j.main_family)) miterName.set(j.main_family, j.name || null)
+  }
   const out = (components || []).map(c => {
-    if (!c.joint_id) return { ...c, cut_style: c.cut_style || 'square' }
+    // cut_ends = how many ends carry cut_style (0, 1 or 2); the other ends are square
+    if (!c.joint_id) return { ...c, cut_style: c.cut_style || 'square', cut_ends: (c.cut_style && c.cut_style !== 'square') ? 2 : 0, joint_name: null }
     const joint = jointsById[c.joint_id]
     const rule = SHORTEN[c.length_rule_type]
-    if (!rule) { issues.push({ role_name: c.role_name, reason: 'rule_not_cuttable' }); return { ...c, cut_style: 'square' } }
+    if (!rule) { issues.push({ role_name: c.role_name, reason: 'rule_not_cuttable' }); return { ...c, cut_style: 'square', cut_ends: 0, joint_name: null } }
     // the main bar is looked up at the thickness of its own components (frame by default, sash where the main bars are
     // sash-role); the secondary bar's own thickness does not move it
     const main = joint ? resolveCatalogProfile(index, seriesId, joint.main_family, familyThickness[joint.main_family] ?? thicknessMm).profile : null
     const ded = jointDeductionMm(joint, main)
-    if (ded.mm === null) { issues.push({ role_name: c.role_name, reason: ded.reason }); return { ...c, cut_style: 'square' } }
+    if (ded.mm === null) { issues.push({ role_name: c.role_name, reason: ded.reason }); return { ...c, cut_style: 'square', cut_ends: 0, joint_name: null } }
     const ends = Number(c.joint_ends) === 1 ? 1 : 2
     const base = c.length_rule_type === 'width' || c.length_rule_type === 'height' ? 0 : Number(c.length_deduction_mm) || 0
     return {
       ...c, length_rule_type: rule, length_deduction_mm: base + ded.mm * ends,
       cut_style: joint.cut_style || 'square', notch_width_mm: joint.notch_width_mm ?? null, notch_depth_mm: joint.notch_depth_mm ?? null,
+      cut_ends: (joint.cut_style || 'square') === 'square' ? 0 : ends, joint_name: joint.name || null,
     }
   })
   // a mitre joint cuts the main bars at 45 degrees too (their lengths are unchanged); a bar with its own joint keeps what that joint gave it
-  const withMitreMains = out.map(c => (!c.joint_id && miterMains.has(c.profile_family) && (c.cut_style || 'square') === 'square' ? { ...c, cut_style: 'miter45' } : c))
+  const withMitreMains = out.map(c => (!c.joint_id && miterName.has(c.profile_family) && (c.cut_style || 'square') === 'square'
+    ? { ...c, cut_style: 'miter45', cut_ends: 2, joint_name: miterName.get(c.profile_family) }
+    : c))
   return { components: withMitreMains, issues }
 }
 
