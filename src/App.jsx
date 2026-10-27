@@ -23,6 +23,7 @@ import NotificationBell from './components/NotificationBell.jsx'
 import { usePendingCounts } from './hooks/usePendingCounts.js'
 import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge } from './lib/pendingItems.js'
 import Login      from './pages/Login.jsx'
+import { parseDeepLink, saveDeepLink } from './lib/deepLink.js'
 import Dashboard   from './pages/Dashboard.jsx'
 
 const Sites             = lazy(() => import('./pages/Sites.jsx'))
@@ -312,9 +313,13 @@ export default function App() {
   // fresh intent distinct from "the page just reloaded on its own."
   // Tapping a Web Push notification: an open app gets a message from the service worker,
   // a closed one is launched at /#tab=<id>. Both go through the access check below.
+  // Sticker QR codes add params (#tab=estimation&project=..&item=.. / &offcut=..): parseDeepLink keeps only known
+  // keys and safe values, and they wait in sessionStorage for the tab's page. This runs on first mount, before the
+  // login screen too (hooks run before the !session return below); the password login stays on this page, so
+  // activeTab survives it (the parked params also survive a reload).
   useEffect(() => {
-    const m = /^#tab=([\w-]+)$/.exec(window.location.hash)
-    if (m) { setActiveTab(m[1]); history.replaceState(null, '', window.location.pathname) }
+    const link = parseDeepLink(window.location.hash)
+    if (link) { setActiveTab(link.tab); saveDeepLink(link); history.replaceState(null, '', window.location.pathname) }
     const onMsg = (e) => { if (e.data?.type === 'chang-open-tab' && typeof e.data.tab === 'string') setActiveTab(e.data.tab) }
     navigator.serviceWorker?.addEventListener('message', onMsg)
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg)

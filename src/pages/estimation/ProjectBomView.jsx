@@ -19,6 +19,7 @@ import CutModeField from './CutModeField.jsx'
 import CustomLengthSummary from './CustomLengthSummary.jsx'
 import CutSheetView from './CutSheetView.jsx'
 import StickerSheet from './StickerSheet.jsx'
+import OffcutStockPanel from './OffcutStockPanel.jsx'
 import ProviderCompare from './ProviderCompare.jsx'
 
 const PartsTable = ({ rows }) => (
@@ -38,7 +39,8 @@ const Section = ({ title, children }) => (
   </div>
 )
 
-export default function ProjectBomView({ project, items, costs, base, index, seriesTypes, settings, canEdit, onProjectSaved }) {
+// highlightOffcut: offcut code from a sticker QR (Estimation deep link), highlighted in the offcut stock panel.
+export default function ProjectBomView({ project, items, costs, base, index, seriesTypes, settings, canEdit, onProjectSaved, projectNames = {}, highlightOffcut = null }) {
   const stockQ = useProjectStock()
   const stockRows = stockQ.data
   const offcutsQ = useOffcuts()
@@ -138,6 +140,11 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
             : `งานทั่วไปใช้เส้นมาตรฐาน ${Number(settings.stock_length_m).toFixed(2)} ม. เท่านั้น`}
         </div>
       </Section>
+
+      {offcutsQ.data && (
+        <OffcutStockPanel offcuts={offcutsQ.data} groupInfo={groupInfo} plan={issued ? issued.plan : plan} used={offcutsFirst || !!issued} settings={settings}
+          projectNames={projectNames} canEdit={canEdit} highlightCode={highlightOffcut} onDiscarded={offcutsQ.refetch} />
+      )}
 
       {isCustom && plan && compare && (
         <CustomLengthSummary plan={plan} compare={compare} prices={prices} kgPerM={kgPerM} settings={settings} canEdit={canEdit} onUse={saveProfile} onUseAll={applyAllBest} />

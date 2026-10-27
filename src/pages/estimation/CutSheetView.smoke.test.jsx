@@ -66,5 +66,15 @@ describe('CutSheetView', () => {
       expect(greens(render({ plan: p, issued, codes: { 'p1|f1#OC-0001': 'OC-0007' } }))).toBe(1)
       expect(greens(render({ plan: p, issued, codes: {}, flipped: new Set(['p1|f1#1']) }))).toBe(0)
     })
+    it('issued plan while the offcut codes load: remainders neutral, neither green nor hatched', () => {
+      const HATCH = 'repeating-linear-gradient(45deg'
+      const p = plan({ newOffcuts: offs })
+      const issued = { id: 'cp1', status: 'issued', signature: 'S1', issued_at: '2026-10-27T03:00:00Z', plan: p }
+      const html = render({ plan: p, issued, codes: null })
+      expect(greens(html)).toBe(0)
+      expect(html.split(HATCH).length - 1).toBe(1) // the legend swatch only
+      expect(html).toContain('background:var(--bg3)')
+      expect(render({ plan: p, issued, codes: {} }).split(HATCH).length - 1).toBeGreaterThan(1)
+    })
   })
 })

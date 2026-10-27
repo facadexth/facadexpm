@@ -17,9 +17,11 @@ const f2 = n => Number(n).toFixed(2)
 const muted = { fontSize: 12, color: 'var(--text3)' }
 const hatch = 'repeating-linear-gradient(45deg, var(--bg4), var(--bg4) 4px, transparent 4px, transparent 8px)'
 const keepFill = 'rgba(var(--green-rgb), 0.35)'
+// Issued plan whose offcut codes are still loading: kept or not is unknown yet, so neither green nor hatched.
+const pendingFill = 'var(--bg3)'
 const tag = { fontSize: 11, padding: '1px 6px', borderRadius: 4, fontWeight: 600 }
 
-function BarRow({ bar, label, fullLength, colorOf, keep, fromStock }) {
+function BarRow({ bar, label, fullLength, colorOf, keep, pending, fromStock }) {
   const L = Number(bar.length_m)
   const left = Number(bar.left_m)
   const labelled = left + 1e-9 >= MIN_OFFCUT_M
@@ -40,7 +42,7 @@ function BarRow({ bar, label, fullLength, colorOf, keep, fromStock }) {
           </div>
         ))}
         {left > 1e-9 && (
-          <div style={{ flex: '1 1 auto', background: keep ? keepFill : hatch, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: keep ? 'var(--text)' : 'var(--text3)', overflow: 'hidden', minWidth: 0 }}>
+          <div style={{ flex: '1 1 auto', background: pending ? pendingFill : keep ? keepFill : hatch, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: keep && !pending ? 'var(--text)' : 'var(--text3)', overflow: 'hidden', minWidth: 0 }}>
             {labelled && left / L > 0.045 ? mm(left) : ''}
           </div>
         )}
@@ -50,7 +52,7 @@ function BarRow({ bar, label, fullLength, colorOf, keep, fromStock }) {
   )
 }
 
-function GroupSheet({ g, colorOf, keepOf }) {
+function GroupSheet({ g, colorOf, keepOf, pending }) {
   const L = Number(g.length_m)
   const rows = splitRowsByKeep(groupIdenticalBars(g.bars), no => keepOf(g, String(no)))
   return (
@@ -65,11 +67,11 @@ function GroupSheet({ g, colorOf, keepOf }) {
         </div>
       </div>
       {g.offcutBars.map(b => (
-        <BarRow key={b.offcut.id} bar={b} fullLength={L} colorOf={colorOf} keep={keepOf(g, b.offcut.code)} fromStock
+        <BarRow key={b.offcut.id} bar={b} fullLength={L} colorOf={colorOf} keep={keepOf(g, b.offcut.code)} pending={pending} fromStock
           label={<><span style={{ ...tag, background: 'var(--yellow)', color: '#1d2420' }}>{b.offcut.code}</span> <span className="font-mono">{mm(b.length_m)}</span></>} />
       ))}
       {rows.map(r => (
-        <BarRow key={r.nos[0]} bar={r.bar} fullLength={L} colorOf={colorOf} keep={r.keep} label={barNosLabel(r.nos)} />
+        <BarRow key={r.nos[0]} bar={r.bar} fullLength={L} colorOf={colorOf} keep={r.keep} pending={pending} label={barNosLabel(r.nos)} />
       ))}
       {g.unplaced.length > 0 && (
         <div style={{ fontSize: 12, color: 'var(--red)' }}>
@@ -86,6 +88,7 @@ export default function CutSheetView({ plan, issued, codes, flipped, settings, c
   const colors = openingColorIndex(shown)
   const colorOf = no => colors.get(no) ?? 0
   const minKeep = Number(settings.min_keep_offcut_m)
+  const codesPending = !!issued && !codes
   const keepOpts = issued ? { codes: codes || {} } : { flipped }
   const keepOf = (g, ref) => isOffcutKept((g.newOffcuts || []).find(o => o.key === `${g.key}#${ref}`), keepOpts)
   const mismatch = !!issued && !!plan && issued.signature !== plan.signature
@@ -138,7 +141,7 @@ export default function CutSheetView({ plan, issued, codes, flipped, settings, c
           </div>
           {shown.groups.length === 0
             ? <div style={muted}>ไม่มีเส้นอลูมิเนียมที่ต้องตัด</div>
-            : shown.groups.map(g => <GroupSheet key={g.key} g={g} colorOf={colorOf} keepOf={keepOf} />)}
+            : shown.groups.map(g => <GroupSheet key={g.key} g={g} colorOf={colorOf} keepOf={keepOf} pending={codesPending} />)}
         </>
       )}
     </div>

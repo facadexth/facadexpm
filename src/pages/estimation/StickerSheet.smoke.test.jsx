@@ -52,6 +52,14 @@ describe('StickerSheet', () => {
     expect(html).not.toMatch(/disabled=""[^>]*>ดาวน์โหลด PDF สติกเกอร์/)
     expect(html).not.toContain('ยืนยันใบตัดก่อน')
   })
+  it('after issue: a flip left over from before the issue does not grey out a stocked offcut', () => {
+    const issued = { id: 'cp1', status: 'issued', signature: 'S', issued_at: '2026-10-27T03:00:00Z', plan }
+    const html = render({ issued, codes: { 'A|F#2': 'OC-0012' }, flipped: new Set(['A|F#2']) })
+    const boxes = checkboxes(html)
+    expect(boxes).toHaveLength(1)
+    expect(boxes[0]).not.toContain('checked')
+    expect(html).not.toContain('opacity:0.35')
+  })
   it('after issue but before the offcut codes load: PDF stays disabled', () => {
     const issued = { id: 'cp1', status: 'issued', signature: 'S', issued_at: '2026-10-27T03:00:00Z', plan }
     const html = render({ issued, codes: null })

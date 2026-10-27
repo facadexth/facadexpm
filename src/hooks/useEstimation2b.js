@@ -122,3 +122,10 @@ export async function discardOffcut(id) {
   if (error) throw error
   if (!data || data.length === 0) throw new Error('เศษชิ้นนี้ไม่อยู่ในสต็อกแล้ว (ถูกใช้หรือทิ้งไปแล้ว)')
 }
+
+// A sticker QR's offcut code -> its row (RLS: own tenant only), or null when none is visible.
+export async function findOffcutByCode(code) {
+  const { data, error } = await supabase.from('alu_offcuts').select('id, code, status, source_project_id').eq('code', code).limit(1)
+  if (error) throw error
+  return (data && data[0]) || null
+}

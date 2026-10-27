@@ -5,7 +5,7 @@
 // added / edited in ItemModal (estimation/ItemModal.jsx). No AI drawing
 // extraction yet; doesn't write into quotations or purchase_orders.
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import {
   useEstimationProjects, useEstimationOpenings, useBomTemplates, useBomTemplateComponents,
@@ -18,7 +18,8 @@ import { useEstimationCatalog } from '../hooks/useAluCatalog.js'
 import { useBomPartModel } from '../hooks/useBomPartModel.js'
 import { useTemplateAddonPieces } from '../hooks/useTemplateAddonPieces.js'
 import { useItemAddons } from '../hooks/useItemAddons.js'
-import { useEstimationSettings, useTemplateJoints, useHardwarePackages, useLayoutTemplates, groupByTemplate } from '../hooks/useEstimation2b.js'
+import { useEstimationSettings, useTemplateJoints, useHardwarePackages, useLayoutTemplates, groupByTemplate, findOffcutByCode } from '../hooks/useEstimation2b.js'
+import { takeDeepLink, resolveEstimationLink } from '../lib/deepLink.js'
 import { listPriceChanges } from '../lib/staleProjectPrices.js'
 import { localDateString } from '../lib/localDate.js'
 import { typeLabel } from '../lib/typeTree.js'
@@ -38,8 +39,8 @@ export default function Estimation(props) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'estimation')
 
-  const { data: projects, refetch: refetchProjects } = useEstimationProjects()
-  const { data: openings, refetch: refetchOpenings } = useEstimationOpenings()
+  const { data: projects, error: projectsError, refetch: refetchProjects } = useEstimationProjects()
+  const { data: openings, error: openingsError, refetch: refetchOpenings } = useEstimationOpenings()
   const { data: templates } = useBomTemplates()
   const { data: components } = useBomTemplateComponents()
   const { data: hardware } = useBomTemplateHardware()
@@ -58,6 +59,32 @@ export default function Estimation(props) {
   const [itemModal, setItemModal] = useState(null)   // null | { id: string | null }
   const [quickOpen, setQuickOpen] = useState(false)
   const [tab, setTab] = useState('items')   // 'items' | 'bom' | 'price' | 'compare'
+
+  // Sticker QR deep link (App.jsx parks the params): opened only once the RLS-scoped lists have loaded, and only for
+  // a project / item / offcut found in them; anything else is a notice, never a blank modal.
+  const [link, setLink] = useState(null)
+  const [linkNotice, setLinkNotice] = useState(null)
+  const [highlightOffcut, setHighlightOffcut] = useState(null)
+  useEffect(() => { const p = takeDeepLink('estimation'); if (p) setLink(p) }, [])
+  const listsReady = !!(projects || projectsError) && !!(openings || openingsError)
+  useEffect(() => {
+    if (!link || !listsReady) return undefined
+    let cancelled = false
+    const offcutQ = link.offcut ? findOffcutByCode(link.offcut).catch(() => null) : Promise.resolve(null)
+    offcutQ.then(offcut => {
+      if (cancelled) return
+      const r = resolveEstimationLink(link, { projects, openings, offcut })
+      setLink(null)
+      setLinkNotice(r.notice || null)
+      setHighlightOffcut(r.offcutCode || null)
+      if (!r.projectId) return
+      setSelectedProjectId(r.projectId); setQuickOpen(false)
+      setItemModal(r.itemId ? { id: r.itemId } : null)
+      if (r.tab) setTab(r.tab)
+    })
+    return () => { cancelled = true }
+  }, [link, listsReady]) // eslint-disable-line react-hooks/exhaustive-deps
+  const projectNames = useMemo(() => Object.fromEntries((projects || []).map(p => [p.id, p.name])), [projects])
 
   const project = (projects || []).find(p => p.id === selectedProjectId) || null
   const ps = usePriceStructure(project ? project.id : null)   // the ONE instance: send, price tab and compare tab share it
@@ -122,7 +149,7 @@ export default function Estimation(props) {
         <div style={{ display: 'grid', gap: 4 }}>
           {(projects || []).map(p => (
             <button key={p.id} className={`btn btn-sm ${selectedProjectId === p.id ? 'btn-primary' : 'btn-ghost'}`} style={{ justifyContent: 'flex-start' }}
-              onClick={() => { setSelectedProjectId(p.id); setItemModal(null); setQuickOpen(false) }}>
+              onClick={() => { setSelectedProjectId(p.id); setItemModal(null); setQuickOpen(false); setHighlightOffcut(null); setLinkNotice(null) }}>
               {p.name}
             </button>
           ))}
@@ -131,6 +158,12 @@ export default function Estimation(props) {
       </div>
 
       <div style={{ minWidth: 0 }}>
+        {linkNotice && (
+          <div className="alert alert-warning" style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span>{linkNotice}</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLinkNotice(null)}>ปิด</button>
+          </div>
+        )}
         {!project && <div style={{ color: 'var(--text3)', padding: 20 }}>เลือกโปรเจกต์ทางซ้าย หรือสร้างใหม่</div>}
         {project && (
           <div style={{ display: 'grid', gap: 12 }}>
@@ -149,7 +182,7 @@ export default function Estimation(props) {
             </div>
             {tab === 'bom' && costCtx && (
               <ProjectBomView key={project.id} project={project} items={projectOpenings} costs={costs} base={costCtx} index={index} seriesTypes={catalog.seriesTypes}
-                settings={settings} canEdit={canEdit} onProjectSaved={refetchProjects} />
+                settings={settings} canEdit={canEdit} onProjectSaved={refetchProjects} projectNames={projectNames} highlightOffcut={highlightOffcut} />
             )}
             {tab === 'price' && (
               <PriceStructureTab key={project.id} project={project} items={projectOpenings} costs={costs} index={index} infillTypes={infillTypes}

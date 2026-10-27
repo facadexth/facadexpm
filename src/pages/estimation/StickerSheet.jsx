@@ -61,7 +61,8 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
     [shown, projectName, projectId, openingIds, codes, issued])
   const selected = groupKey === ALL ? ALL : (groups.some(g => g.key === groupKey) ? groupKey : (groups[0] && groups[0].key))
   const visible = useMemo(() => (selected === ALL ? all : all.filter(s => s.groupKey === selected)), [all, selected])
-  const kept = s => s.kind !== 'offcut' || isOffcutKept({ key: s.offKey, keep: s.keepDefault }, { flipped })
+  // After issue every listed offcut was stocked; a leftover flip from before the issue must not grey it out.
+  const kept = s => s.kind !== 'offcut' || !!issued || isOffcutKept({ key: s.offKey, keep: s.keepDefault }, { flipped })
   const toPrint = visible.filter(kept)
   const pieceCount = visible.filter(s => s.kind === 'piece').length
 
