@@ -133,3 +133,37 @@ describe('chooseLengths', () => {
     expect(r.moqMet).toBe(true); expect(r.byGroup['A|F'].custom).toBe(true)
   })
 })
+
+import { planSignature, buildCutPlan, issuePayload } from './cutPlan.js'
+describe('buildCutPlan', () => {
+  const entries = [entry([line({ length_m: 2.0, quantity: 3 })])]
+  const groupInfo = { 'P|F': { profile_id: 'P', finish_id: 'F', die_no: 'F7976', name: 'เฟรม', finish_name: 'ขาว' } }
+  it('lists remainders as new offcuts with a keep default from min_keep_offcut_m', () => {
+    const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: {}, overrides: {}, groupInfo })
+    const g = plan.groups[0]
+    expect(g.bars).toHaveLength(1)
+    expect(g.newOffcuts).toEqual([{ key: 'P|F#1', bar_ref: '1', length_m: 0.391, end_a: 'square', keep: false }])
+  })
+  it('the signature changes when an item changes and not otherwise', () => {
+    expect(planSignature(entries)).toBe(planSignature([entry([line({ length_m: 2.0, quantity: 3 })])]))
+    expect(planSignature(entries)).not.toBe(planSignature([entry([line({ length_m: 2.1, quantity: 3 })])]))
+  })
+  it('issuePayload sends the used stock offcut ids and only the kept new offcuts', () => {
+    // offcut 2.05: first 2.0 piece goes on it (0.047 left = saw loss, no offcut); two pieces on a new bar leave 2.394 (kept by default)
+    const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: { 'P|F': [{ id: 'o1', code: 'OC-0001', length_m: 2.05 }] }, overrides: {}, groupInfo })
+    const kept = issuePayload(plan, new Set())
+    expect(kept.p_used_offcut_ids).toEqual(['o1'])
+    expect(kept.p_new_offcuts).toEqual([{ key: 'P|F#1', profile_id: 'P', finish_id: 'F', length_m: 2.394, end_a: 'square' }])
+    expect(issuePayload(plan, new Set(['P|F#1'])).p_new_offcuts).toEqual([])
+  })
+  it('flipping a dropped remainder creates it', () => {
+    const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: {}, overrides: {}, groupInfo })
+    expect(issuePayload(plan, new Set()).p_new_offcuts).toEqual([])
+    expect(issuePayload(plan, new Set(['P|F#1'])).p_new_offcuts).toEqual([{ key: 'P|F#1', profile_id: 'P', finish_id: 'F', length_m: 0.391, end_a: 'square' }])
+  })
+  it('a stock offcut of another finish is never used', () => {
+    const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: { 'P|G': [{ id: 'o9', code: 'OC-0009', length_m: 2.05 }] }, overrides: {}, groupInfo })
+    expect(plan.groups[0].offcutBars).toEqual([])
+    expect(issuePayload(plan, new Set()).p_used_offcut_ids).toEqual([])
+  })
+})

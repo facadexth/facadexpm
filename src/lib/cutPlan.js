@@ -115,3 +115,44 @@ export function chooseLengths({ groups, mode, settings, kgPerM, offcutsByGroup, 
   }
   return { byGroup, customKg, moqMet: true, reason: null }
 }
+
+export function planSignature(entries) {
+  const rows = []
+  for (const [key, ps] of piecesOf(entries)) for (const p of ps) rows.push(`${key}|${p.opening_no}|${p.role_name}|${p.length_m}|${p.end_a}|${p.end_b}`)
+  return rows.sort().join('\n')
+}
+
+// Remainders under 50 mm are saw loss, not offcuts (no sticker).
+const MIN_OFFCUT_M = 0.05
+
+export function buildCutPlan({ entries, mode, settings, kgPerM, offcutsByGroup, overrides, groupInfo }) {
+  const pieces = piecesOf(entries)
+  const groups = [...pieces.entries()].map(([key, ps]) => ({ key, pieces: ps }))
+  const chosen = chooseLengths({ groups, mode, settings, kgPerM, offcutsByGroup, overrides })
+  const out = groups.map(g => {
+    const c = chosen.byGroup[g.key]
+    const { offcutBars, bars, unplaced } = c.eval.packed
+    const newOffcuts = []
+    const add = (bar, ref) => {
+      if (bar.left_m + EPS < MIN_OFFCUT_M) return
+      const last = bar.pieces[bar.pieces.length - 1]
+      newOffcuts.push({ key: `${g.key}#${ref}`, bar_ref: ref, length_m: mm(bar.left_m), end_a: last ? last.end_b : 'square', keep: bar.left_m + EPS >= settings.min_keep_offcut_m })
+    }
+    offcutBars.forEach(b => add(b, b.offcut.code))
+    bars.forEach((b, i) => add(b, String(i + 1)))
+    return { key: g.key, ...(groupInfo || {})[g.key], length_m: c.length_m, custom: c.custom, offcutBars, bars, unplaced, kg: c.eval.kg, newOffcuts }
+  })
+  return { signature: planSignature(entries), mode, customKg: chosen.customKg, moqMet: chosen.moqMet, reason: chosen.reason, groups: out }
+}
+
+// flippedKeys = offcut keys whose keep default the user flipped (ticked "ไม่เก็บ" on a kept one, or unticked it on a dropped one)
+export function issuePayload(plan, flippedKeys) {
+  const flipped = flippedKeys || new Set()
+  const used = []
+  const created = []
+  for (const g of plan.groups) {
+    for (const b of g.offcutBars) used.push(b.offcut.id)
+    for (const o of g.newOffcuts) if (o.keep !== flipped.has(o.key)) created.push({ key: o.key, profile_id: g.profile_id, finish_id: g.finish_id || null, length_m: o.length_m, end_a: o.end_a })
+  }
+  return { p_signature: plan.signature, p_plan: plan, p_used_offcut_ids: used, p_new_offcuts: created }
+}
