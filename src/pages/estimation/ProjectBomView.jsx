@@ -1,7 +1,7 @@
 // src/pages/estimation/ProjectBomView.jsx
 // "BOM ทั้งโครงการ" (mockup screen 6): every item's BOM x its quantity rolled up. Uses the costs the project page
 // already computed (costOpening with the project's hardware package), never a second calculation.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { buildProjectBom, stockForProject } from '../../lib/projectBom.js'
 import { reasonText } from '../../lib/reasonText.js'
@@ -9,7 +9,7 @@ import { buildCutPlan, rangeLengths, issuePayload } from '../../lib/cutPlan.js'
 import { useProjectStock, useOffcuts, offcutsByGroup, useCutPlans, issueCutPlan, voidCutPlan } from '../../hooks/useEstimation2b.js'
 import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
-  lengthCompare, bestLengthsByProfile, bomStockBasis, toggleKey,
+  lengthCompare, bestLengthsByProfile, bomStockBasis, toggleKey, offcutLayoutFingerprint, summarySource,
 } from './projectBomHelpers.js'
 import { issuedOffcutCodes } from '../../lib/stickers.js'
 import { saveProfileStock } from './projectStockSave.js'
@@ -64,11 +64,6 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const pieces = useMemo(() => entriesPieceCount(entries), [entries])
   const tooMany = pieces > MAX_PIECES
   const projectStock = useMemo(() => stockForProject(stockRows, project.id, project), [stockRows, project])
-  // Same stock basis as the cut plan (market bar; per-profile lengths only in a project job), so section 1 and the
-  // summary never disagree.
-  const stock = useMemo(() => bomStockBasis(cutMode, projectStock), [cutMode, projectStock])
-  const bom = useMemo(() => (tooMany || !stockRows ? null : buildProjectBom({ entries, settings, stock, profilesById: index.profiles, finishesById: index.finishes, partsById: index.parts })),
-    [entries, settings, stock, index, tooMany, stockRows])
   const seriesMap = useMemo(() => Object.fromEntries(Object.entries(seriesByGroup(entries)).map(([k, s]) => [k, [...s]])), [entries])
 
   // The ONE cut plan of this tab (summary, cut sheet, stickers and offcut stock all read it).
@@ -81,6 +76,20 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const offcutsReady = !offcutsFirst || !!offcutsQ.data || !!offcutsQ.error
   const plan = useMemo(() => (tooMany || !stockRows || !offcutsReady ? null : buildCutPlan({ entries, mode: cutMode, settings, kgPerM, offcutsByGroup: offcuts, overrides, groupInfo })),
     [tooMany, stockRows, offcutsReady, entries, cutMode, settings, kgPerM, offcuts, overrides, groupInfo])
+  // Section 1 buys the lengths the cut plan chose (market bar in a normal job), so it never disagrees with the summary
+  // or the cut sheet. A project job waits for the plan.
+  const stock = useMemo(() => bomStockBasis(cutMode, plan), [cutMode, plan])
+  const bom = useMemo(() => (tooMany || !stockRows || !stock ? null : buildProjectBom({ entries, settings, stock, profilesById: index.profiles, finishesById: index.finishes, partsById: index.parts })),
+    [entries, settings, stock, index, tooMany, stockRows])
+  // The "ไม่เก็บ" ticks are keyed by bar position: when the plan's remainder layout changes (offcut discarded, offcuts
+  // toggled, a length saved, cut mode changed...) they would point at other remainders, so they are cleared.
+  const offcutLayout = useMemo(() => (plan ? offcutLayoutFingerprint(plan) : null), [plan])
+  const prevOffcutLayout = useRef(null)
+  useEffect(() => {
+    if (offcutLayout == null) return
+    if (prevOffcutLayout.current != null && prevOffcutLayout.current !== offcutLayout) setFlipped(new Set())
+    prevOffcutLayout.current = offcutLayout
+  }, [offcutLayout])
   // Independent of the per-profile overrides: saving a length does not recompute the whole length search.
   const compare = useMemo(() => (isCustom && !tooMany && offcutsReady ? lengthCompare({ entries, settings, kgPerM, offcutsByGroup: offcuts }) : null),
     [isCustom, tooMany, offcutsReady, entries, settings, kgPerM, offcuts])
@@ -147,11 +156,11 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
       )}
 
       {isCustom && plan && compare && (
-        <CustomLengthSummary plan={plan} compare={compare} prices={prices} kgPerM={kgPerM} settings={settings} canEdit={canEdit} onUse={saveProfile} onUseAll={applyAllBest} />
+        <CustomLengthSummary {...summarySource({ plan, issued, canEdit })} compare={compare} prices={prices} kgPerM={kgPerM} settings={settings} onUse={saveProfile} onUseAll={applyAllBest} />
       )}
 
       <Section title="1. อลูมิเนียมโปรไฟล์ (แยกตามหน้าตัดและสี)">
-        <BomProfilesTable profiles={bom.profiles} overrides={stock.byProfile} canEdit={canEdit && isCustom} onSaveStock={saveProfile} />
+        <BomProfilesTable profiles={bom.profiles} overrides={isCustom ? projectStock.byProfile : {}} canEdit={canEdit && isCustom} onSaveStock={saveProfile} />
       </Section>
 
       {isCustom && <CutOptimizerPanel profiles={bom.profiles} seriesMap={seriesMap} index={index} settings={settings} asOf={project.price_as_of} rangeM={rangeM} canEdit={canEdit} onUseLength={saveProfile} />}

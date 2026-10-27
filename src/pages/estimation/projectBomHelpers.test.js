@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
   cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis,
-  barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep,
+  barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep, offcutLayoutFingerprint, summarySource,
 } from './projectBomHelpers.js'
 import { buildCutPlan, issuePayload } from '../../lib/cutPlan.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
@@ -266,16 +266,90 @@ describe('bestLengthsByProfile', () => {
     }
     expect(bestLengthsByProfile(plan, compare)).toEqual([{ profile_id: 'p1', length_m: 6.5 }])
   })
+  it('weighs colour groups by what the plan buys (g.kg), not the stock-bar baseline', () => {
+    // p1|f1 has the heavier baseline but the plan buys more of p1|f2 (e.g. 6.40 cannot cut f2 completely)
+    const plan = { groups: [g({ length_m: 6.4, kg: 3 }), g({ key: 'p1|f2', finish_id: 'f2', length_m: 6.4, kg: 10 })] }
+    const compare = { 'p1|f1': { base: { kg: 20 }, best: { length_m: 5.0, kg: 2 } }, 'p1|f2': { base: { kg: 5 }, best: { length_m: 5.5, kg: 9 } } }
+    expect(bestLengthsByProfile(plan, compare)).toEqual([{ profile_id: 'p1', length_m: 5.5 }])
+  })
 })
 
 describe('bomStockBasis', () => {
-  const ps = { byProfile: { p1: 6.25 }, projectM: 6 }
-  it('a normal job uses the market bar only: no overrides, no project length', () => {
-    expect(bomStockBasis('stock', ps)).toEqual({ byProfile: {}, projectM: null })
-    expect(bomStockBasis(undefined, ps)).toEqual({ byProfile: {}, projectM: null })
+  it('a normal job uses the market bar only: no per-profile lengths, no project length', () => {
+    const plan = { groups: [g({ length_m: 5.85 })] }
+    expect(bomStockBasis('stock', plan)).toEqual({ byProfile: {}, projectM: null })
+    expect(bomStockBasis(undefined, plan)).toEqual({ byProfile: {}, projectM: null })
+    expect(bomStockBasis('stock', null)).toEqual({ byProfile: {}, projectM: null })
   })
-  it('a project job keeps its per-profile lengths but never the project-wide length (same basis as the cut plan)', () => {
-    expect(bomStockBasis('custom', ps)).toEqual({ byProfile: { p1: 6.25 }, projectM: null })
+  it('a project job waits for the plan (null until it exists)', () => {
+    expect(bomStockBasis('custom', null)).toBeNull()
+  })
+  it('a project job takes each profile\'s length from the plan, the heaviest colour group (by kg) when colours differ', () => {
+    const plan = { groups: [
+      g({ length_m: 5.85, kg: 4 }), g({ key: 'p1|f2', finish_id: 'f2', length_m: 6.1, kg: 9 }),
+      g({ key: 'p2|f1', profile_id: 'p2', length_m: 6.4, kg: 0, no_weight: true }),
+    ] }
+    expect(bomStockBasis('custom', plan)).toEqual({ byProfile: { p1: 6.1, p2: 6.4 }, projectM: null })
+  })
+  describe('against a real cut plan', () => {
+    const S = { ...DEFAULT_SETTINGS }
+    const lineP = { resolved: true, profile_id: 'p1', length_m: 2.4, role_name: 'r', cut_style: 'square', cut_ends: 0 }
+    const entriesOf = qty => [{ opening_no: 'W-01', item_id: 'i1', item_name: '', quantity: 1, finish_id: 'f1', bom: { profileLines: [{ ...lineP, quantity: qty }], gridLines: [] } }]
+    const planOf = (qty, overrides) => buildCutPlan({ entries: entriesOf(qty), mode: 'custom', settings: S, kgPerM: { 'p1|f1': 0.62 }, offcutsByGroup: {}, overrides, groupInfo: { 'p1|f1': { profile_id: 'p1', finish_id: 'f1' } } })
+    it('no override, minimum order met: section 1 uses the plan\'s best length, not 6.40', () => {
+      const plan = planOf(800, {})
+      expect(plan.groups[0].custom).toBe(true)
+      expect(bomStockBasis('custom', plan).byProfile).toEqual({ p1: plan.groups[0].length_m })
+      expect(plan.groups[0].length_m).toBe(4.85)
+    })
+    it('below the minimum order a saved override falls back to 6.40 like the plan', () => {
+      const plan = planOf(8, { 'p1|f1': 5.0 })
+      expect(plan.reason).toBe('moq')
+      expect(bomStockBasis('custom', plan).byProfile).toEqual({ p1: 6.4 })
+    })
+    it('an infeasible override is replaced by the plan\'s length', () => {
+      const plan = planOf(800, { 'p1|f1': 2.0 })
+      expect(plan.groups[0].overrideRejected).toBe(true)
+      expect(bomStockBasis('custom', plan).byProfile).toEqual({ p1: 4.85 })
+    })
+  })
+})
+
+describe('offcutLayoutFingerprint', () => {
+  const off = (key, length_m, keep = true) => ({ key, bar_ref: key.split('#')[1], length_m, end_a: 'square', keep })
+  it('is the same for the same remainders in any group order, and empty for no plan', () => {
+    const a = { groups: [g({ newOffcuts: [off('p1|f1#1', 1.2)] }), g({ key: 'p2|f1', newOffcuts: [off('p2|f1#1', 0.3, false)] })] }
+    const b = { groups: [a.groups[1], a.groups[0]] }
+    expect(offcutLayoutFingerprint(a)).toBe(offcutLayoutFingerprint(b))
+    expect(offcutLayoutFingerprint(null)).toBe('')
+  })
+  it('changes when a bar\'s remainder length moves, a remainder appears or disappears, or its keep default flips', () => {
+    const base = { groups: [g({ newOffcuts: [off('p1|f1#1', 1.2), off('p1|f1#2', 0.8)] })] }
+    const fp = offcutLayoutFingerprint(base)
+    expect(offcutLayoutFingerprint({ groups: [g({ newOffcuts: [off('p1|f1#1', 0.8), off('p1|f1#2', 1.2)] })] })).not.toBe(fp)
+    expect(offcutLayoutFingerprint({ groups: [g({ newOffcuts: [off('p1|f1#1', 1.2)] })] })).not.toBe(fp)
+    expect(offcutLayoutFingerprint({ groups: [g({ newOffcuts: [off('p1|f1#1', 1.2), off('p1|f1#2', 0.8, false)] })] })).not.toBe(fp)
+  })
+  it('discarding a stock offcut renumbers the bars of a real plan: the fingerprint changes', () => {
+    const S = { kerf_square_mm: 3, kerf_miter_mm: 10, min_keep_offcut_m: 0.5, stock_length_m: 6.4 }
+    const entries = [{ opening_no: 'W-01', item_id: 'i1', item_name: '', quantity: 1, finish_id: 'F',
+      bom: { profileLines: [{ resolved: true, profile_id: 'P', length_m: 2, quantity: 3, role_name: 'r', cut_style: 'square', cut_ends: 0 }], gridLines: [] } }]
+    const mk = offcuts => buildCutPlan({ entries, mode: 'stock', settings: S, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: { 'P|F': offcuts }, overrides: {}, groupInfo: { 'P|F': { profile_id: 'P', finish_id: 'F' } } })
+    const withOff = mk([{ id: 'o1', code: 'OC-0001', length_m: 2.05 }])
+    expect(offcutLayoutFingerprint(withOff)).not.toBe(offcutLayoutFingerprint(mk([])))
+    expect(offcutLayoutFingerprint(withOff)).toBe(offcutLayoutFingerprint(mk([{ id: 'o1', code: 'OC-0001', length_m: 2.05 }])))
+  })
+})
+
+describe('summarySource', () => {
+  const live = { groups: [g()] }
+  const issued = { id: 'cp1', plan: { groups: [g({ length_m: 6.4, kg: 12.8 })] } }
+  it('before issue: the live plan, editable when the user can edit', () => {
+    expect(summarySource({ plan: live, issued: null, canEdit: true })).toEqual({ plan: live, canEdit: true })
+    expect(summarySource({ plan: live, issued: undefined, canEdit: false })).toEqual({ plan: live, canEdit: false })
+  })
+  it('once issued: the issued plan, and no "ใช้" buttons', () => {
+    expect(summarySource({ plan: live, issued, canEdit: true })).toEqual({ plan: issued.plan, canEdit: false })
   })
 })
 

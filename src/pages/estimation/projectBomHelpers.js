@@ -158,11 +158,38 @@ export function cutGroupKgPerM(groupInfo, index) {
   return out
 }
 
-// The stock-length basis of section 1 (buildProjectBom), the same one the cut plan uses so the two never disagree:
-// a normal job buys the market bar only (settings.stock_length_m, no overrides); a project job uses its per-profile
-// lengths. The project-wide stock length (projectM) is never used.
-export function bomStockBasis(cutMode, projectStock) {
-  return { byProfile: cutMode === 'custom' && projectStock ? projectStock.byProfile || {} : {}, projectM: null }
+// The stock-length basis of section 1 (buildProjectBom). A normal job buys the market bar only (settings.stock_length_m).
+// A project job buys what the cut plan chose -- the plan is the source of truth (saved overrides, best length, the
+// minimum-order fallback, the infeasible-override swap, no-weight groups on stock) -- one length per profile: the
+// heaviest (g.kg) colour group's when its colours differ. null in a project job until the plan exists.
+// The project-wide stock length (projectM) is never used.
+export function bomStockBasis(cutMode, plan) {
+  if (cutMode !== 'custom') return { byProfile: {}, projectM: null }
+  if (!plan) return null
+  const byProfile = {}
+  for (const [profileId, g] of heaviestGroupByProfile(plan)) byProfile[profileId] = g.length_m
+  return { byProfile, projectM: null }
+}
+
+// profile_id -> its plan group with the most kg bought (the first one on a tie).
+function heaviestGroupByProfile(plan) {
+  const out = new Map()
+  for (const g of (plan && plan.groups) || []) {
+    const cur = out.get(g.profile_id)
+    if (!cur || Number(g.kg) > Number(cur.kg)) out.set(g.profile_id, g)
+  }
+  return out
+}
+
+// The remainder layout of a plan: which bar key leaves which length (and its keep default). The "ไม่เก็บ" ticks are
+// keyed by bar position, so when this changes they would point at other remainders and must be cleared.
+export function offcutLayoutFingerprint(plan) {
+  return ((plan && plan.groups) || []).flatMap(g => (g.newOffcuts || []).map(o => `${o.key}:${o.length_m}:${o.keep ? 1 : 0}`)).sort().join('|')
+}
+
+// What the custom-length summary shows: once issued, the issued plan (what the cut sheet below shows), read-only.
+export function summarySource({ plan, issued, canEdit }) {
+  return issued ? { plan: issued.plan, canEdit: false } : { plan, canEdit: !!canEdit }
 }
 
 // Per-profile stock lengths (estimation_project_stock) onto every group of that profile.
@@ -238,18 +265,12 @@ export function customLengthSummaryModel({ plan, compare, prices, kgPerM }) {
   return { rows, baseKg, useKg, totalKg, cost, savingKg: baseKg - useKg, savingBaht, excluded, anyCustom: groups.some(g => g.custom) }
 }
 
-// "ใช้ทั้งหมด": one length per profile (stock overrides are per profile) -- the best of its heaviest colour group --
+// "ใช้ทั้งหมด": one length per profile (stock overrides are per profile) -- the best of its heaviest colour group (kg the plan buys) --
 // skipping profiles with no best length or already on it.
 export function bestLengthsByProfile(plan, compare) {
-  const heaviest = new Map()
-  for (const g of (plan && plan.groups) || []) {
-    const c = (compare || {})[g.key]
-    const w = c && c.base ? c.base.kg : g.kg
-    const cur = heaviest.get(g.profile_id)
-    if (!cur || w > cur.w) heaviest.set(g.profile_id, { g, c, w })
-  }
   const out = []
-  for (const [profile_id, { g, c }] of heaviest) {
+  for (const [profile_id, g] of heaviestGroupByProfile(plan)) {
+    const c = (compare || {})[g.key]
     if (!c || !c.best || Math.abs(c.best.length_m - g.length_m) <= EPS) continue
     out.push({ profile_id, length_m: c.best.length_m })
   }

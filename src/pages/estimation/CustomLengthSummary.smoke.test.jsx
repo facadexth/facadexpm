@@ -4,6 +4,7 @@ import { renderToString } from 'react-dom/server'
 
 vi.mock('../../lib/supabase.js', () => ({ supabase: {}, fmt: n => String(Math.round(n)) }))
 const { default: CustomLengthSummary } = await import('./CustomLengthSummary.jsx')
+const { summarySource } = await import('./projectBomHelpers.js')
 
 const settings = { stock_length_m: 6.4, custom_moq_kg: 1000 }
 const group = (o = {}) => ({ key: 'p1|f1', profile_id: 'p1', finish_id: 'f1', name: 'กรอบบน', die_no: 'D-1', finish_name: 'อบขาว', length_m: 6.25, custom: true, no_weight: false, overrideRejected: false, offcutBars: [], bars: [{}, {}], unplaced: [], kg: 12.5, newOffcuts: [], ...o })
@@ -55,5 +56,14 @@ describe('CustomLengthSummary', () => {
   it('notes that a length applies to every colour of a shared profile', () => {
     const html = render({ reason: null, customKg: 0, moqMet: true, groups: [group({ length_m: 6.4, custom: false }), group({ key: 'p1|f2', finish_id: 'f2', length_m: 6.4, custom: false })] })
     expect(html).toContain('ใช้กับทุกสีของหน้าตัดนี้')
+  })
+  it('an issued project shows the issued plan, not the live one, and no "ใช้" buttons', () => {
+    const live = { reason: null, customKg: 1200, moqMet: true, groups: [group({ length_m: 6.4, custom: false, kg: 3.2, bars: [{}] })] }
+    const issued = { id: 'cp1', plan: { reason: null, customKg: 1200, moqMet: true, groups: [group({ length_m: 6.4, custom: false, kg: 12.8, bars: [{}, {}] })] } }
+    const html = renderToString(<CustomLengthSummary {...summarySource({ plan: live, issued, canEdit: true })} compare={compare} prices={{ 'p1|f1': 100 }} kgPerM={{ 'p1|f1': 1 }} settings={settings} onUse={() => {}} onUseAll={() => {}} />).replaceAll('<!-- -->', '')
+    expect(html).toContain('<b>12.80</b>')
+    expect(html).not.toContain('<b>3.20</b>')
+    expect(html).not.toContain('ใช้ทั้งหมด')
+    expect(html).not.toContain('ใช้ 6.25')
   })
 })

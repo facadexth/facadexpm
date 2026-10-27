@@ -14,6 +14,11 @@ const NUMBER_FIELDS = [
   { key: 'sealant_m_per_tube', label: 'ซีลแลนท์ (ม./หลอด 300 มล.)', step: '0.1', min: 0 },
   { key: 'fixing_pitch_m', label: 'ระยะห่างจุดยึด (ม.)', step: '0.01', min: 0 },
   { key: 'fixing_min_per_side', label: 'จุดยึดขั้นต่ำต่อด้าน', step: '1', min: 1 },
+  // custom-length order from the mill (งานโครงการ)
+  { key: 'custom_len_min_m', label: 'ความยาวสั่งพิเศษต่ำสุด (ม.)', step: '0.01', min: 0 },
+  { key: 'custom_len_max_m', label: 'สูงสุด (ม.)', step: '0.01', min: 0 },
+  { key: 'custom_len_step_m', label: 'ทีละ (ม.)', step: '0.01', min: 0 },
+  { key: 'custom_moq_kg', label: 'ขั้นต่ำสั่งพิเศษ (กก.)', step: '1', min: 0, hint: 'น้ำหนักรวมของเส้นความยาวพิเศษทั้งโครงการ ไม่ถึงนี้ใช้เส้นมาตรฐานทั้งโครงการ' },
 ]
 const PART_FIELDS = [
   { key: 'sealant_part_id', label: 'ซีลแลนท์' },
@@ -22,7 +27,10 @@ const PART_FIELDS = [
   { key: 'plug_part_id', label: 'พุก/ปลั๊ก' },
 ]
 
-const toForm = s => Object.fromEntries([...NUMBER_FIELDS, ...PART_FIELDS].map(f => [f.key, s[f.key] ?? '']))
+export const toForm = s => Object.fromEntries([...NUMBER_FIELDS, ...PART_FIELDS].map(f => [f.key, s[f.key] ?? '']))
+// The row a save writes: the form over the stored settings, so a value with no field on this page is kept, not reset
+// to its default. mergeSettings: a blank / invalid number falls back to its default, never NaN or null.
+export const formToSettings = (stored, form) => mergeSettings({ ...(stored || {}), ...form })
 
 export default function SettingsTab({ canEdit }) {
   const st = useEstimationSettings()
@@ -45,8 +53,7 @@ export default function SettingsTab({ canEdit }) {
     if (!canEdit || saving) return
     setSaving(true)
     try {
-      // mergeSettings: a blank / invalid number falls back to its default, never NaN or null
-      await saveEstimationSettings(st.row, mergeSettings(form))
+      await saveEstimationSettings(st.row, formToSettings(st.settings, form))
       st.refetch()
       alert('บันทึกแล้ว')
     } catch (err) { alert('บันทึกไม่สำเร็จ: ' + friendlyDbError(err)) }
