@@ -1,6 +1,6 @@
 // src/lib/cutPlan.test.js
 import { describe, it, expect } from 'vitest'
-import { piecesOf, packWithOffcuts, groupIdenticalBars } from './cutPlan.js'
+import { piecesOf, packWithOffcuts, groupIdenticalBars, rangeLengths, evaluateLength, bestLength, chooseLengths, planSignature, buildCutPlan, issuePayload } from './cutPlan.js'
 
 const S = { kerf_square_mm: 3, kerf_miter_mm: 10, min_keep_offcut_m: 0.5 }
 const line = (o) => ({ resolved: true, profile_id: 'P', length_m: 1, quantity: 1, role_name: 'r', cut_style: 'square', cut_ends: 0, ...o })
@@ -68,7 +68,6 @@ describe('groupIdenticalBars', () => {
   })
 })
 
-import { rangeLengths, evaluateLength, bestLength, chooseLengths } from './cutPlan.js'
 const S2 = { ...S, stock_length_m: 6.4, custom_len_min_m: 4, custom_len_max_m: 7, custom_len_step_m: 0.05, custom_moq_kg: 1000 }
 
 describe('groupIdenticalBars keeps different items and notch sizes apart', () => {
@@ -134,7 +133,6 @@ describe('chooseLengths', () => {
   })
 })
 
-import { planSignature, buildCutPlan, issuePayload } from './cutPlan.js'
 describe('buildCutPlan', () => {
   const entries = [entry([line({ length_m: 2.0, quantity: 3 })])]
   const groupInfo = { 'P|F': { profile_id: 'P', finish_id: 'F', die_no: 'F7976', name: 'เฟรม', finish_name: 'ขาว' } }
@@ -165,5 +163,54 @@ describe('buildCutPlan', () => {
     const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: { 'P|G': [{ id: 'o9', code: 'OC-0009', length_m: 2.05 }] }, overrides: {}, groupInfo })
     expect(plan.groups[0].offcutBars).toEqual([])
     expect(issuePayload(plan, new Set()).p_used_offcut_ids).toEqual([])
+  })
+})
+
+describe('fix round 1', () => {
+  const eight = () => [{ key: 'A|F', pieces: Array.from({ length: 8 }, () => pc(2.4)) }]
+  it('custom mode with no kg/m stays on stock and is marked no_weight', () => {
+    const r = chooseLengths({ groups: eight(), mode: 'custom', settings: S2, kgPerM: {}, offcutsByGroup: {}, overrides: {} })
+    expect(r.byGroup['A|F']).toMatchObject({ length_m: 6.4, custom: false, no_weight: true })
+    expect(r.customKg).toBe(0)
+  })
+  it('mixed: a weighted 1 t group stays custom, an unweighted group stays stock with no_weight', () => {
+    const groups = [{ key: 'A|F', pieces: Array.from({ length: 800 }, () => pc(2.4)) }, { key: 'B|F', pieces: Array.from({ length: 8 }, () => pc(2.4)) }]
+    const r = chooseLengths({ groups, mode: 'custom', settings: S2, kgPerM: { 'A|F': 0.62, 'B|F': 0 }, offcutsByGroup: {}, overrides: {} })
+    expect(r.moqMet).toBe(true)
+    expect(r.byGroup['A|F']).toMatchObject({ length_m: 4.85, custom: true })
+    expect(r.byGroup['A|F'].no_weight).toBeUndefined()
+    expect(r.byGroup['B|F']).toMatchObject({ length_m: 6.4, custom: false, no_weight: true })
+    expect(r.customKg).toBeCloseTo(400 * 4.85 * 0.62, 6)
+  })
+  it('a stock length given as text is read as a number', () => {
+    const r = chooseLengths({ groups: eight(), mode: 'stock', settings: { ...S2, stock_length_m: '6.4' }, kgPerM: { 'A|F': 0.62 }, offcutsByGroup: {}, overrides: {} })
+    expect(r.byGroup['A|F'].length_m).toBe(6.4)
+    expect(r.byGroup['A|F'].eval.newBars).toBe(4)
+  })
+  it('an infeasible override is rejected and flagged; a feasible one is not', () => {
+    const big = [{ key: 'A|F', pieces: Array.from({ length: 800 }, () => pc(2.4)) }]
+    const bad = chooseLengths({ groups: big, mode: 'custom', settings: S2, kgPerM: { 'A|F': 0.62 }, offcutsByGroup: {}, overrides: { 'A|F': 2.0 } })
+    expect(bad.byGroup['A|F']).toMatchObject({ length_m: 4.85, overrideRejected: true })
+    const ok = chooseLengths({ groups: big, mode: 'custom', settings: S2, kgPerM: { 'A|F': 0.62 }, offcutsByGroup: {}, overrides: { 'A|F': 5.0 } })
+    expect(ok.byGroup['A|F']).toMatchObject({ length_m: 5.0, overrideRejected: false })
+  })
+  it('a notch-width-only change changes the plan signature; identical entries do not', () => {
+    const n = (w) => [entry([line({ cut_style: 'notch', cut_ends: 2, joint_name: 'j', notch_width_mm: w, notch_depth_mm: 8 })])]
+    expect(planSignature(n(20))).toBe(planSignature(n(20)))
+    expect(planSignature(n(20))).not.toBe(planSignature(n(25)))
+  })
+  it('an item-only change changes the plan signature', () => {
+    expect(planSignature([entry([line()])])).not.toBe(planSignature([entry([line()], { item_id: 'i2' })]))
+  })
+  it('a remainder after a notched end starts square', () => {
+    const entries = [entry([line({ length_m: 2.0, quantity: 3, cut_style: 'notch', cut_ends: 2, notch_width_mm: 20, notch_depth_mm: 8 })])]
+    const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: {}, overrides: {}, groupInfo: {} })
+    expect(plan.groups[0].bars[0].pieces[2].end_b).toBe('notch')
+    expect(plan.groups[0].newOffcuts[0]).toMatchObject({ length_m: 0.391, end_a: 'square' })
+  })
+  it('a remainder after a mitred end keeps the mitre', () => {
+    const entries = [entry([line({ length_m: 2.0, quantity: 2, cut_style: 'miter45', cut_ends: 2 })])]
+    const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: {}, overrides: {}, groupInfo: {} })
+    expect(plan.groups[0].newOffcuts[0]).toMatchObject({ length_m: 2.38, end_a: 'miter45' })
   })
 })

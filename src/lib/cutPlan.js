@@ -53,8 +53,11 @@ export function packWithOffcuts(pieces, barLengthM, settings, offcuts) {
   return { offcutBars: offBars.filter(b => b.pieces.length), bars, unplaced }
 }
 
-// Item and notch size are part of the identity: bars for different items or notch sizes are never one row.
-const barSig = b => b.pieces.map(p => `${p.item_id ?? ''}|${p.opening_no}|${p.role_name}|${p.length_m}|${p.end_a}|${p.end_b}|${p.notch ? `${p.notch.width_mm ?? ''}x${p.notch.depth_mm ?? ''}` : ''}`).join(';') + `#${b.length_m}`
+// One piece's identity: item, part, length, both ends and the notch (joint and size). Shared by barSig and
+// planSignature, so bars of different items or notch sizes are never one row and a notch-only edit changes the plan.
+const pieceSig = p => `${p.item_id ?? ''}|${p.opening_no}|${p.role_name}|${p.length_m}|${p.end_a}|${p.end_b}|` +
+  (p.notch ? `${p.notch.joint_name ?? ''}:${p.notch.width_mm ?? ''}x${p.notch.depth_mm ?? ''}` : '')
+const barSig = b => b.pieces.map(pieceSig).join(';') + `#${b.length_m}`
 export function groupIdenticalBars(bars) {
   const out = []
   const idx = new Map()
@@ -92,7 +95,7 @@ export function bestLength(pieces, candidates, settings, offcuts, kgPerM) {
 }
 
 export function chooseLengths({ groups, mode, settings, kgPerM, offcutsByGroup, overrides }) {
-  const stockL = settings.stock_length_m
+  const stockL = Number(settings.stock_length_m)
   const stockPick = g => ({ length_m: stockL, custom: false, eval: evaluateLength(g.pieces, stockL, settings, (offcutsByGroup || {})[g.key] || [], (kgPerM || {})[g.key]) })
   const byGroup = {}
   if (mode !== 'custom') { for (const g of groups || []) byGroup[g.key] = stockPick(g); return { byGroup, customKg: 0, moqMet: true, reason: null } }
@@ -101,16 +104,19 @@ export function chooseLengths({ groups, mode, settings, kgPerM, offcutsByGroup, 
   for (const g of groups || []) {
     const off = (offcutsByGroup || {})[g.key] || []
     const kg = (kgPerM || {})[g.key]
+    // No weight known: every length would cost 0 kg, so stay on stock and keep it out of the minimum-order total.
+    if (!(Number(kg) > 0)) { byGroup[g.key] = { ...stockPick(g), no_weight: true }; continue }
     const ov = overrides && overrides[g.key]
     const forced = ov ? evaluateLength(g.pieces, Number(ov), settings, off, kg) : null
+    const overrideRejected = !!forced && !forced.feasible
     const ev = forced && forced.feasible ? forced : bestLength(g.pieces, cands, settings, off, kg)
-    if (!ev) { byGroup[g.key] = stockPick(g); continue }
+    if (!ev) { byGroup[g.key] = { ...stockPick(g), overrideRejected }; continue }
     const custom = Math.abs(ev.length_m - stockL) > EPS
     if (custom) customKg += ev.kg
-    byGroup[g.key] = { length_m: ev.length_m, custom, eval: ev }
+    byGroup[g.key] = { length_m: ev.length_m, custom, eval: ev, overrideRejected }
   }
   if (customKg > 0 && customKg < Number(settings.custom_moq_kg)) {
-    for (const g of groups || []) byGroup[g.key] = stockPick(g)
+    for (const g of groups || []) byGroup[g.key] = { ...stockPick(g), ...(byGroup[g.key].no_weight ? { no_weight: true } : {}), overrideRejected: !!byGroup[g.key].overrideRejected }
     return { byGroup, customKg, moqMet: false, reason: 'moq' }
   }
   return { byGroup, customKg, moqMet: true, reason: null }
@@ -118,7 +124,7 @@ export function chooseLengths({ groups, mode, settings, kgPerM, offcutsByGroup, 
 
 export function planSignature(entries) {
   const rows = []
-  for (const [key, ps] of piecesOf(entries)) for (const p of ps) rows.push(`${key}|${p.opening_no}|${p.role_name}|${p.length_m}|${p.end_a}|${p.end_b}`)
+  for (const [key, ps] of piecesOf(entries)) for (const p of ps) rows.push(`${key}|${pieceSig(p)}`)
   return rows.sort().join('\n')
 }
 
@@ -136,7 +142,7 @@ export function buildCutPlan({ entries, mode, settings, kgPerM, offcutsByGroup, 
     const add = (bar, ref) => {
       if (bar.left_m + EPS < MIN_OFFCUT_M) return
       const last = bar.pieces[bar.pieces.length - 1]
-      newOffcuts.push({ key: `${g.key}#${ref}`, bar_ref: ref, length_m: mm(bar.left_m), end_a: last ? last.end_b : 'square', keep: bar.left_m + EPS >= settings.min_keep_offcut_m })
+      newOffcuts.push({ key: `${g.key}#${ref}`, bar_ref: ref, length_m: mm(bar.left_m), end_a: last && last.end_b !== 'notch' ? last.end_b : 'square', keep: bar.left_m + EPS >= settings.min_keep_offcut_m })
     }
     offcutBars.forEach(b => add(b, b.offcut.code))
     bars.forEach((b, i) => add(b, String(i + 1)))
