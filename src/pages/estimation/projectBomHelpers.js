@@ -4,6 +4,7 @@
 import { compareLengths } from '../../lib/cutOptimizer.js'
 import { findVariant, pickLatest, resolveAluPrice } from '../../lib/aluPrice.js'
 import { diffAgainst } from '../../lib/providerCompare.js'
+import { piecesOf, evaluateLength, bestLength, rangeLengths } from '../../lib/cutPlan.js'
 
 // The packer allocates one object per piece: above this many pieces the screen refuses to pack and says so.
 export const MAX_PIECES = 20000
@@ -94,19 +95,21 @@ export function makeBarPrice({ index, profile, finish, seriesIds, seriesId, asOf
 }
 
 // Distinct variant lengths of the profile in that colour plus the current stock length, ascending.
-export function candidateLengths(index, profileId, finishId, stockLengthM) {
+// rangeM (optional): the custom-order lengths of a project job (cutPlan.js rangeLengths), merged in.
+export function candidateLengths(index, profileId, finishId, stockLengthM, rangeM) {
   const set = new Set()
   for (const v of index.variants || []) if (v.profile_id === profileId && v.finish_id === finishId && Number(v.length_m) > 0) set.add(Number(v.length_m))
   if (Number(stockLengthM) > 0) set.add(Number(stockLengthM))
+  for (const L of rangeM || []) if (Number(L) > 0) set.add(Number(L))
   return [...set].sort((a, b) => a - b)
 }
 
 // View model of the cut optimizer for one profile group (an item of buildProjectBom().profiles).
-export function optimizerView({ group, index, settings, asOf, seriesIds }) {
+export function optimizerView({ group, index, settings, asOf, seriesIds, rangeM }) {
   const profile = index.profiles[group.profile_id]
   const finish = group.finish_id ? index.finishes[group.finish_id] : null
   const barPrice = makeBarPrice({ index, profile, finish, seriesIds: seriesIds || [], asOf })
-  const lengths = candidateLengths(index, group.profile_id, group.finish_id, group.stock_length_m)
+  const lengths = candidateLengths(index, group.profile_id, group.finish_id, group.stock_length_m, rangeM)
   const result = compareLengths({ cuts: group.cuts, lengths, settings, barPrice })
   const rows = result.rows.map(r => {
     const infeasible = r.feasible === false
@@ -120,6 +123,120 @@ export function optimizerView({ group, index, settings, asOf, seriesIds }) {
     }
   })
   return { rows, basis: result.basis, hasCuts: group.cuts.length > 0 }
+}
+
+// ---- Cut plan (cutPlan.js buildCutPlan) inputs and the custom-length summary ----
+
+// { 'profileId|finishId': { profile_id, finish_id (null when blank), die_no, name, finish_name } } for EVERY group the
+// cut plan will have (same lines and key as cutPlan.js piecesOf). The plan's issue payload sends these ids to the DB.
+export function cutGroupInfo(entries, index) {
+  const info = {}
+  for (const e of entries || []) {
+    for (const bom of [e.bom, e.addonBom, ...(e.addonBoms || []).map(a => a && a.bom)]) {
+      if (!bom) continue
+      for (const l of [...bom.profileLines, ...bom.gridLines]) {
+        if (!l.resolved || !l.profile_id) continue
+        const k = `${l.profile_id}|${e.finish_id || ''}`
+        if (info[k]) continue
+        const profile = (index.profiles || {})[l.profile_id]
+        const finish = e.finish_id ? (index.finishes || {})[e.finish_id] : null
+        info[k] = { profile_id: l.profile_id, finish_id: e.finish_id || null, die_no: profile ? profile.drawing_no || null : null,
+          name: profile ? profile.name : '?', finish_name: finish ? finish.name : null }
+      }
+    }
+  }
+  return info
+}
+
+// kg per metre of each group's profile, null when the catalogue has none.
+export function cutGroupKgPerM(groupInfo, index) {
+  const out = {}
+  for (const [k, g] of Object.entries(groupInfo || {})) {
+    const w = Number(((index.profiles || {})[g.profile_id] || {}).linear_weight_kg_per_m)
+    out[k] = w > 0 ? w : null
+  }
+  return out
+}
+
+// Per-profile stock lengths (estimation_project_stock) onto every group of that profile.
+export function cutGroupOverrides(groupInfo, byProfile) {
+  const out = {}
+  for (const [k, g] of Object.entries(groupInfo || {})) if (byProfile && Number(byProfile[g.profile_id]) > 0) out[k] = Number(byProfile[g.profile_id])
+  return out
+}
+
+// Price per kg of each group (custom lengths cost the same per kg as stock bars): the price of 1 m / kg per m.
+export function cutGroupPricePerKg({ groupInfo, index, seriesMap, asOf, kgPerM }) {
+  const out = {}
+  for (const [k, g] of Object.entries(groupInfo || {})) {
+    const kg = Number((kgPerM || {})[k])
+    const profile = (index.profiles || {})[g.profile_id]
+    const finish = g.finish_id ? (index.finishes || {})[g.finish_id] : null
+    const perM = kg > 0 ? makeBarPrice({ index, profile, finish, seriesIds: (seriesMap || {})[k] || [], asOf })(1) : null
+    out[k] = perM != null && perM > 0 ? perM / kg : null
+  }
+  return out
+}
+
+// Per group: the stock-length baseline and the least-kg length over stock + the custom range, ignoring per-profile
+// overrides and the minimum order (the plan applies those). best is null when the profile has no weight or no length cuts all.
+export function lengthCompare({ entries, settings, kgPerM, offcutsByGroup }) {
+  const stockL = Number(settings.stock_length_m)
+  const cands = [stockL, ...rangeLengths(settings)]
+  const brief = ev => ({ length_m: ev.length_m, newBars: ev.newBars, kg: ev.kg })
+  const out = {}
+  for (const [k, pieces] of piecesOf(entries)) {
+    const off = (offcutsByGroup || {})[k] || []
+    const kg = (kgPerM || {})[k]
+    const base = evaluateLength(pieces, stockL, settings, off, kg)
+    const best = Number(kg) > 0 ? bestLength(pieces, cands, settings, off, kg) : null
+    out[k] = { base: brief(base), best: best ? brief(best) : null }
+  }
+  return out
+}
+
+// Rows and totals of CustomLengthSummary. prices = cutGroupPricePerKg; a row's cost is null when unpriced, and the
+// baht saving is null when any group whose kg changed is unpriced (never a partial sum shown as the whole).
+export function customLengthSummaryModel({ plan, compare, prices, kgPerM }) {
+  let baseKg = 0, useKg = 0, savingBaht = 0
+  const rows = (plan.groups || []).map(g => {
+    const c = (compare || {})[g.key] || { base: null, best: null }
+    const price = (prices || {})[g.key] ?? null
+    const bKg = c.base ? c.base.kg : g.kg
+    baseKg += bKg; useKg += g.kg
+    if (Math.abs(bKg - g.kg) > 1e-6) savingBaht = price == null || savingBaht == null ? null : savingBaht + (bKg - g.kg) * price
+    const best = c.best
+    return {
+      key: g.key, profile_id: g.profile_id, name: g.name, die_no: g.die_no, finish_name: g.finish_name,
+      kgPerM: (kgPerM || {})[g.key] ?? null, baseBars: c.base ? c.base.newBars : null, baseKg: bKg,
+      bestLength: best ? best.length_m : null, bestSavingKg: best && c.base && c.base.kg - best.kg > 1e-6 ? c.base.kg - best.kg : 0,
+      useLength: g.length_m, custom: !!g.custom, newBars: g.bars.length, offcutBars: g.offcutBars.length, kg: g.kg,
+      cost: price == null ? null : g.kg * price,
+      no_weight: !!g.no_weight, overrideRejected: !!g.overrideRejected, unplaced: g.unplaced.length,
+      // Below the minimum order every profile is on stock anyway: picking a custom length changes nothing.
+      canUse: plan.reason !== 'moq' && !!best && Math.abs(best.length_m - g.length_m) > EPS,
+    }
+  })
+  const cost = rows.every(r => r.cost != null) ? rows.reduce((s, r) => s + r.cost, 0) : null
+  return { rows, baseKg, useKg, cost, savingKg: baseKg - useKg, savingBaht }
+}
+
+// "ใช้ทั้งหมด": one length per profile (stock overrides are per profile) -- the best of its heaviest colour group --
+// skipping profiles with no best length or already on it.
+export function bestLengthsByProfile(plan, compare) {
+  const heaviest = new Map()
+  for (const g of (plan && plan.groups) || []) {
+    const c = (compare || {})[g.key]
+    const w = c && c.base ? c.base.kg : g.kg
+    const cur = heaviest.get(g.profile_id)
+    if (!cur || w > cur.w) heaviest.set(g.profile_id, { g, c, w })
+  }
+  const out = []
+  for (const [profile_id, { g, c }] of heaviest) {
+    if (!c || !c.best || Math.abs(c.best.length_m - g.length_m) <= EPS) continue
+    out.push({ profile_id, length_m: c.best.length_m })
+  }
+  return out
 }
 
 // Rows of the extruder comparison. results = compareProviders(...) rows (candidate fields + aluminium, complete,

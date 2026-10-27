@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
+  cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile,
 } from './projectBomHelpers.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
 
@@ -80,6 +81,11 @@ describe('barPrice and candidates', () => {
     expect(candidateLengths(index('per_kg'), 'p1', 'f1', 6.4)).toEqual([5, 6, 6.4])
     expect(candidateLengths(index('per_kg'), 'p1', 'f1', 6)).toEqual([5, 6])
   })
+  it('merges an optional range of custom lengths into the candidates', () => {
+    expect(candidateLengths(index('per_kg'), 'p1', 'f1', 6.4, [4, 5, 6.45])).toEqual([4, 5, 6, 6.4, 6.45])
+    expect(candidateLengths(index('per_kg'), 'p1', 'f1', 6.4, [])).toEqual([5, 6, 6.4])
+    expect(candidateLengths(index('per_kg'), 'p1', 'f1', 6.4, undefined)).toEqual([5, 6, 6.4])
+  })
 })
 
 describe('per_kg bar price across several series', () => {
@@ -149,5 +155,85 @@ describe('itemsWithForeignColour', () => {
     const ix = { finishes: { fa: { provider_id: 'A' }, fb: { provider_id: 'B' } } }
     const items = [{ id: 1, alu_finish_id: 'fa' }, { id: 2, alu_finish_id: 'fb' }, { id: 3, alu_finish_id: null }]
     expect(itemsWithForeignColour(items, ix, 'B').map(i => i.id)).toEqual([1])
+  })
+})
+
+describe('cut plan group maps', () => {
+  const ix = {
+    profiles: { p1: { id: 'p1', name: 'กรอบบน', drawing_no: 'D-1', linear_weight_kg_per_m: 1.2 }, p2: { id: 'p2', name: 'ฝา', drawing_no: null, linear_weight_kg_per_m: null } },
+    finishes: { f1: { id: 'f1', name: 'อบขาว' } },
+  }
+  const entries = [
+    { finish_id: 'f1', bom: { profileLines: [line(), line({ resolved: false, profile_id: 'p9' })], gridLines: [] } },
+    { finish_id: null, bom: { profileLines: [line({ profile_id: 'p2' })], gridLines: [] }, addonBoms: [{ bom: { profileLines: [line({ profile_id: 'p1' })], gridLines: [] } }] },
+  ]
+  it('gives every plan group its profile and finish ids (blank finish -> null) and names', () => {
+    const info = cutGroupInfo(entries, ix)
+    expect(Object.keys(info).sort()).toEqual(['p1|', 'p1|f1', 'p2|'])
+    expect(info['p1|f1']).toEqual({ profile_id: 'p1', finish_id: 'f1', die_no: 'D-1', name: 'กรอบบน', finish_name: 'อบขาว' })
+    expect(info['p2|']).toEqual({ profile_id: 'p2', finish_id: null, die_no: null, name: 'ฝา', finish_name: null })
+    for (const v of Object.values(info)) expect(v.profile_id).toBeTruthy()
+  })
+  it('an unknown profile still gets its id', () => {
+    const info = cutGroupInfo([{ finish_id: 'fx', bom: { profileLines: [line({ profile_id: 'gone' })], gridLines: [] } }], ix)
+    expect(info['gone|fx']).toEqual({ profile_id: 'gone', finish_id: 'fx', die_no: null, name: '?', finish_name: null })
+  })
+  it('maps weight and per-profile stock overrides onto group keys', () => {
+    const info = cutGroupInfo(entries, ix)
+    expect(cutGroupKgPerM(info, ix)).toEqual({ 'p1|f1': 1.2, 'p1|': 1.2, 'p2|': null })
+    expect(cutGroupOverrides(info, { p1: 6.25 })).toEqual({ 'p1|f1': 6.25, 'p1|': 6.25 })
+  })
+  it('price per kg = bar price of 1 m / kg per m, null when unpriced or weightless', () => {
+    const x = index('per_kg')
+    const info = { 'p1|f1': { profile_id: 'p1', finish_id: 'f1' }, 'p1|': { profile_id: 'p1', finish_id: null } }
+    const r = cutGroupPricePerKg({ groupInfo: info, index: x, seriesMap: { 'p1|f1': ['s1'] }, asOf: '2026-09-01', kgPerM: { 'p1|f1': 2, 'p1|': 2 } })
+    expect(r['p1|f1']).toBe(50)
+    expect(r['p1|']).toBeNull()
+    expect(cutGroupPricePerKg({ groupInfo: info, index: x, seriesMap: {}, asOf: '2026-09-01', kgPerM: {} })['p1|f1']).toBeNull()
+  })
+})
+
+describe('lengthCompare', () => {
+  const s = { ...DEFAULT_SETTINGS }
+  const entries = [{ item_id: 'a', opening_no: 'W1', quantity: 1, finish_id: 'f1', bom: { profileLines: [line({ length_m: 3.1, quantity: 2 })], gridLines: [] } }]
+  it('gives the 6.40 m baseline and the least-kg length, ignoring overrides and the minimum order', () => {
+    const c = lengthCompare({ entries, settings: s, kgPerM: { 'p1|f1': 1 }, offcutsByGroup: {} })
+    expect(c['p1|f1'].base).toMatchObject({ length_m: 6.4, newBars: 1 })
+    expect(c['p1|f1'].base.kg).toBeCloseTo(6.4)
+    expect(c['p1|f1'].best.length_m).toBe(6.25)
+    expect(c['p1|f1'].best.kg).toBeCloseTo(6.25)
+  })
+  it('no weight -> no best length', () => {
+    const c = lengthCompare({ entries, settings: s, kgPerM: {}, offcutsByGroup: {} })
+    expect(c['p1|f1'].best).toBeNull()
+  })
+})
+
+const g = (o = {}) => ({ key: 'p1|f1', profile_id: 'p1', finish_id: 'f1', name: 'กรอบ', die_no: 'D-1', finish_name: 'อบขาว', length_m: 6.25, custom: true, no_weight: false, overrideRejected: false, offcutBars: [], bars: [{}, {}], unplaced: [], kg: 12.5, newOffcuts: [], ...o })
+
+describe('customLengthSummaryModel', () => {
+  const compare = { 'p1|f1': { base: { length_m: 6.4, newBars: 2, kg: 12.8 }, best: { length_m: 6.25, newBars: 2, kg: 12.5 } } }
+  it('rows carry baseline, best, saving badge and cost; totals give the saving', () => {
+    const m = customLengthSummaryModel({ plan: { reason: null, customKg: 12.5, groups: [g()] }, compare, prices: { 'p1|f1': 100 }, kgPerM: { 'p1|f1': 1 } })
+    expect(m.rows[0]).toMatchObject({ key: 'p1|f1', kgPerM: 1, baseBars: 2, bestLength: 6.25, bestSavingKg: expect.any(Number), useLength: 6.25, newBars: 2, offcutBars: 0, kg: 12.5 })
+    expect(m.rows[0].cost).toBeCloseTo(1250)
+    expect(m.savingKg).toBeCloseTo(0.3)
+    expect(m.savingBaht).toBeCloseTo(30)
+  })
+  it('an unpriced group with a saving leaves the baht saving out', () => {
+    const m = customLengthSummaryModel({ plan: { reason: null, customKg: 12.5, groups: [g()] }, compare, prices: { 'p1|f1': null }, kgPerM: { 'p1|f1': 1 } })
+    expect(m.rows[0].cost).toBeNull()
+    expect(m.savingBaht).toBeNull()
+  })
+})
+
+describe('bestLengthsByProfile', () => {
+  it('one length per profile (its heaviest colour), skipping ones already in use or without a best', () => {
+    const plan = { groups: [g(), g({ key: 'p1|f2', finish_id: 'f2', length_m: 6.4, kg: 3 }), g({ key: 'p2|f1', profile_id: 'p2', length_m: 6.4 }), g({ key: 'p3|f1', profile_id: 'p3', length_m: 6.4 })] }
+    const compare = {
+      'p1|f1': { base: { kg: 13 }, best: { length_m: 6.5, kg: 12 } }, 'p1|f2': { base: { kg: 3 }, best: { length_m: 4, kg: 2 } },
+      'p2|f1': { base: { kg: 6.4 }, best: { length_m: 6.4, kg: 6.4 } }, 'p3|f1': { base: { kg: 1 }, best: null },
+    }
+    expect(bestLengthsByProfile(plan, compare)).toEqual([{ profile_id: 'p1', length_m: 6.5 }])
   })
 })

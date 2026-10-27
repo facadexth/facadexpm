@@ -7,11 +7,11 @@ import { optimizerView } from './projectBomHelpers.js'
 
 const m2 = n => Number(n).toFixed(2)
 
-export default function CutOptimizerPanel({ profiles, seriesMap, index, settings, asOf, canEdit, onUseLength }) {
+export default function CutOptimizerPanel({ profiles, seriesMap, index, settings, asOf, rangeM, canEdit, onUseLength }) {
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
   const group = profiles.find(g => g.key === key) || profiles[0] || null
-  const view = useMemo(() => (group ? optimizerView({ group, index, settings, asOf, seriesIds: seriesMap[group.key] || [] }) : null), [group, index, settings, asOf, seriesMap])
+  const view = useMemo(() => (group ? optimizerView({ group, index, settings, asOf, seriesIds: seriesMap[group.key] || [], rangeM }) : null), [group, index, settings, asOf, seriesMap, rangeM])
   if (!group || !view) return null
 
   const use = async L => {

@@ -1,16 +1,22 @@
 // src/pages/estimation/ProjectBomView.jsx
 // "BOM ทั้งโครงการ" (mockup screen 6): every item's BOM x its quantity rolled up. Uses the costs the project page
 // already computed (costOpening with the project's hardware package), never a second calculation.
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { buildProjectBom, stockForProject } from '../../lib/projectBom.js'
 import { reasonText } from '../../lib/reasonText.js'
-import { useProjectStock } from '../../hooks/useEstimation2b.js'
-import { buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES } from './projectBomHelpers.js'
+import { buildCutPlan, rangeLengths } from '../../lib/cutPlan.js'
+import { useProjectStock, useOffcuts, offcutsByGroup } from '../../hooks/useEstimation2b.js'
+import {
+  buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
+  lengthCompare, bestLengthsByProfile,
+} from './projectBomHelpers.js'
 import { saveProfileStock, saveProjectStockLength } from './projectStockSave.js'
 import ProjectStockField from './ProjectStockField.jsx'
 import BomProfilesTable from './BomProfilesTable.jsx'
 import CutOptimizerPanel from './CutOptimizerPanel.jsx'
+import CutModeField from './CutModeField.jsx'
+import CustomLengthSummary from './CustomLengthSummary.jsx'
 import ProviderCompare from './ProviderCompare.jsx'
 
 const PartsTable = ({ rows }) => (
@@ -23,6 +29,8 @@ const PartsTable = ({ rows }) => (
   </table></div>
 )
 
+const NO_STOCK = { byProfile: {}, projectM: null }
+
 const Section = ({ title, children }) => (
   <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
     <div style={{ fontWeight: 700 }}>{title}</div>
@@ -33,17 +41,44 @@ const Section = ({ title, children }) => (
 export default function ProjectBomView({ project, items, costs, base, index, seriesTypes, settings, canEdit, onProjectSaved }) {
   const stockQ = useProjectStock()
   const stockRows = stockQ.data
+  const offcutsQ = useOffcuts()
+  const [offcutsFirst, setOffcutsFirst] = useState(true)
+  // 'stock' = normal job (market bar only), 'custom' = project job (custom lengths). No column yet = 'stock'.
+  const cutMode = project.cut_mode === 'custom' ? 'custom' : 'stock'
+  const isCustom = cutMode === 'custom'
 
   const { entries, skipped } = useMemo(() => buildEntries(items, costs), [items, costs])
   const pieces = useMemo(() => entriesPieceCount(entries), [entries])
   const tooMany = pieces > MAX_PIECES
-  const stock = useMemo(() => stockForProject(stockRows, project.id, project), [stockRows, project])
+  const projectStock = useMemo(() => stockForProject(stockRows, project.id, project), [stockRows, project])
+  // A normal job ignores every stock-length override: it buys the market bar only.
+  const stock = isCustom ? projectStock : NO_STOCK
   const bom = useMemo(() => (tooMany || !stockRows ? null : buildProjectBom({ entries, settings, stock, profilesById: index.profiles, finishesById: index.finishes, partsById: index.parts })),
     [entries, settings, stock, index, tooMany, stockRows])
   const seriesMap = useMemo(() => Object.fromEntries(Object.entries(seriesByGroup(entries)).map(([k, s]) => [k, [...s]])), [entries])
 
+  // The ONE cut plan of this tab (summary, cut sheet, stickers and offcut stock all read it).
+  const groupInfo = useMemo(() => cutGroupInfo(entries, index), [entries, index])
+  const kgPerM = useMemo(() => cutGroupKgPerM(groupInfo, index), [groupInfo, index])
+  const offcuts = useMemo(() => (offcutsFirst ? offcutsByGroup(offcutsQ.data) : {}), [offcutsFirst, offcutsQ.data])
+  const overrides = useMemo(() => (isCustom ? cutGroupOverrides(groupInfo, projectStock.byProfile) : {}), [isCustom, groupInfo, projectStock])
+  // Never plan while the offcut stock is still loading (an issued plan must not silently skip offcuts); a load error
+  // plans without offcuts and says so.
+  const offcutsReady = !offcutsFirst || !!offcutsQ.data || !!offcutsQ.error
+  const plan = useMemo(() => (tooMany || !stockRows || !offcutsReady ? null : buildCutPlan({ entries, mode: cutMode, settings, kgPerM, offcutsByGroup: offcuts, overrides, groupInfo })),
+    [tooMany, stockRows, offcutsReady, entries, cutMode, settings, kgPerM, offcuts, overrides, groupInfo])
+  const compare = useMemo(() => (isCustom && plan ? lengthCompare({ entries, settings, kgPerM, offcutsByGroup: offcuts }) : null),
+    [isCustom, plan, entries, settings, kgPerM, offcuts])
+  const prices = useMemo(() => cutGroupPricePerKg({ groupInfo, index, seriesMap, asOf: project.price_as_of, kgPerM }), [groupInfo, index, seriesMap, project.price_as_of, kgPerM])
+  const rangeM = useMemo(() => (isCustom ? rangeLengths(settings) : null), [isCustom, settings])
+
   const saveProfile = async (profileId, value) => { await saveProfileStock(project.id, profileId, value); await stockQ.refetch() }
   const saveProjectStock = async (projectId, v) => { await saveProjectStockLength(projectId, v); await onProjectSaved() }
+  // Sequential: one profile's write failing stops the rest, and the list is reloaded either way.
+  const applyAllBest = async () => {
+    try { for (const t of bestLengthsByProfile(plan, compare)) await saveProfileStock(project.id, t.profile_id, t.length_m) }
+    finally { await stockQ.refetch() }
+  }
 
   if (stockQ.error) return <div className="alert alert-error">โหลดความยาวเส้นไม่สำเร็จ: {String(stockQ.error)}</div>
   if (!items.length) return <div style={{ color: 'var(--text3)', padding: 20 }}>ยังไม่มีรายการในโปรเจกต์</div>
@@ -67,15 +102,35 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
         </div>
       )}
 
-      <Section title="ความยาวเส้นมาตรฐาน">
-        <ProjectStockField project={project} defaultM={settings.stock_length_m} canEdit={canEdit} onSave={saveProjectStock} />
+      <Section title="ประเภทงาน">
+        <CutModeField project={project} settings={settings} canEdit={canEdit} onProjectSaved={onProjectSaved} />
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+          <input type="checkbox" checked={offcutsFirst} onChange={e => setOffcutsFirst(e.target.checked)} />
+          ใช้เศษในสต็อกก่อนตัดเส้นใหม่
+        </label>
+        {offcutsFirst && offcutsQ.error && <div style={{ fontSize: 12, color: 'var(--red)' }}>โหลดเศษในสต็อกไม่สำเร็จ — คิดโดยไม่ใช้เศษ: {String(offcutsQ.error.message || offcutsQ.error)}</div>}
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+          {isCustom
+            ? `สั่งได้ ${Number(settings.custom_len_min_m).toFixed(2)}–${Number(settings.custom_len_max_m).toFixed(2)} ม. ทีละ ${settings.custom_len_step_m} ม. · ขั้นต่ำสั่งพิเศษ ${Number(settings.custom_moq_kg).toLocaleString('en-US')} กก. ทั้งโครงการ (แก้ที่ตั้งค่า)`
+            : `งานทั่วไปใช้เส้นมาตรฐาน ${Number(settings.stock_length_m).toFixed(2)} ม. เท่านั้น`}
+        </div>
       </Section>
+
+      {isCustom && (
+        <Section title="ความยาวเส้นมาตรฐาน">
+          <ProjectStockField project={project} defaultM={settings.stock_length_m} canEdit={canEdit} onSave={saveProjectStock} />
+        </Section>
+      )}
+
+      {isCustom && plan && compare && (
+        <CustomLengthSummary plan={plan} compare={compare} prices={prices} kgPerM={kgPerM} settings={settings} canEdit={canEdit} onUse={saveProfile} onUseAll={applyAllBest} />
+      )}
 
       <Section title="1. อลูมิเนียมโปรไฟล์ (แยกตามหน้าตัดและสี)">
-        <BomProfilesTable profiles={bom.profiles} overrides={stock.byProfile} canEdit={canEdit} onSaveStock={saveProfile} />
+        <BomProfilesTable profiles={bom.profiles} overrides={stock.byProfile} canEdit={canEdit && isCustom} onSaveStock={saveProfile} />
       </Section>
 
-      <CutOptimizerPanel profiles={bom.profiles} seriesMap={seriesMap} index={index} settings={settings} asOf={project.price_as_of} canEdit={canEdit} onUseLength={saveProfile} />
+      {isCustom && <CutOptimizerPanel profiles={bom.profiles} seriesMap={seriesMap} index={index} settings={settings} asOf={project.price_as_of} rangeM={rangeM} canEdit={canEdit} onUseLength={saveProfile} />}
 
       <Section title="2. อุปกรณ์และชิ้นส่วน">
         {hardware.length > 0 && <><div style={{ fontSize: 12, color: 'var(--text3)' }}>อุปกรณ์ (hardware)</div><PartsTable rows={hardware} /></>}
