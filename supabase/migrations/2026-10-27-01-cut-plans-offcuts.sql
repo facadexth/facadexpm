@@ -37,6 +37,7 @@ CREATE TABLE alu_offcuts (
   status            TEXT NOT NULL DEFAULT 'in_stock' CHECK (status IN ('in_stock','used','discarded')),
   source_project_id UUID REFERENCES estimation_projects(id) ON DELETE SET NULL,
   source_plan_id    UUID REFERENCES alu_cut_plans(id) ON DELETE SET NULL,
+  plan_key          TEXT,                                -- cutPlan.js newOffcuts key in source_plan_id's plan (sticker ↔ code after reload)
   used_plan_id      UUID REFERENCES alu_cut_plans(id) ON DELETE SET NULL,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   status_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -94,9 +95,9 @@ BEGIN
   FOR r IN SELECT * FROM jsonb_array_elements(COALESCE(p_new_offcuts, '[]'::jsonb)) LOOP
     v_next := v_next + 1;
     v_code := 'OC-' || lpad(v_next::text, greatest(4, length(v_next::text)), '0');
-    INSERT INTO alu_offcuts (tenant_id, code, profile_id, finish_id, length_m, end_a, source_project_id, source_plan_id)
+    INSERT INTO alu_offcuts (tenant_id, code, profile_id, finish_id, length_m, end_a, source_project_id, source_plan_id, plan_key)
       VALUES (v_tenant, v_code, (r->>'profile_id')::uuid, NULLIF(r->>'finish_id','')::uuid, (r->>'length_m')::numeric,
-              COALESCE(r->>'end_a','square'), p_project_id, v_plan)
+              COALESCE(r->>'end_a','square'), p_project_id, v_plan, r->>'key')
       RETURNING id INTO v_id;
     v_out := v_out || jsonb_build_object('key', r->>'key', 'id', v_id, 'code', v_code);
   END LOOP;

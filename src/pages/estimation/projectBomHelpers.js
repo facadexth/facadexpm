@@ -298,3 +298,26 @@ export function openingColorIndex(plan) {
   }
   return m
 }
+
+// The sticker "ไม่เก็บ" tick: toggles one offcut key in the flipped set, returning a new Set (state stays immutable).
+export function toggleKey(set, key) {
+  const next = new Set(set)
+  if (next.has(key)) next.delete(key); else next.add(key)
+  return next
+}
+
+// groupIdenticalBars rows split so every row's remainders are all kept or all dropped (the user may flip one bar of
+// a run of identical bars). keepOf(no) -> boolean for the 1-based bar number. Each row gets `keep`.
+export function splitRowsByKeep(rows, keepOf) {
+  const out = []
+  for (const r of rows || []) {
+    const parts = new Map()
+    for (const no of r.nos) {
+      const k = !!keepOf(no)
+      if (!parts.has(k)) parts.set(k, [])
+      parts.get(k).push(no)
+    }
+    for (const [keep, nos] of parts) out.push({ bar: r.bar, count: nos.length, nos, keep })
+  }
+  return out
+}

@@ -2,13 +2,15 @@
 // "ใบตัด — แยกตามหน้าตัด": every bar of the cut plan drawn to scale, stock offcuts first, identical new bars on one
 // row. Before issue it shows the live plan; after issue it shows the frozen snapshot (alu_cut_plans.plan) and warns
 // when the items have changed since. Issue / void are confirmed inline; the parent does the writes.
+// Remainder colour = kept or not: an issued plan by the offcuts it actually stocked (codes), the live plan by the
+// default (≥ min keep) unless flipped on the stickers.
 import { useState } from 'react'
 import { fmtDate } from '../../lib/supabase.js'
-import { groupIdenticalBars } from '../../lib/cutPlan.js'
-import { barNosLabel, openingColorIndex } from './projectBomHelpers.js'
+import { groupIdenticalBars, MIN_OFFCUT_M } from '../../lib/cutPlan.js'
+import { isOffcutKept } from '../../lib/stickers.js'
+import { barNosLabel, openingColorIndex, splitRowsByKeep } from './projectBomHelpers.js'
 
-// Remainders under 50 mm are saw loss (same threshold as cutPlan.js buildCutPlan): drawn, never labelled.
-const SAW_LOSS_M = 0.05
+// Remainders under MIN_OFFCUT_M are saw loss (buildCutPlan makes no offcut of them): drawn, never labelled.
 const PALETTE = ['#a8b5e8', '#f0a08c', '#8fd0c8', '#c9c27a', '#d3a8e0', '#9cc7f0', '#f2c38f', '#b5d99c']
 const mm = m => String(Math.round(Number(m) * 1000))
 const f2 = n => Number(n).toFixed(2)
@@ -17,11 +19,10 @@ const hatch = 'repeating-linear-gradient(45deg, var(--bg4), var(--bg4) 4px, tran
 const keepFill = 'rgba(var(--green-rgb), 0.35)'
 const tag = { fontSize: 11, padding: '1px 6px', borderRadius: 4, fontWeight: 600 }
 
-function BarRow({ bar, label, fullLength, colorOf, minKeep, fromStock }) {
+function BarRow({ bar, label, fullLength, colorOf, keep, fromStock }) {
   const L = Number(bar.length_m)
   const left = Number(bar.left_m)
-  const keep = left + 1e-9 >= minKeep
-  const labelled = left + 1e-9 >= SAW_LOSS_M
+  const labelled = left + 1e-9 >= MIN_OFFCUT_M
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 140px) 1fr 70px', gap: 8, alignItems: 'center' }}>
       <div style={{ fontSize: 12 }}>{label}</div>
@@ -49,9 +50,9 @@ function BarRow({ bar, label, fullLength, colorOf, minKeep, fromStock }) {
   )
 }
 
-function GroupSheet({ g, colorOf, minKeep }) {
+function GroupSheet({ g, colorOf, keepOf }) {
   const L = Number(g.length_m)
-  const rows = groupIdenticalBars(g.bars)
+  const rows = splitRowsByKeep(groupIdenticalBars(g.bars), no => keepOf(g, String(no)))
   return (
     <div style={{ display: 'grid', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between' }}>
@@ -64,11 +65,11 @@ function GroupSheet({ g, colorOf, minKeep }) {
         </div>
       </div>
       {g.offcutBars.map(b => (
-        <BarRow key={b.offcut.id} bar={b} fullLength={L} colorOf={colorOf} minKeep={minKeep} fromStock
+        <BarRow key={b.offcut.id} bar={b} fullLength={L} colorOf={colorOf} keep={keepOf(g, b.offcut.code)} fromStock
           label={<><span style={{ ...tag, background: 'var(--yellow)', color: '#1d2420' }}>{b.offcut.code}</span> <span className="font-mono">{mm(b.length_m)}</span></>} />
       ))}
       {rows.map(r => (
-        <BarRow key={r.nos[0]} bar={r.bar} fullLength={L} colorOf={colorOf} minKeep={minKeep} label={barNosLabel(r.nos)} />
+        <BarRow key={r.nos[0]} bar={r.bar} fullLength={L} colorOf={colorOf} keep={r.keep} label={barNosLabel(r.nos)} />
       ))}
       {g.unplaced.length > 0 && (
         <div style={{ fontSize: 12, color: 'var(--red)' }}>
@@ -79,12 +80,14 @@ function GroupSheet({ g, colorOf, minKeep }) {
   )
 }
 
-export default function CutSheetView({ plan, issued, settings, canEdit, onIssue, onVoid, busy }) {
+export default function CutSheetView({ plan, issued, codes, flipped, settings, canEdit, onIssue, onVoid, busy }) {
   const [confirming, setConfirming] = useState(null) // 'issue' | 'void' | null
   const shown = issued ? issued.plan : plan
   const colors = openingColorIndex(shown)
   const colorOf = no => colors.get(no) ?? 0
   const minKeep = Number(settings.min_keep_offcut_m)
+  const keepOpts = issued ? { codes: codes || {} } : { flipped }
+  const keepOf = (g, ref) => isOffcutKept((g.newOffcuts || []).find(o => o.key === `${g.key}#${ref}`), keepOpts)
   const mismatch = !!issued && !!plan && issued.signature !== plan.signature
   const hasUnplaced = !plan || plan.groups.some(g => g.unplaced.length > 0)
   const run = async fn => { try { await fn() } finally { setConfirming(null) } }
@@ -130,12 +133,12 @@ export default function CutSheetView({ plan, issued, settings, canEdit, onIssue,
               <span key={no} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><i style={{ width: 14, height: 14, border: '1px solid var(--text)', background: PALETTE[colorOf(no) % PALETTE.length] }} />{no}</span>
             ))}
             <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><i style={{ width: 14, height: 14, border: '1px solid var(--text)', background: 'var(--yellow)' }} />เศษจากสต็อก</span>
-            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><i style={{ width: 14, height: 14, border: '1px solid var(--text)', background: keepFill }} />เศษเก็บใช้ต่อ (≥ {mm(minKeep)})</span>
+            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><i style={{ width: 14, height: 14, border: '1px solid var(--text)', background: keepFill }} />เศษเก็บใช้ต่อ{issued ? '' : ` (ตั้งต้น ≥ ${mm(minKeep)} · ติ๊กเปลี่ยนได้ที่สติกเกอร์)`}</span>
             <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><i style={{ width: 14, height: 14, border: '1px solid var(--text)', background: hatch }} />เศษทิ้ง</span>
           </div>
           {shown.groups.length === 0
             ? <div style={muted}>ไม่มีเส้นอลูมิเนียมที่ต้องตัด</div>
-            : shown.groups.map(g => <GroupSheet key={g.key} g={g} colorOf={colorOf} minKeep={minKeep} />)}
+            : shown.groups.map(g => <GroupSheet key={g.key} g={g} colorOf={colorOf} keepOf={keepOf} />)}
         </>
       )}
     </div>

@@ -45,4 +45,26 @@ describe('CutSheetView', () => {
     const html = render({ issued: { id: 'cp1', status: 'issued', signature: 'S1', issued_at: '2026-10-27T03:00:00Z', plan: plan() } })
     expect(html).not.toContain('ใบตัดไม่ตรงกับรายการปัจจุบัน')
   })
+
+  describe('remainder colour = kept', () => {
+    const GREEN = 'rgba(var(--green-rgb), 0.35)'
+    const greens = html => html.split(GREEN).length - 1 - 1 // minus the legend swatch
+    const offs = [{ key: 'p1|f1#1', bar_ref: '1', length_m: 0.39, end_a: 'square', keep: false }, { key: 'p1|f1#2', bar_ref: '2', length_m: 0.39, end_a: 'square', keep: false },
+      { key: 'p1|f1#OC-0001', bar_ref: 'OC-0001', length_m: 0.19, end_a: 'square', keep: false }]
+    it('live plan: dropped by default, a flipped bar of a run turns green and gets its own row', () => {
+      const p = plan({ newOffcuts: offs })
+      expect(greens(render({ plan: p, flipped: new Set() }))).toBe(0)
+      const html = render({ plan: p, flipped: new Set(['p1|f1#2']) })
+      expect(greens(html)).toBe(1)
+      expect(html).toContain('เส้นที่ 1<')
+      expect(html).toContain('เส้นที่ 2<')
+      expect(html).not.toContain('เส้นที่ 1–2')
+    })
+    it('issued plan: green exactly where an offcut was stocked, whatever the min-keep rule says', () => {
+      const p = plan({ newOffcuts: offs })
+      const issued = { id: 'cp1', status: 'issued', signature: 'S1', issued_at: '2026-10-27T03:00:00Z', plan: p }
+      expect(greens(render({ plan: p, issued, codes: { 'p1|f1#OC-0001': 'OC-0007' } }))).toBe(1)
+      expect(greens(render({ plan: p, issued, codes: {}, flipped: new Set(['p1|f1#1']) }))).toBe(0)
+    })
+  })
 })

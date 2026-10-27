@@ -9,14 +9,16 @@ import { buildCutPlan, rangeLengths, issuePayload } from '../../lib/cutPlan.js'
 import { useProjectStock, useOffcuts, offcutsByGroup, useCutPlans, issueCutPlan, voidCutPlan } from '../../hooks/useEstimation2b.js'
 import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
-  lengthCompare, bestLengthsByProfile, bomStockBasis,
+  lengthCompare, bestLengthsByProfile, bomStockBasis, toggleKey,
 } from './projectBomHelpers.js'
+import { issuedOffcutCodes } from '../../lib/stickers.js'
 import { saveProfileStock } from './projectStockSave.js'
 import BomProfilesTable from './BomProfilesTable.jsx'
 import CutOptimizerPanel from './CutOptimizerPanel.jsx'
 import CutModeField from './CutModeField.jsx'
 import CustomLengthSummary from './CustomLengthSummary.jsx'
 import CutSheetView from './CutSheetView.jsx'
+import StickerSheet from './StickerSheet.jsx'
 import ProviderCompare from './ProviderCompare.jsx'
 
 const PartsTable = ({ rows }) => (
@@ -44,10 +46,13 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const plansQ = useCutPlans()
   // The project's issued cut plan (at most one: unique index on status 'issued'); undefined while loading.
   const issued = plansQ.data ? (plansQ.data.find(r => r.project_id === project.id && r.status === 'issued') || null) : undefined
-  // Offcut keys whose keep default the user flipped on the stickers (Task 9 renders the ticks); sent with the issue.
+  // Offcut keys whose keep default the user flipped with the "ไม่เก็บ" tick on the stickers; sent with the issue.
   const [flipped, setFlipped] = useState(() => new Set())
-  // onFlip goes to the StickerSheet (Task 9); not used on this screen yet.
-  const onFlip = key => setFlipped(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next })
+  const onFlip = key => setFlipped(prev => toggleKey(prev, key))
+  // Issued plan: which remainder key got which offcut code (only the kept ones were stocked). null until the offcut
+  // stock has loaded, so the stickers never print an issued plan without its offcuts.
+  const offcutCodes = useMemo(() => (issued && offcutsQ.data ? issuedOffcutCodes(offcutsQ.data, issued.id) : null), [issued, offcutsQ.data])
+  const openingIds = useMemo(() => Object.fromEntries(items.map(it => [it.opening_no, it.id])), [items])
   const [cutBusy, setCutBusy] = useState(false)
   // 'stock' = normal job (market bar only), 'custom' = project job (custom lengths). No column yet = 'stock'.
   const cutMode = project.cut_mode === 'custom' ? 'custom' : 'stock'
@@ -146,7 +151,12 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
 
       {plansQ.error
         ? <div className="alert alert-error">โหลดใบตัดไม่สำเร็จ: {String(plansQ.error.message || plansQ.error)}</div>
-        : issued !== undefined && <CutSheetView plan={plan} issued={issued} settings={settings} canEdit={canEdit} busy={cutBusy} onIssue={issuePlan} onVoid={voidPlan} />}
+        : issued !== undefined && (
+          <>
+            <CutSheetView plan={plan} issued={issued} codes={offcutCodes} flipped={flipped} settings={settings} canEdit={canEdit} busy={cutBusy} onIssue={issuePlan} onVoid={voidPlan} />
+            <StickerSheet plan={plan} issued={issued} codes={offcutCodes} projectName={project.name} projectId={project.id} openingIds={openingIds} flipped={flipped} onFlip={onFlip} />
+          </>
+        )}
 
       <Section title="2. อุปกรณ์และชิ้นส่วน">
         {hardware.length > 0 && <><div style={{ fontSize: 12, color: 'var(--text3)' }}>อุปกรณ์ (hardware)</div><PartsTable rows={hardware} /></>}

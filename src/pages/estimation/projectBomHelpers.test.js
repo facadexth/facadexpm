@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
   cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis,
-  barNosLabel, openingColorIndex,
+  barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep,
 } from './projectBomHelpers.js'
+import { buildCutPlan, issuePayload } from '../../lib/cutPlan.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
 
 const line = (o = {}) => ({ resolved: true, profile_id: 'p1', series_id: 's1', quantity: 2, length_m: 2, ...o })
@@ -293,5 +294,32 @@ describe('cut sheet labels', () => {
     ] }
     expect(openingColorIndex(plan)).toEqual(new Map([['W-03', 0], ['W-01', 1], ['W-02', 2]]))
     expect(openingColorIndex(null).size).toBe(0)
+  })
+})
+
+describe('sticker keep ticks', () => {
+  it('toggleKey flips one key without touching the old set', () => {
+    const a = new Set(['x'])
+    const b = toggleKey(a, 'y')
+    expect([...a]).toEqual(['x'])
+    expect([...b].sort()).toEqual(['x', 'y'])
+    expect([...toggleKey(b, 'x')]).toEqual(['y'])
+  })
+  it('a toggled key then drops a kept remainder from the issue payload, and toggling back restores it', () => {
+    const S = { kerf_square_mm: 3, kerf_miter_mm: 10, min_keep_offcut_m: 0.5, stock_length_m: 6.4 }
+    const entries = [{ opening_no: 'W-01', item_id: 'i1', item_name: '', quantity: 1, finish_id: 'F',
+      bom: { profileLines: [{ resolved: true, profile_id: 'P', length_m: 2, quantity: 2, role_name: 'r', cut_style: 'square', cut_ends: 0 }], gridLines: [] } }]
+    const plan = buildCutPlan({ entries, mode: 'stock', settings: S, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: {}, overrides: {}, groupInfo: { 'P|F': { profile_id: 'P', finish_id: 'F' } } })
+    let flipped = new Set()
+    expect(issuePayload(plan, flipped).p_new_offcuts.map(o => o.key)).toEqual(['P|F#1'])
+    flipped = toggleKey(flipped, 'P|F#1')
+    expect(issuePayload(plan, flipped).p_new_offcuts).toEqual([])
+    flipped = toggleKey(flipped, 'P|F#1')
+    expect(issuePayload(plan, flipped).p_new_offcuts.map(o => o.key)).toEqual(['P|F#1'])
+  })
+  it('splitRowsByKeep splits a run of identical bars when one is flipped', () => {
+    const bar = { length_m: 6.4, left_m: 1, pieces: [] }
+    const rows = [{ bar, count: 3, nos: [1, 2, 3] }, { bar, count: 1, nos: [4] }]
+    expect(splitRowsByKeep(rows, no => no !== 2).map(r => [r.nos, r.count, r.keep])).toEqual([[[1, 3], 2, true], [[2], 1, false], [[4], 1, true]])
   })
 })

@@ -129,7 +129,7 @@ export function planSignature(entries) {
 }
 
 // Remainders under 50 mm are saw loss, not offcuts (no sticker).
-const MIN_OFFCUT_M = 0.05
+export const MIN_OFFCUT_M = 0.05
 
 export function buildCutPlan({ entries, mode, settings, kgPerM, offcutsByGroup, overrides, groupInfo }) {
   const pieces = piecesOf(entries)
