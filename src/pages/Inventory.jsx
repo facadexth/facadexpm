@@ -607,9 +607,11 @@ const LEDGER_MOVEMENT_LABELS = {
 
 function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const today = new Date().toISOString().slice(0, 10)
-  const monthStart = today.slice(0, 8) + '01'
+  // Default range = the current year (owner 2026-10-27): a month-start default
+  // hid January's MOs behind the date filter.
+  const yearStart = today.slice(0, 4) + '-01-01'
   const [reportKind, setReportKind] = useState('finished_goods')
-  const [dateFrom, setDateFrom] = useState(monthStart)
+  const [dateFrom, setDateFrom] = useState(yearStart)
   const [dateTo, setDateTo] = useState(today)
   const [categoryFilter, setCategoryFilter] = useState('')
   // Set when the user clicks a finished-goods row's PI-/PO- reference, OR
