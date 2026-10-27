@@ -52,15 +52,21 @@ describe('OffcutStockPanel', () => {
   })
   it('highlights the QR-linked row, or says it is not in this project', () => {
     const scroll = vi.fn()
+    const had = Object.prototype.hasOwnProperty.call(Element.prototype, 'scrollIntoView')
+    const original = Element.prototype.scrollIntoView
     Element.prototype.scrollIntoView = scroll
-    view({ highlightCode: 'OC-0002' })
-    expect(bodyRows()[1].getAttribute('style')).toContain('outline')
-    expect(bodyRows()[0].getAttribute('style')).toBeNull()
-    expect(scroll).toHaveBeenCalledTimes(1)
-    cleanup()
-    view({ highlightCode: 'OC-0004' })
-    expect(document.body.textContent).toContain('เศษ OC-0004 ไม่อยู่ในหน้าตัดของโครงการนี้')
-    delete Element.prototype.scrollIntoView
+    try {
+      view({ highlightCode: 'OC-0002' })
+      expect(bodyRows()[1].getAttribute('style')).toContain('outline')
+      expect(bodyRows()[0].getAttribute('style')).toBeNull()
+      expect(scroll).toHaveBeenCalledTimes(1)
+      cleanup()
+      view({ highlightCode: 'OC-0004' })
+      expect(document.body.textContent).toContain('เศษ OC-0004 ไม่อยู่ในหน้าตัดของโครงการนี้')
+    } finally {
+      if (had) Element.prototype.scrollIntoView = original
+      else delete Element.prototype.scrollIntoView
+    }
   })
   it('discard asks inline, then discards and reloads', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm')
@@ -86,5 +92,15 @@ describe('OffcutStockPanel', () => {
     await act(async () => { fireEvent.click(screen.getByText('ทิ้งเศษ')) })
     expect(document.body.textContent).toContain('ทิ้ง OC-0001 ไม่สำเร็จ: เศษชิ้นนี้ไม่อยู่ในสต็อกแล้ว (ถูกใช้หรือทิ้งไปแล้ว)')
     expect(onDiscarded).toHaveBeenCalledTimes(1)
+  })
+  it('a failed reload after a discard is shown, never an unhandled rejection, and the buttons come back', async () => {
+    const onDiscarded = vi.fn(async () => { throw new Error('network down') })
+    discardOffcut.mockResolvedValue(undefined)
+    view({ onDiscarded })
+    fireEvent.click(screen.getAllByText('ทิ้ง')[0])
+    await act(async () => { fireEvent.click(screen.getByText('ทิ้งเศษ')) })
+    expect(onDiscarded).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(document.body.textContent).toContain('โหลดเศษในสต็อกใหม่ไม่สำเร็จ: network down'))
+    expect(screen.getAllByText('ทิ้ง')[0].hasAttribute('disabled')).toBe(false)
   })
 })

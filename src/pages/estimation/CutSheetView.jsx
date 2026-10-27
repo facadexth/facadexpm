@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { fmtDate } from '../../lib/supabase.js'
 import { groupIdenticalBars, MIN_OFFCUT_M } from '../../lib/cutPlan.js'
-import { isOffcutKept } from '../../lib/stickers.js'
+import { isOffcutKept, roleTh } from '../../lib/stickers.js'
 import { barNosLabel, openingColorIndex, splitRowsByKeep } from './projectBomHelpers.js'
 
 // Remainders under MIN_OFFCUT_M are saw loss (buildCutPlan makes no offcut of them): drawn, never labelled.
@@ -33,12 +33,12 @@ function BarRow({ bar, label, fullLength, colorOf, keep, pending, fromStock }) {
         maxWidth: `${(100 * L) / fullLength}%`, ...(fromStock ? { outline: '3px solid var(--yellow)', outlineOffset: -3 } : {}),
       }}>
         {bar.pieces.map((p, i) => (
-          <div key={i} title={`${p.opening_no} ${p.role_name}${p.item_name ? ` · ${p.item_name}` : ''}`} style={{
+          <div key={i} title={`${p.opening_no} ${roleTh(p.role_name)}${p.item_name ? ` · ${p.item_name}` : ''}`} style={{
             flex: `0 0 ${(100 * p.length_m) / L}%`, background: PALETTE[colorOf(p.opening_no) % PALETTE.length], color: '#1d2420',
             borderRight: '2px solid var(--text)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
             fontSize: 11, lineHeight: 1.15, overflow: 'hidden', minWidth: 0, textAlign: 'center', padding: '0 2px', whiteSpace: 'nowrap',
           }}>
-            <b className="font-mono">{mm(p.length_m)}</b><span>{p.opening_no} {p.role_name}</span>
+            <b className="font-mono">{mm(p.length_m)}</b><span>{p.opening_no} {roleTh(p.role_name)}</span>
           </div>
         ))}
         {left > 1e-9 && (
@@ -75,7 +75,7 @@ function GroupSheet({ g, colorOf, keepOf, pending }) {
       ))}
       {g.unplaced.length > 0 && (
         <div style={{ fontSize: 12, color: 'var(--red)' }}>
-          ตัดไม่ได้ — ยาวเกินเส้น: {g.unplaced.map((p, i) => <span key={i}>{i ? ', ' : ''}{p.opening_no} {p.role_name} <span className="font-mono">{mm(p.length_m)}</span></span>)}
+          ตัดไม่ได้ — ยาวเกินเส้น: {g.unplaced.map((p, i) => <span key={i}>{i ? ', ' : ''}{p.opening_no} {roleTh(p.role_name)} <span className="font-mono">{mm(p.length_m)}</span></span>)}
         </div>
       )}
     </div>

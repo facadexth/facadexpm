@@ -38,7 +38,7 @@ export default function OffcutStockPanel({ offcuts, groupInfo, plan, used, setti
   const discard = async o => {
     setBusy(true); setError(null)
     try { await discardOffcut(o.id); setConfirmId(null) } catch (e) { setError(`ทิ้ง ${o.code} ไม่สำเร็จ: ${e.message || e}`) } finally {
-      try { await onDiscarded() } finally { setBusy(false) }
+      try { await onDiscarded() } catch (e) { setError(prev => prev || `โหลดเศษในสต็อกใหม่ไม่สำเร็จ: ${e.message || e}`) } finally { setBusy(false) }
     }
   }
 

@@ -77,4 +77,11 @@ describe('CutSheetView', () => {
       expect(render({ plan: p, issued, codes: {} }).split(HATCH).length - 1).toBeGreaterThan(1)
     })
   })
+  it('grid role names are shown in Thai (same mapping as the stickers), on bars and in the cannot-cut list', () => {
+    const html = render({ plan: plan({ bars: [{ length_m: 6.4, left_m: 3.4, pieces: [pc(3, 'W-03', 'Horizontal rail')] }], unplaced: [pc(7.2, 'W-04', 'Vertical mullion')] }) })
+    expect(html).toContain('W-03 ซอยนอน')
+    expect(html).toContain('W-04 ซอยตั้ง')
+    expect(html).not.toContain('Horizontal rail')
+    expect(html).not.toContain('Vertical mullion')
+  })
 })
