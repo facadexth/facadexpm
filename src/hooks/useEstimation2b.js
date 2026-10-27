@@ -80,3 +80,45 @@ export function useHardwarePackages() {
   }
   return { packages: pk.data || EMPTY_ROWS, items: it.data || EMPTY_ROWS, loading: pk.loading || it.loading, error: pk.error || it.error, savePackage, saveItems }
 }
+
+// Offcut stock and cut plans (cut sheet). Screens filter offcuts by status === 'in_stock' themselves.
+export const useOffcuts = () => useCatalogTable('alu_offcuts', 'code')
+export const useCutPlans = () => useCatalogTable('alu_cut_plans', 'issued_at')
+
+// In-stock offcuts grouped by the same key cutPlan.js piecesOf uses: `${profile_id}|${finish_id || ''}`.
+export function offcutsByGroup(offcuts) {
+  const m = {}
+  for (const o of offcuts || []) {
+    if (o.status !== 'in_stock') continue
+    const key = `${o.profile_id}|${o.finish_id || ''}`
+    ;(m[key] = m[key] || []).push({ id: o.id, code: o.code, length_m: Number(o.length_m) })
+  }
+  return m
+}
+
+// payload = cutPlan.js issuePayload(plan, flipped). Resolves to { plan_id, offcuts: [{ key, id, code }] }.
+// The RPC's error text is Thai and is shown to the user as is.
+export async function issueCutPlan(projectId, payload) {
+  const { data, error } = await supabase.rpc('issue_cut_plan', { p_project_id: projectId, ...payload })
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function voidCutPlan(planId) {
+  const { error } = await supabase.rpc('void_cut_plan', { p_plan_id: planId })
+  if (error) throw new Error(error.message)
+}
+
+export async function saveProjectCutMode(projectId, mode) {
+  const { error } = await supabase.from('estimation_projects').update({ cut_mode: mode }).eq('id', projectId)
+  if (error) throw error
+}
+
+// Only an offcut still in stock can be discarded; 0 rows back means it was used or discarded meanwhile.
+export async function discardOffcut(id) {
+  const { data, error } = await supabase.from('alu_offcuts')
+    .update({ status: 'discarded', status_at: new Date().toISOString() })
+    .eq('id', id).eq('status', 'in_stock').select('id')
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error('เศษชิ้นนี้ไม่อยู่ในสต็อกแล้ว (ถูกใช้หรือทิ้งไปแล้ว)')
+}

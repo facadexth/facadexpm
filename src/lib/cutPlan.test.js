@@ -208,6 +208,12 @@ describe('fix round 1', () => {
     expect(plan.groups[0].bars[0].pieces[2].end_b).toBe('notch')
     expect(plan.groups[0].newOffcuts[0]).toMatchObject({ length_m: 0.391, end_a: 'square' })
   })
+  it('plan groups carry the no_weight and overrideRejected flags from chooseLengths', () => {
+    const plan = buildCutPlan({ entries: [entry([line({ length_m: 2.0, quantity: 3 })])], mode: 'custom', settings: S2, kgPerM: {}, offcutsByGroup: {}, overrides: {}, groupInfo: {} })
+    expect(plan.groups[0]).toMatchObject({ no_weight: true, overrideRejected: false })
+    const stock = buildCutPlan({ entries: [entry([line({ length_m: 2.0, quantity: 3 })])], mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: {}, overrides: {}, groupInfo: {} })
+    expect(stock.groups[0]).toMatchObject({ no_weight: false, overrideRejected: false })
+  })
   it('a remainder after a mitred end keeps the mitre', () => {
     const entries = [entry([line({ length_m: 2.0, quantity: 2, cut_style: 'miter45', cut_ends: 2 })])]
     const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: {}, overrides: {}, groupInfo: {} })

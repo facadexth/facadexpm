@@ -146,7 +146,7 @@ export function buildCutPlan({ entries, mode, settings, kgPerM, offcutsByGroup, 
     }
     offcutBars.forEach(b => add(b, b.offcut.code))
     bars.forEach((b, i) => add(b, String(i + 1)))
-    return { key: g.key, ...(groupInfo || {})[g.key], length_m: c.length_m, custom: c.custom, offcutBars, bars, unplaced, kg: c.eval.kg, newOffcuts }
+    return { key: g.key, ...(groupInfo || {})[g.key], length_m: c.length_m, custom: c.custom, no_weight: !!c.no_weight, overrideRejected: !!c.overrideRejected, offcutBars, bars, unplaced, kg: c.eval.kg, newOffcuts }
   })
   return { signature: planSignature(entries), mode, customKg: chosen.customKg, moqMet: chosen.moqMet, reason: chosen.reason, groups: out }
 }
