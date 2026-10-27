@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
-  cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile,
+  cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis,
 } from './projectBomHelpers.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
 
@@ -235,5 +235,16 @@ describe('bestLengthsByProfile', () => {
       'p2|f1': { base: { kg: 6.4 }, best: { length_m: 6.4, kg: 6.4 } }, 'p3|f1': { base: { kg: 1 }, best: null },
     }
     expect(bestLengthsByProfile(plan, compare)).toEqual([{ profile_id: 'p1', length_m: 6.5 }])
+  })
+})
+
+describe('bomStockBasis', () => {
+  const ps = { byProfile: { p1: 6.25 }, projectM: 6 }
+  it('a normal job uses the market bar only: no overrides, no project length', () => {
+    expect(bomStockBasis('stock', ps)).toEqual({ byProfile: {}, projectM: null })
+    expect(bomStockBasis(undefined, ps)).toEqual({ byProfile: {}, projectM: null })
+  })
+  it('a project job keeps its per-profile lengths but never the project-wide length (same basis as the cut plan)', () => {
+    expect(bomStockBasis('custom', ps)).toEqual({ byProfile: { p1: 6.25 }, projectM: null })
   })
 })

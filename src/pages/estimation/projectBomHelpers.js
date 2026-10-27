@@ -158,6 +158,13 @@ export function cutGroupKgPerM(groupInfo, index) {
   return out
 }
 
+// The stock-length basis of section 1 (buildProjectBom), the same one the cut plan uses so the two never disagree:
+// a normal job buys the market bar only (settings.stock_length_m, no overrides); a project job uses its per-profile
+// lengths. The project-wide stock length (projectM) is never used.
+export function bomStockBasis(cutMode, projectStock) {
+  return { byProfile: cutMode === 'custom' && projectStock ? projectStock.byProfile || {} : {}, projectM: null }
+}
+
 // Per-profile stock lengths (estimation_project_stock) onto every group of that profile.
 export function cutGroupOverrides(groupInfo, byProfile) {
   const out = {}

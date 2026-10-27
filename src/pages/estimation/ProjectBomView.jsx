@@ -9,10 +9,9 @@ import { buildCutPlan, rangeLengths } from '../../lib/cutPlan.js'
 import { useProjectStock, useOffcuts, offcutsByGroup } from '../../hooks/useEstimation2b.js'
 import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
-  lengthCompare, bestLengthsByProfile,
+  lengthCompare, bestLengthsByProfile, bomStockBasis,
 } from './projectBomHelpers.js'
-import { saveProfileStock, saveProjectStockLength } from './projectStockSave.js'
-import ProjectStockField from './ProjectStockField.jsx'
+import { saveProfileStock } from './projectStockSave.js'
 import BomProfilesTable from './BomProfilesTable.jsx'
 import CutOptimizerPanel from './CutOptimizerPanel.jsx'
 import CutModeField from './CutModeField.jsx'
@@ -28,8 +27,6 @@ const PartsTable = ({ rows }) => (
     ))}</tbody>
   </table></div>
 )
-
-const NO_STOCK = { byProfile: {}, projectM: null }
 
 const Section = ({ title, children }) => (
   <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
@@ -51,8 +48,9 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const pieces = useMemo(() => entriesPieceCount(entries), [entries])
   const tooMany = pieces > MAX_PIECES
   const projectStock = useMemo(() => stockForProject(stockRows, project.id, project), [stockRows, project])
-  // A normal job ignores every stock-length override: it buys the market bar only.
-  const stock = isCustom ? projectStock : NO_STOCK
+  // Same stock basis as the cut plan (market bar; per-profile lengths only in a project job), so section 1 and the
+  // summary never disagree.
+  const stock = useMemo(() => bomStockBasis(cutMode, projectStock), [cutMode, projectStock])
   const bom = useMemo(() => (tooMany || !stockRows ? null : buildProjectBom({ entries, settings, stock, profilesById: index.profiles, finishesById: index.finishes, partsById: index.parts })),
     [entries, settings, stock, index, tooMany, stockRows])
   const seriesMap = useMemo(() => Object.fromEntries(Object.entries(seriesByGroup(entries)).map(([k, s]) => [k, [...s]])), [entries])
@@ -73,7 +71,6 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const rangeM = useMemo(() => (isCustom ? rangeLengths(settings) : null), [isCustom, settings])
 
   const saveProfile = async (profileId, value) => { await saveProfileStock(project.id, profileId, value); await stockQ.refetch() }
-  const saveProjectStock = async (projectId, v) => { await saveProjectStockLength(projectId, v); await onProjectSaved() }
   // Sequential: one profile's write failing stops the rest, and the list is reloaded either way.
   const applyAllBest = async () => {
     try { for (const t of bestLengthsByProfile(plan, compare)) await saveProfileStock(project.id, t.profile_id, t.length_m) }
@@ -115,12 +112,6 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
             : `งานทั่วไปใช้เส้นมาตรฐาน ${Number(settings.stock_length_m).toFixed(2)} ม. เท่านั้น`}
         </div>
       </Section>
-
-      {isCustom && (
-        <Section title="ความยาวเส้นมาตรฐาน">
-          <ProjectStockField project={project} defaultM={settings.stock_length_m} canEdit={canEdit} onSave={saveProjectStock} />
-        </Section>
-      )}
 
       {isCustom && plan && compare && (
         <CustomLengthSummary plan={plan} compare={compare} prices={prices} kgPerM={kgPerM} settings={settings} canEdit={canEdit} onUse={saveProfile} onUseAll={applyAllBest} />
