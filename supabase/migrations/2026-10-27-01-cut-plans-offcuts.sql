@@ -66,7 +66,11 @@ DECLARE
   v_tenant UUID := current_tenant_id();
   v_plan UUID; v_n INT; v_next INT; v_out JSONB := '[]'::jsonb; r JSONB; v_id UUID; v_code TEXT;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM estimation_projects WHERE id = p_project_id AND tenant_id = v_tenant) THEN
+  -- per-tenant serialisation of offcut stock changes (running OC code, used/void); UNIQUE(tenant_id, code) is the backstop
+  PERFORM pg_advisory_xact_lock(hashtext('alu_offcuts:' || v_tenant::text));
+  -- lock the project row so the already-issued check below cannot race
+  PERFORM 1 FROM estimation_projects WHERE id = p_project_id AND tenant_id = v_tenant FOR UPDATE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'ไม่พบโปรเจกต์' USING ERRCODE = 'P0002';
   END IF;
   IF EXISTS (SELECT 1 FROM alu_cut_plans WHERE project_id = p_project_id AND status = 'issued') THEN
@@ -76,17 +80,20 @@ BEGIN
   SELECT count(*) INTO v_n FROM (
     SELECT id FROM alu_offcuts WHERE id = ANY(COALESCE(p_used_offcut_ids, '{}')) AND tenant_id = v_tenant AND status = 'in_stock' FOR UPDATE
   ) x;
-  IF v_n <> COALESCE(array_length(p_used_offcut_ids, 1), 0) THEN
+  IF v_n <> (SELECT count(DISTINCT u) FROM unnest(COALESCE(p_used_offcut_ids, '{}')) u) THEN
     RAISE EXCEPTION 'เศษบางชิ้นถูกใช้หรือทิ้งไปแล้ว คำนวณใบตัดใหม่แล้วลองอีกครั้ง' USING ERRCODE = 'P0001';
   END IF;
-  INSERT INTO alu_cut_plans (tenant_id, project_id, signature, plan) VALUES (v_tenant, p_project_id, p_signature, p_plan) RETURNING id INTO v_plan;
+  BEGIN
+    INSERT INTO alu_cut_plans (tenant_id, project_id, signature, plan) VALUES (v_tenant, p_project_id, p_signature, p_plan) RETURNING id INTO v_plan;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'โปรเจกต์นี้มีใบตัดที่ยืนยันแล้ว ยกเลิกใบเดิมก่อน' USING ERRCODE = 'P0001';
+  END;
   UPDATE alu_offcuts SET status = 'used', used_plan_id = v_plan, status_at = now() WHERE id = ANY(COALESCE(p_used_offcut_ids, '{}'));
-  -- per-tenant running code; the table lock serialises concurrent issues of the same tenant
-  LOCK TABLE alu_offcuts IN SHARE ROW EXCLUSIVE MODE;
+  -- per-tenant running code (serialised by the advisory lock above)
   SELECT COALESCE(max(substring(code FROM 4)::int), 0) INTO v_next FROM alu_offcuts WHERE tenant_id = v_tenant AND code ~ '^OC-[0-9]+$';
   FOR r IN SELECT * FROM jsonb_array_elements(COALESCE(p_new_offcuts, '[]'::jsonb)) LOOP
     v_next := v_next + 1;
-    v_code := 'OC-' || lpad(v_next::text, 4, '0');
+    v_code := 'OC-' || lpad(v_next::text, greatest(4, length(v_next::text)), '0');
     INSERT INTO alu_offcuts (tenant_id, code, profile_id, finish_id, length_m, end_a, source_project_id, source_plan_id)
       VALUES (v_tenant, v_code, (r->>'profile_id')::uuid, NULLIF(r->>'finish_id','')::uuid, (r->>'length_m')::numeric,
               COALESCE(r->>'end_a','square'), p_project_id, v_plan)
@@ -101,15 +108,28 @@ CREATE FUNCTION void_cut_plan(p_plan_id UUID)
 RETURNS VOID LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
 DECLARE v_tenant UUID := current_tenant_id();
 BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('alu_offcuts:' || v_tenant::text));
   PERFORM 1 FROM alu_cut_plans WHERE id = p_plan_id AND tenant_id = v_tenant AND status = 'issued' FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบใบตัดที่ยืนยันแล้ว' USING ERRCODE = 'P0002'; END IF;
+  -- lock this plan's offcuts so no other plan can take one between the check and the delete
+  PERFORM 1 FROM alu_offcuts WHERE source_plan_id = p_plan_id FOR UPDATE;
   IF EXISTS (SELECT 1 FROM alu_offcuts WHERE source_plan_id = p_plan_id AND status = 'used') THEN
     RAISE EXCEPTION 'เศษจากใบตัดนี้ถูกงานอื่นใช้ไปแล้ว ยกเลิกไม่ได้' USING ERRCODE = 'P0001';
   END IF;
-  DELETE FROM alu_offcuts WHERE source_plan_id = p_plan_id;
+  DELETE FROM alu_offcuts WHERE source_plan_id = p_plan_id AND status <> 'used';
   UPDATE alu_offcuts SET status = 'in_stock', used_plan_id = NULL, status_at = now() WHERE used_plan_id = p_plan_id;
   UPDATE alu_cut_plans SET status = 'void', voided_at = now() WHERE id = p_plan_id;
 END $$;
+
+-- Deleting a plan row (e.g. project delete cascade) returns the offcuts it consumed to stock instead of stranding them as 'used'.
+CREATE FUNCTION alu_cut_plans_release_used_offcuts()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+BEGIN
+  UPDATE alu_offcuts SET status = 'in_stock', used_plan_id = NULL, status_at = now() WHERE used_plan_id = OLD.id;
+  RETURN OLD;
+END $$;
+CREATE TRIGGER trg_alu_cut_plans_release_used_offcuts BEFORE DELETE ON alu_cut_plans
+  FOR EACH ROW EXECUTE FUNCTION alu_cut_plans_release_used_offcuts();
 
 REVOKE ALL ON FUNCTION issue_cut_plan(UUID, TEXT, JSONB, UUID[], JSONB) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION void_cut_plan(UUID) FROM PUBLIC, anon;
