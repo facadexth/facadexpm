@@ -67,3 +67,69 @@ describe('groupIdenticalBars', () => {
     expect(g.map(x => [x.count, x.nos])).toEqual([[2, [1, 2]], [1, [3]]])
   })
 })
+
+import { rangeLengths, evaluateLength, bestLength, chooseLengths } from './cutPlan.js'
+const S2 = { ...S, stock_length_m: 6.4, custom_len_min_m: 4, custom_len_max_m: 7, custom_len_step_m: 0.05, custom_moq_kg: 1000 }
+
+describe('groupIdenticalBars keeps different items and notch sizes apart', () => {
+  const nb = (o) => ({ length_m: 6.4, left_m: 0, pieces: [pc(2, { end_a: 'notch', notch: { joint_name: 'j', width_mm: 20, depth_mm: 8 }, item_id: 'i1', ...o })] })
+  it('two bars differing only in notch width are separate rows', () => {
+    const g = groupIdenticalBars([nb(), nb({ notch: { joint_name: 'j', width_mm: 25, depth_mm: 8 } })])
+    expect(g.map(x => x.count)).toEqual([1, 1])
+  })
+  it('two bars differing only in notch depth are separate rows', () => {
+    const g = groupIdenticalBars([nb(), nb({ notch: { joint_name: 'j', width_mm: 20, depth_mm: 10 } })])
+    expect(g.map(x => x.count)).toEqual([1, 1])
+  })
+  it('two bars differing only in item are separate rows', () => {
+    const g = groupIdenticalBars([nb(), nb({ item_id: 'i2' })])
+    expect(g.map(x => x.count)).toEqual([1, 1])
+  })
+  it('identical notched bars still share one row', () => {
+    expect(groupIdenticalBars([nb(), nb()]).map(x => x.count)).toEqual([2])
+  })
+})
+
+describe('rangeLengths', () => {
+  it('4.00..7.00 by 0.05 is 61 values', () => {
+    const r = rangeLengths(S2)
+    expect(r).toHaveLength(61); expect(r[0]).toBe(4); expect(r[60]).toBe(7)
+  })
+  it('an invalid range gives no candidates', () => { expect(rangeLengths({ ...S2, custom_len_step_m: 0 })).toEqual([]) })
+})
+
+describe('evaluateLength', () => {
+  it('counts kg for new bars only and splits remainders into keep and scrap', () => {
+    const ev = evaluateLength([pc(2.0), pc(2.0), pc(2.0)], 6.4, S2, [], 0.5)
+    expect(ev.newBars).toBe(1); expect(ev.kg).toBeCloseTo(3.2, 9); expect(ev.feasible).toBe(true)
+    expect(ev.scrap_m).toBeCloseTo(0.391, 9); expect(ev.keep_m).toBe(0)
+  })
+})
+
+describe('bestLength', () => {
+  it('picks the length that buys the least kg', () => {
+    const pieces = Array.from({ length: 8 }, () => pc(2.4))   // 2 per 4.85 m bar
+    const b = bestLength(pieces, [6.4, 4.85], S2, [], 0.62)
+    expect(b.length_m).toBe(4.85)
+  })
+  it('never picks an infeasible length', () => {
+    expect(bestLength([pc(5.0)], [4.0, 4.5], S2, [], 1)).toBe(null)
+  })
+})
+
+describe('chooseLengths', () => {
+  const groups = [{ key: 'A|F', pieces: Array.from({ length: 8 }, () => pc(2.4)) }]
+  it('stock mode always uses the stock length', () => {
+    const r = chooseLengths({ groups, mode: 'stock', settings: S2, kgPerM: { 'A|F': 0.62 }, offcutsByGroup: {}, overrides: {} })
+    expect(r.byGroup['A|F'].length_m).toBe(6.4)
+  })
+  it('custom mode below the minimum order falls back to stock and says why', () => {
+    const r = chooseLengths({ groups, mode: 'custom', settings: S2, kgPerM: { 'A|F': 0.62 }, offcutsByGroup: {}, overrides: {} })
+    expect(r.moqMet).toBe(false); expect(r.reason).toBe('moq'); expect(r.byGroup['A|F'].length_m).toBe(6.4)
+  })
+  it('custom mode at or above the minimum keeps the custom lengths', () => {
+    const big = [{ key: 'A|F', pieces: Array.from({ length: 800 }, () => pc(2.4)) }]
+    const r = chooseLengths({ groups: big, mode: 'custom', settings: S2, kgPerM: { 'A|F': 0.62 }, offcutsByGroup: {}, overrides: {} })
+    expect(r.moqMet).toBe(true); expect(r.byGroup['A|F'].custom).toBe(true)
+  })
+})

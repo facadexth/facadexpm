@@ -53,7 +53,8 @@ export function packWithOffcuts(pieces, barLengthM, settings, offcuts) {
   return { offcutBars: offBars.filter(b => b.pieces.length), bars, unplaced }
 }
 
-const barSig = b => b.pieces.map(p => `${p.opening_no}|${p.role_name}|${p.length_m}|${p.end_a}|${p.end_b}`).join(';') + `#${b.length_m}`
+// Item and notch size are part of the identity: bars for different items or notch sizes are never one row.
+const barSig = b => b.pieces.map(p => `${p.item_id ?? ''}|${p.opening_no}|${p.role_name}|${p.length_m}|${p.end_a}|${p.end_b}|${p.notch ? `${p.notch.width_mm ?? ''}x${p.notch.depth_mm ?? ''}` : ''}`).join(';') + `#${b.length_m}`
 export function groupIdenticalBars(bars) {
   const out = []
   const idx = new Map()
@@ -63,4 +64,54 @@ export function groupIdenticalBars(bars) {
     else { idx.set(s, out.length); out.push({ bar, count: 1, nos: [i + 1] }) }
   })
   return out
+}
+
+export function rangeLengths(settings) {
+  const a = Number(settings.custom_len_min_m), b = Number(settings.custom_len_max_m), s = Number(settings.custom_len_step_m)
+  if (!(a > 0 && b >= a && s > 0)) return []
+  const out = []
+  for (let i = 0; out.length < 400; i++) { const x = mm(a + i * s); if (x > b + EPS) break; out.push(x) }
+  return out
+}
+
+export function evaluateLength(pieces, L, settings, offcuts, kgPerM) {
+  const packed = packWithOffcuts(pieces, L, settings, offcuts)
+  let keep = 0, scrap = 0
+  for (const b of [...packed.offcutBars, ...packed.bars]) (b.left_m + EPS >= settings.min_keep_offcut_m ? (keep += b.left_m) : (scrap += b.left_m))
+  return { length_m: L, newBars: packed.bars.length, kg: packed.bars.length * L * (Number(kgPerM) || 0), scrap_m: scrap, keep_m: keep,
+    feasible: packed.unplaced.length === 0, packed }
+}
+
+const better = (a, b) => !b || a.kg < b.kg - 1e-6 || (Math.abs(a.kg - b.kg) < 1e-6 && (a.scrap_m < b.scrap_m - EPS ||
+  (Math.abs(a.scrap_m - b.scrap_m) < EPS && (a.newBars < b.newBars || (a.newBars === b.newBars && a.length_m < b.length_m)))))
+
+export function bestLength(pieces, candidates, settings, offcuts, kgPerM) {
+  let best = null
+  for (const L of [...new Set(candidates)]) { const ev = evaluateLength(pieces, L, settings, offcuts, kgPerM); if (ev.feasible && better(ev, best)) best = ev }
+  return best
+}
+
+export function chooseLengths({ groups, mode, settings, kgPerM, offcutsByGroup, overrides }) {
+  const stockL = settings.stock_length_m
+  const stockPick = g => ({ length_m: stockL, custom: false, eval: evaluateLength(g.pieces, stockL, settings, (offcutsByGroup || {})[g.key] || [], (kgPerM || {})[g.key]) })
+  const byGroup = {}
+  if (mode !== 'custom') { for (const g of groups || []) byGroup[g.key] = stockPick(g); return { byGroup, customKg: 0, moqMet: true, reason: null } }
+  const cands = [stockL, ...rangeLengths(settings)]
+  let customKg = 0
+  for (const g of groups || []) {
+    const off = (offcutsByGroup || {})[g.key] || []
+    const kg = (kgPerM || {})[g.key]
+    const ov = overrides && overrides[g.key]
+    const forced = ov ? evaluateLength(g.pieces, Number(ov), settings, off, kg) : null
+    const ev = forced && forced.feasible ? forced : bestLength(g.pieces, cands, settings, off, kg)
+    if (!ev) { byGroup[g.key] = stockPick(g); continue }
+    const custom = Math.abs(ev.length_m - stockL) > EPS
+    if (custom) customKg += ev.kg
+    byGroup[g.key] = { length_m: ev.length_m, custom, eval: ev }
+  }
+  if (customKg > 0 && customKg < Number(settings.custom_moq_kg)) {
+    for (const g of groups || []) byGroup[g.key] = stockPick(g)
+    return { byGroup, customKg, moqMet: false, reason: 'moq' }
+  }
+  return { byGroup, customKg, moqMet: true, reason: null }
 }
