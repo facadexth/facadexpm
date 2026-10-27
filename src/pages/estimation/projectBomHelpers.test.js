@@ -14,6 +14,10 @@ describe('entries', () => {
     expect(r.entries[0].finish_id).toBe('f1')
     expect(r.skipped).toEqual([{ opening_no: 'D2', name: null, reason: 'no_template' }])
   })
+  it('entries carry the item id and name', () => {
+    const r = buildEntries([{ id: 'a', opening_no: 'D1', item_name: 'บานเลื่อน', quantity: 1 }, { id: 'b', opening_no: 'D2', quantity: 1 }], { a: cost([line()]), b: cost([line()]) })
+    expect(r.entries.map(e => [e.item_id, e.item_name])).toEqual([['a', 'บานเลื่อน'], ['b', '']])
+  })
   it('counts pieces x item quantity, ignoring unresolved lines', () => {
     const e = [{ quantity: 3, bom: { profileLines: [line(), line({ resolved: false })], gridLines: [line({ quantity: 1 })] }, addonBom: null }]
     expect(entriesPieceCount(e)).toBe(9)

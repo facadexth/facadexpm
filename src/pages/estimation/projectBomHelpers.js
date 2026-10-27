@@ -18,7 +18,7 @@ export function buildEntries(items, costs) {
   for (const item of items || []) {
     const r = (costs || {})[item.id]
     if (!r) { skipped.push({ opening_no: item.opening_no, name: item.item_name || null, reason: 'no_template' }); continue }
-    entries.push({ opening_no: item.opening_no, quantity: item.quantity, finish_id: r.resolved.finish_id, bom: r.bom, addonBom: r.addonBom, addonBoms: r.addonBoms || [], extras: r.extras, unresolved: r.unresolved })
+    entries.push({ item_id: item.id, item_name: item.item_name || '', opening_no: item.opening_no, quantity: item.quantity, finish_id: r.resolved.finish_id, bom: r.bom, addonBom: r.addonBom, addonBoms: r.addonBoms || [], extras: r.extras, unresolved: r.unresolved })
   }
   return { entries, skipped }
 }
