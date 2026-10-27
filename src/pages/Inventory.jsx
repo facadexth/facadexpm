@@ -26,7 +26,7 @@ import MoreActions from '../components/MoreActions.jsx'
 import PhoneFilters from '../components/PhoneFilters.jsx'
 const INV_EVENT_MAP = { title: 'รายการ', amount: 'มูลค่า', sub: ['รหัส', 'เลขที่ใบแจ้งหนี้'], actions: 'last' }
 const INV_MO_LIST_MAP = { title: 'เลขที่', amount: 'เบิกจริง', sub: ['วันที่', 'ใบแจ้งหนี้', 'เป้ามูลค่า', 'ขาด'], actions: 'last' }
-const INV_MO_CAT_MAP = { title: 'หมวดวัตถุดิบ', amount: 'เบิกจริง (บาท)', sub: ['% ที่ตั้ง', 'เป้ามูลค่า (บาท)', 'ขาด (บาท)'] }
+const INV_MO_CAT_MAP = { title: 'รายการ', amount: 'มูลค่า (บาท)', sub: ['รหัส', 'จำนวน', 'หน่วย', 'ต้นทุน/หน่วย'] }
 const INV_RMSUM_MAP = { title: 'รายการ', amount: 'มูลค่าที่ตัด', sub: ['รหัส'] }
 const INV_LEDGER_MAP = { title: 0, amount: 8, sub: [1, 2] } // column indexes: header labels are long and some repeat
 const INV_ITEMS_MAP = { title: 'ชื่อ', amount: 'มูลค่ารวม', status: 'สถานะ', sub: ['รหัส', 'หมวดหมู่'], actions: 'last' }
@@ -1228,12 +1228,12 @@ const numOrNull = (v) => (v === null || v === undefined || v === '' || !Number.i
 // v2) carries target_total / target_splits; its DM child (parent_document_id =
 // MO) holds the raw-material movements, and FG purchase_in rows cite the MO
 // itself. List view -> click a row -> printable MO.
-function MoReportView({ stockDocuments, movements, invoiceNumbers, categories, items, tenant, dateFrom, dateTo }) {
+export function MoReportView({ stockDocuments, movements, invoiceNumbers, categories, items, tenant, dateFrom, dateTo }) {
   const [selectedId, setSelectedId] = useState(null)
 
   const invoiceNumberById = useMemo(() => new Map((invoiceNumbers || []).map(i => [i.id, i.invoice_number])), [invoiceNumbers])
   const categoryNameById = useMemo(() => new Map((categories || []).map(c => [c.id, c.name])), [categories])
-  const itemCategoryById = useMemo(() => new Map((items || []).map(i => [i.id, i.category_id || null])), [items])
+  const itemById = useMemo(() => new Map((items || []).map(i => [i.id, i])), [items])
 
   const mos = useMemo(() => {
     const docs = stockDocuments || []
@@ -1260,10 +1260,18 @@ function MoReportView({ stockDocuments, movements, invoiceNumbers, categories, i
         // nets to zero economically and sale_out is the real consumption, so
         // counting every row would double/triple-count the same material.
         const dmSaleOuts = dms.flatMap(dm => (movementsByDoc.get(dm.id) || []).filter(m => m.movement_type === 'sale_out'))
-        const actualByCat = new Map()
+        // Document body = the actual requisitioned items, grouped by material
+        // category: per item qty and value summed over its sale_out rows,
+        // display cost = value / qty (one row per item in practice).
+        const linesByCat = new Map()
         for (const m of dmSaleOuts) {
-          const cat = itemCategoryById.get(m.inventory_item_id) || null
-          actualByCat.set(cat, (actualByCat.get(cat) || 0) + mvValue(m))
+          const cat = itemById.get(m.inventory_item_id)?.category_id || null
+          if (!linesByCat.has(cat)) linesByCat.set(cat, new Map())
+          const perItem = linesByCat.get(cat)
+          const cur = perItem.get(m.inventory_item_id) || { qty: 0, value: 0 }
+          cur.qty += Number(m.quantity) || 0
+          cur.value += mvValue(m)
+          perItem.set(m.inventory_item_id, cur)
         }
         const actual = dmSaleOuts.reduce((s, m) => s + mvValue(m), 0)
         // FG purchase_in rows cite the MO directly (the DP holds the FG sale_out side).
@@ -1271,17 +1279,23 @@ function MoReportView({ stockDocuments, movements, invoiceNumbers, categories, i
         const fgValue = fgIns.reduce((s, m) => s + mvValue(m), 0)
         const siteNames = [...new Set([...fgIns, ...dmSaleOuts].map(m => m.sites?.name).filter(Boolean))]
         const target = numOrNull(mo.target_total)
-        // target_splits = {categoryId: pct of the material value}; per-category
-        // target = target_total × pct / 100. Null on legacy MOs.
+        // target_splits = {categoryId: pct of the material value} -- the list's
+        // เป้ามูลค่า/ขาด columns still use target; inside the document the %
+        // only orders the categories (owner 2026-10-27: no %/target/short shown).
         const splits = mo.target_splits && typeof mo.target_splits === 'object' ? mo.target_splits : null
-        const catIds = new Set([...(splits ? Object.keys(splits) : []), ...actualByCat.keys()])
-        const categoryRows = [...catIds].map(catId => {
+        const categoryRows = [...linesByCat.keys()].map(catId => {
           const pct = splits ? numOrNull(splits[catId]) : null
-          const catTarget = target !== null && pct !== null ? target * pct / 100 : null
-          const catActual = actualByCat.get(catId) || 0
+          const perItem = linesByCat.get(catId)
+          const lines = [...perItem].map(([itemId, v]) => {
+            const it = itemById.get(itemId)
+            return {
+              itemId, code: it?.code || '', name: it?.name || '', unit: it?.base_unit || '',
+              qty: v.qty, value: v.value, unitCost: v.qty > 0 ? v.value / v.qty : 0,
+            }
+          }).sort((a, b) => (a.code || a.name).localeCompare(b.code || b.name, 'th'))
           return {
-            catId, name: (catId && categoryNameById.get(catId)) || 'อื่น ๆ', pct, target: catTarget, actual: catActual,
-            short: catTarget !== null ? Math.max(0, catTarget - catActual) : null,
+            catId, name: (catId && categoryNameById.get(catId)) || 'อื่น ๆ', pct,
+            actual: lines.reduce((s, l) => s + l.value, 0), lines,
           }
         }).sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1) || a.name.localeCompare(b.name, 'th'))
         return {
@@ -1293,7 +1307,7 @@ function MoReportView({ stockDocuments, movements, invoiceNumbers, categories, i
         }
       })
       .sort((a, b) => String(b.docNumber || '').localeCompare(String(a.docNumber || '')))
-  }, [stockDocuments, movements, itemCategoryById, categoryNameById, invoiceNumberById, dateFrom, dateTo])
+  }, [stockDocuments, movements, itemById, categoryNameById, invoiceNumberById, dateFrom, dateTo])
 
   const selected = selectedId ? mos.find(m => m.id === selectedId) : null
   const shortStyle = (v) => v !== null && v > MO_SHORT_EPS ? { color: 'var(--red)', fontWeight: 600 } : undefined
@@ -1330,39 +1344,47 @@ function MoReportView({ stockDocuments, movements, invoiceNumbers, categories, i
     ['เอกสารเบิก', selected.dmNumbers.join(', ') || '—'],
     ['รับสำเร็จรูปเข้า', selected.fgCount ? `งานตามสัญญา ${selected.fgCount.toLocaleString('th-TH')} งาน = ${fmt(selected.fgValue)} บาท` : '—'],
   ]
-  // รวม row's ขาด is total-level (target_total − Σ actual), matching the list's
-  // ขาด column -- an over-pull in one category offsets a short one elsewhere.
+  // Document body: requisitioned items under a band row per category, a
+  // subtotal row per category, one grand-total row. No %/target/short
+  // (owner 2026-10-27).
   const renderMoTable = (print) => (
     <table className={print ? 'ledger' : undefined}>
       <thead>
         {print && (
           <tr className="print-repeat-row">
-            <td colSpan={5}>
+            <td colSpan={6}>
               <span className="print-repeat-company">{tenant?.company_name}</span>
               <span className="print-repeat-sep">·</span>
               <span className="print-repeat-report">ใบสั่งผลิต {selected.docNumber}</span>
             </td>
           </tr>
         )}
-        <tr><th>หมวดวัตถุดิบ</th><th>% ที่ตั้ง</th><th>เป้ามูลค่า (บาท)</th><th>เบิกจริง (บาท)</th><th>ขาด (บาท)</th></tr>
+        <tr><th>รหัส</th><th>รายการ</th><th>จำนวน</th><th>หน่วย</th><th>ต้นทุน/หน่วย</th><th>มูลค่า (บาท)</th></tr>
       </thead>
       <tbody>
         {selected.categoryRows.map(r => (
-          <tr key={r.catId ?? 'none'}>
-            <td>{r.name}</td>
-            <td className="font-mono">{r.pct === null ? '—' : `${fmtQty(r.pct)}%`}</td>
-            <td className="font-mono">{money(r.target)}</td>
-            <td className="font-mono">{fmt(r.actual)}</td>
-            <td className={`font-mono${r.short !== null && r.short > MO_SHORT_EPS ? ' mo-short' : ''}`} style={print ? undefined : shortStyle(r.short)}>{money(r.short)}</td>
-          </tr>
+          <Fragment key={r.catId ?? 'none'}>
+            <tr><td colSpan={6} style={{ fontWeight: 700, background: 'var(--bg3)' }}>{r.name}</td></tr>
+            {r.lines.map(l => (
+              <tr key={l.itemId}>
+                <td style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{l.code || '—'}</td>
+                <td>{l.name}</td>
+                <td className="font-mono">{fmtQty(l.qty)}</td>
+                <td>{l.unit || '—'}</td>
+                <td className="font-mono">{fmt(l.unitCost)}</td>
+                <td className="font-mono">{fmt(l.value)}</td>
+              </tr>
+            ))}
+            <tr style={{ fontWeight: 600 }}>
+              <td colSpan={5} style={{ color: 'var(--text3)' }}>รวมหมวด{r.name}</td>
+              <td className="font-mono">{fmt(r.actual)}</td>
+            </tr>
+          </Fragment>
         ))}
-        {!selected.categoryRows.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการเบิกวัตถุดิบ</td></tr>}
+        {!selected.categoryRows.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการเบิกวัตถุดิบ</td></tr>}
         <tr style={{ fontWeight: 700, borderTop: '1.5px solid var(--border)' }}>
-          <td>รวม</td>
-          <td className="font-mono">{selected.categoryRows.some(r => r.pct !== null) ? `${fmtQty(selected.categoryRows.reduce((s, r) => s + (r.pct || 0), 0))}%` : '—'}</td>
-          <td className="font-mono">{money(selected.target)}</td>
+          <td colSpan={5}>รวมทั้งสิ้น</td>
           <td className="font-mono">{fmt(selected.actual)}</td>
-          <td className={`font-mono${selected.short !== null && selected.short > MO_SHORT_EPS ? ' mo-short' : ''}`} style={print ? undefined : shortStyle(selected.short)}>{money(selected.short)}</td>
         </tr>
       </tbody>
     </table>
