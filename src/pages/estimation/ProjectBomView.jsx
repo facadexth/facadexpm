@@ -159,7 +159,8 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
 
       {offcutsQ.data && (
         <OffcutStockPanel offcuts={offcutsQ.data} groupInfo={groupInfo} plan={issued ? issued.plan : plan} used={offcutsFirst || !!issued} settings={settings}
-          projectNames={projectNames} canEdit={canEdit} highlightCode={highlightOffcut} onDiscarded={offcutsQ.refetch} />
+          projectNames={projectNames} canEdit={canEdit} highlightCode={highlightOffcut} onDiscarded={offcutsQ.refetch}
+          issuedPlanId={issued ? issued.id : null} plans={plansQ.data || []} />
       )}
 
       {isCustom && plan && compare && (

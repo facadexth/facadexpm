@@ -104,3 +104,63 @@ describe('OffcutStockPanel', () => {
     expect(screen.getAllByText('ทิ้ง')[0].hasAttribute('disabled')).toBe(false)
   })
 })
+
+describe('OffcutStockPanel tabs', () => {
+  const made = [
+    off('m1', 'OC-0010', { source_plan_id: 'cp1' }),
+    off('m2', 'OC-0011', { source_plan_id: 'cp1', status: 'used', used_plan_id: 'cp9' }),
+    off('m3', 'OC-0012', { source_plan_id: 'cp1', status: 'discarded' }),
+  ]
+  const taken = off('t1', 'OC-0009', { status: 'used', used_plan_id: 'cp1' })
+  const issuedPlan = { groups: [{ key: 'A|F', bars: [], offcutBars: [{ length_m: 1.2, left_m: 0.2, pieces: [pc(1, 'W-03')], offcut: { id: 't1', code: 'OC-0009', length_m: 1.2 } }] }] }
+  const plans = [{ id: 'cp9', project_id: 'p9', status: 'issued', issued_at: '2026-10-28T03:00:00Z',
+    plan: { groups: [{ key: 'A|F', bars: [], offcutBars: [{ pieces: [pc(0.5, 'T-01')], offcut: { id: 'm2', code: 'OC-0011' } }] }] } }]
+  const tabView = props => view({ offcuts: [...offcuts, ...made, taken], plan: issuedPlan, issuedPlanId: 'cp1', plans, projectNames: { p0: 'บ้านพี่วัฒน์', p9: 'HOSPITAL' }, ...props })
+  const tab = name => screen.getByRole('tab', { name })
+
+  it('tab 1 leaves out what this plan made and keeps what it already took (no discard on a used one)', () => {
+    tabView()
+    expect(tab('เศษที่งานนี้ใช้ (3)').getAttribute('aria-selected')).toBe('true')
+    expect(tab('เศษที่ใบตัดนี้สร้าง (3)').getAttribute('aria-selected')).toBe('false')
+    expect(bodyRows().map(r => r.cells[0].textContent)).toEqual(['OC-0001', 'OC-0002', 'OC-0009'])
+    expect(bodyRows()[2].textContent).toContain('ใช้ตัด 1 ท่อน')
+    expect(screen.getAllByRole('button', { name: 'ทิ้ง' })).toHaveLength(2)
+  })
+  it('tab 2 lists what this plan made with where each one is now; discard only on the one in stock', () => {
+    tabView()
+    fireEvent.click(tab('เศษที่ใบตัดนี้สร้าง (3)'))
+    expect(bodyRows().map(r => r.cells[0].textContent)).toEqual(['OC-0010', 'OC-0011', 'OC-0012'])
+    expect(bodyRows()[0].textContent).toContain('ในสต็อก')
+    expect(bodyRows()[1].textContent).toContain('ใช้แล้ว · HOSPITAL T-01')
+    expect(bodyRows()[2].cells[3].textContent).toBe('ทิ้ง')
+    expect(screen.getAllByRole('button', { name: 'ทิ้ง' })).toHaveLength(1)
+  })
+  it('discarding from tab 2 asks inline and calls discardOffcut', async () => {
+    discardOffcut.mockResolvedValue(undefined)
+    tabView()
+    fireEvent.click(tab('เศษที่ใบตัดนี้สร้าง (3)'))
+    fireEvent.click(screen.getByRole('button', { name: 'ทิ้ง' }))
+    expect(document.body.textContent).toContain('ทิ้งเศษ OC-0010 (1200 มม.)?')
+    await act(async () => { fireEvent.click(screen.getByText('ทิ้งเศษ')) })
+    expect(discardOffcut).toHaveBeenCalledWith('m1')
+  })
+  it('a QR link to an offcut this plan made opens tab 2 with the row highlighted', () => {
+    const had = Object.prototype.hasOwnProperty.call(Element.prototype, 'scrollIntoView')
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = vi.fn()
+    try {
+      tabView({ highlightCode: 'OC-0011' })
+      expect(tab('เศษที่ใบตัดนี้สร้าง (3)').getAttribute('aria-selected')).toBe('true')
+      expect(bodyRows()[1].getAttribute('style')).toContain('outline')
+      expect(document.body.textContent).not.toContain('ไม่อยู่ในหน้าตัดของโครงการนี้')
+    } finally {
+      if (had) Element.prototype.scrollIntoView = original
+      else delete Element.prototype.scrollIntoView
+    }
+  })
+  it('before issue tab 2 is empty and says why', () => {
+    view()
+    fireEvent.click(tab('เศษที่ใบตัดนี้สร้าง (0)'))
+    expect(document.body.textContent).toContain('ยืนยันใบตัดก่อน จึงจะมีเศษที่ใบตัดนี้สร้าง')
+  })
+})
