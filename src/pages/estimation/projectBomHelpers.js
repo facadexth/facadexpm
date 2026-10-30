@@ -386,9 +386,11 @@ export function missingDieNos(plan, seriesMap, seriesById) {
   const series = []
   const seen = new Set()
   for (const g of (plan && plan.groups) || []) {
-    if (g.die_no || seen.has(g.profile_id)) continue
-    seen.add(g.profile_id)
-    names.push(g.name || '?')
+    if (g.die_no) continue
+    // Name each profile once (an old snapshot without profile_id falls back to the group key), but take the series
+    // of every finish group: the second finish may have been priced in another series.
+    const id = g.profile_id || g.key
+    if (!seen.has(id)) { seen.add(id); names.push(g.name || '?') }
     for (const id of (seriesMap || {})[g.key] || []) {
       const s = (seriesById || {})[id]
       if (s && s.name && !series.includes(s.name)) series.push(s.name)

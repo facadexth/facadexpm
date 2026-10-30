@@ -469,6 +469,15 @@ describe('die numbers', () => {
     expect(missingDieNos(plan, seriesMap, { s1: { name: 'ทั่วไป' }, s2: { name: 'MN' } }))
       .toEqual({ names: ['เฟรมบน', 'เสากุญแจ'], series: ['ทั่วไป', 'MN'] })
   })
+  it('missingDieNos collects the series of every finish group of a profile, not only its first', () => {
+    const seriesMap = { 'a|f1': ['s1'], 'a|f2': ['s2'] }
+    expect(missingDieNos(plan, seriesMap, { s1: { name: 'ทั่วไป' }, s2: { name: 'MN' } }))
+      .toEqual({ names: ['เฟรมบน', 'เสากุญแจ'], series: ['ทั่วไป', 'MN'] })
+  })
+  it('missingDieNos: groups of an old snapshot without profile_id do not collapse into one', () => {
+    const old = { groups: [g('x|f1', undefined, null, 'เฟรมบน'), g('y|f1', undefined, null, 'เสากุญแจ')] }
+    expect(missingDieNos(old, { 'y|f1': ['s2'] }, { s2: { name: 'MN' } })).toEqual({ names: ['เฟรมบน', 'เสากุญแจ'], series: ['MN'] })
+  })
   it('missingDieNos is null when every profile has one', () => {
     expect(missingDieNos({ groups: [g('b|f1', 'b', '15100', 'เฟรมล่าง')] }, {}, {})).toBeNull()
     expect(missingDieNos(null, {}, {})).toBeNull()
