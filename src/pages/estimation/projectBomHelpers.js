@@ -171,6 +171,29 @@ export function bomStockBasis(cutMode, plan) {
   return { byProfile, projectM: null }
 }
 
+// Section 1 rows (buildProjectBom().profiles) with the cut plan's bars. issuedPlan: every row whose group is in it
+// takes the issued group's numbers (frozen; the offcut stock moving later does not change them). Otherwise only a
+// group the live plan cuts from stock offcuts changes: its new bars are the plan's, and the codes it uses are listed.
+// A row whose group is not in the plan keeps its own numbers. base_count = the bars without offcuts (struck through).
+export function section1Rows(profiles, { plan, issuedPlan, minKeepM }) {
+  const src = issuedPlan || plan
+  const byKey = new Map(((src && src.groups) || []).map(g => [g.key, g]))
+  return (profiles || []).map(row => {
+    const g = byKey.get(row.key)
+    if (!g || (!issuedPlan && !(g.offcutBars || []).length)) return { ...row, offcut_codes: [], base_count: row.count, fromPlan: false }
+    let reusable_m = 0, scrap_m = 0
+    for (const b of [...(g.offcutBars || []), ...(g.bars || [])]) {
+      const left = Number(b.left_m)
+      if (left + EPS >= minKeepM && left > 0) reusable_m += left; else scrap_m += left
+    }
+    return {
+      ...row, stock_length_m: Number(g.length_m), count: (g.bars || []).length, base_count: row.count,
+      offcut_codes: (g.offcutBars || []).map(b => b.offcut.code), reusable_m, scrap_m,
+      unplaced: (g.unplaced || []).map(p => p.length_m), fromPlan: true,
+    }
+  })
+}
+
 // profile_id -> its plan group with the most kg bought (the first one on a tie).
 function heaviestGroupByProfile(plan) {
   const out = new Map()

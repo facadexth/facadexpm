@@ -9,7 +9,7 @@ import { buildCutPlan, rangeLengths, issuePayload } from '../../lib/cutPlan.js'
 import { useProjectStock, useOffcuts, offcutsByGroup, useCutPlans, issueCutPlan, voidCutPlan } from '../../hooks/useEstimation2b.js'
 import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
-  lengthCompare, bestLengthsByProfile, bomStockBasis, toggleKey, offcutLayoutFingerprint, summarySource,
+  lengthCompare, bestLengthsByProfile, bomStockBasis, section1Rows, toggleKey, offcutLayoutFingerprint, summarySource,
 } from './projectBomHelpers.js'
 import { cutErrorWithBlockers } from './offcutHelpers.js'
 import { issuedOffcutCodes } from '../../lib/stickers.js'
@@ -78,10 +78,13 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const plan = useMemo(() => (tooMany || !stockRows || !offcutsReady ? null : buildCutPlan({ entries, mode: cutMode, settings, kgPerM, offcutsByGroup: offcuts, overrides, groupInfo })),
     [tooMany, stockRows, offcutsReady, entries, cutMode, settings, kgPerM, offcuts, overrides, groupInfo])
   // Section 1 buys the lengths the cut plan chose (market bar in a normal job), so it never disagrees with the summary
-  // or the cut sheet. A project job waits for the plan.
-  const stock = useMemo(() => bomStockBasis(cutMode, plan), [cutMode, plan])
+  // or the cut sheet; once issued, the issued plan's. A project job waits for the plan.
+  const stock = useMemo(() => bomStockBasis(cutMode, issued ? issued.plan : plan), [cutMode, issued, plan])
   const bom = useMemo(() => (tooMany || !stockRows || !stock ? null : buildProjectBom({ entries, settings, stock, profilesById: index.profiles, finishesById: index.finishes, partsById: index.parts })),
     [entries, settings, stock, index, tooMany, stockRows])
+  // ...and nets out the stock offcuts the plan cuts from (the issued plan's numbers once issued).
+  const section1 = useMemo(() => (bom ? section1Rows(bom.profiles, { plan, issuedPlan: issued ? issued.plan : null, minKeepM: Number(settings.min_keep_offcut_m) }) : null),
+    [bom, plan, issued, settings.min_keep_offcut_m])
   // The "ไม่เก็บ" ticks are keyed by bar position: when the plan's remainder layout changes (offcut discarded, offcuts
   // toggled, a length saved, cut mode changed...) they would point at other remainders, so they are cleared.
   const offcutLayout = useMemo(() => (plan ? offcutLayoutFingerprint(plan) : null), [plan])
@@ -168,7 +171,7 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
       )}
 
       <Section title="1. อลูมิเนียมโปรไฟล์ (แยกตามหน้าตัดและสี)">
-        <BomProfilesTable profiles={bom.profiles} overrides={isCustom ? projectStock.byProfile : {}} canEdit={canEdit && isCustom} onSaveStock={saveProfile} />
+        <BomProfilesTable profiles={section1} overrides={isCustom ? projectStock.byProfile : {}} canEdit={canEdit && isCustom && !issued} onSaveStock={saveProfile} issued={!!issued} />
       </Section>
 
       {isCustom && <CutOptimizerPanel profiles={bom.profiles} seriesMap={seriesMap} index={index} settings={settings} asOf={project.price_as_of} rangeM={rangeM} canEdit={canEdit} onUseLength={saveProfile} />}

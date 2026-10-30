@@ -35,3 +35,34 @@ describe('BomProfilesTable errors', () => {
     expect(box.textContent).toContain('denied')
   })
 })
+
+describe('BomProfilesTable stock offcuts', () => {
+  const withOffcuts = [
+    row({ offcut_codes: ['OC-0002', 'OC-0003'], base_count: 1, count: 0, fromPlan: true }),
+    row({ key: 'p2|f1', profile_id: 'p2', name: 'เฟรมบน', offcut_codes: [], base_count: 2, count: 2 }),
+  ]
+  it('shows the offcut codes per row, the old count struck through and the saving note', () => {
+    render(<BomProfilesTable profiles={withOffcuts} overrides={{}} canEdit={false} onSaveStock={async () => {}} />)
+    const headers = [...document.querySelectorAll('thead th')].map(th => th.textContent)
+    expect(headers).toContain('ใช้เศษในสต็อก')
+    expect(headers).toContain('เส้นใหม่')
+    expect(headers).not.toContain('จำนวนเส้น')
+    const first = document.querySelectorAll('tbody tr')[0]
+    expect(first.textContent).toContain('OC-0002')
+    expect(first.textContent).toContain('OC-0003')
+    expect(first.querySelector('s').textContent).toBe('1')
+    expect(document.querySelectorAll('tbody tr')[1].querySelector('s')).toBeNull()
+    expect(document.body.textContent).toContain('ใช้เศษ 2 ชิ้น · 1 หน้าตัดนี้ไม่ต้องซื้อเส้นใหม่ · กก. และค่าอลูมิเนียมลดตาม')
+  })
+  it('no offcuts: the table is as before', () => {
+    render(<BomProfilesTable profiles={[row()]} overrides={{}} canEdit={false} onSaveStock={async () => {}} />)
+    const headers = [...document.querySelectorAll('thead th')].map(th => th.textContent)
+    expect(headers).not.toContain('ใช้เศษในสต็อก')
+    expect(headers).toContain('จำนวนเส้น')
+    expect(document.body.textContent).not.toContain('ใช้เศษ ')
+  })
+  it('after issue it says the numbers are the issued plan\'s', () => {
+    render(<BomProfilesTable profiles={[row({ fromPlan: true, offcut_codes: [], base_count: 1 })]} overrides={{}} canEdit={false} onSaveStock={async () => {}} issued />)
+    expect(document.body.textContent).toContain('หลังยืนยันใบตัดแล้ว ตาราง 1 ใช้ตัวเลขของใบที่ยืนยัน ไม่เปลี่ยนตามสต็อกที่ขยับภายหลัง')
+  })
+})

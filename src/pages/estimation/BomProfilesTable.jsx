@@ -30,15 +30,32 @@ function StockCell({ group, overridden, canEdit, onSave, onError }) {
   )
 }
 
-export default function BomProfilesTable({ profiles, overrides, canEdit, onSaveStock }) {
+const codesOf = g => g.offcut_codes || []
+
+// The new-bar count; when stock offcuts replace bars, the count without them struck through first.
+function BarCount({ g }) {
+  if (g.unplaced.length) return <span style={{ color: 'var(--red)' }}>วางไม่ได้ {g.unplaced.length} ชิ้น (ยาวเกินเส้น)</span>
+  const changed = codesOf(g).length > 0 && g.base_count != null && g.base_count !== g.count
+  return changed ? <><s style={{ color: 'var(--text3)' }}>{g.base_count}</s> <b style={{ color: 'var(--green)' }}>{g.count}</b></> : g.count
+}
+
+// profiles: projectBomHelpers.section1Rows rows (plain buildProjectBom rows work too); issued: the numbers are the
+// issued plan's.
+export default function BomProfilesTable({ profiles, overrides, canEdit, onSaveStock, issued = false }) {
   const [error, setError] = useState(null)
   if (!profiles.length) return <div style={{ color: 'var(--text3)', fontSize: 13 }}>ยังไม่มีเส้นอลูมิเนียมที่คิดราคาได้</div>
+  const anyOffcut = profiles.some(g => codesOf(g).length > 0)
+  const usedPieces = profiles.reduce((n, g) => n + codesOf(g).length, 0)
+  const freed = profiles.filter(g => codesOf(g).length > 0 && g.count === 0 && g.base_count > 0).length
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {error && <InlineError title={error.title} onClose={() => setError(null)}>{error.text}</InlineError>}
       <div className="table-wrap">
         <table>
-          <thead><tr><th>หน้าตัด</th><th>สี</th><th>รายการตัด (ม. × ชิ้น)</th><th>ความยาวรวม (ม.)</th><th>ความยาวเส้น (ม.)</th><th>จำนวนเส้น</th><th>เศษเก็บใช้ต่อได้ (ม.)</th><th>เศษทิ้ง (ม.)</th></tr></thead>
+          <thead><tr>
+            <th>หน้าตัด</th><th>สี</th><th>รายการตัด (ม. × ชิ้น)</th><th>ความยาวรวม (ม.)</th><th>ความยาวเส้น (ม.)</th>
+            {anyOffcut && <th>ใช้เศษในสต็อก</th>}<th>{anyOffcut ? 'เส้นใหม่' : 'จำนวนเส้น'}</th><th>เศษเก็บใช้ต่อได้ (ม.)</th><th>เศษทิ้ง (ม.)</th>
+          </tr></thead>
           <tbody>
             {profiles.map(g => (
               <tr key={g.key}>
@@ -47,7 +64,10 @@ export default function BomProfilesTable({ profiles, overrides, canEdit, onSaveS
                 <td style={{ fontSize: 12 }}>{g.cuts.map(c => <div key={`${c.length_m}|${c.style}`} className="font-mono">{m3(c.length_m)} × {c.quantity} <span style={{ color: 'var(--text3)' }}>{c.style === 'miter45' ? '45° (ยาวด้านนอก)' : '90°'}</span></div>)}</td>
                 <td className="font-mono">{m2(g.cut_total_m)}</td>
                 <td><StockCell key={`${g.key}|${g.stock_length_m}`} group={g} overridden={Object.prototype.hasOwnProperty.call(overrides, g.profile_id)} canEdit={canEdit} onSave={onSaveStock} onError={setError} /></td>
-                <td className="font-mono">{g.unplaced.length ? <span style={{ color: 'var(--red)' }}>วางไม่ได้ {g.unplaced.length} ชิ้น (ยาวเกินเส้น)</span> : g.count}</td>
+                {anyOffcut && <td>{codesOf(g).length
+                  ? codesOf(g).map(c => <span key={c} className="badge font-mono" style={{ background: 'var(--yellow)', color: '#1d2420', marginRight: 4 }}>{c}</span>)
+                  : <span style={{ color: 'var(--text3)' }}>—</span>}</td>}
+                <td className="font-mono"><BarCount g={g} /></td>
                 <td className="font-mono">{m2(g.reusable_m)}</td>
                 <td className="font-mono">{m2(g.scrap_m)}</td>
               </tr>
@@ -55,6 +75,12 @@ export default function BomProfilesTable({ profiles, overrides, canEdit, onSaveS
           </tbody>
         </table>
       </div>
+      {usedPieces > 0 && (
+        <div className="alert alert-success" style={{ fontSize: 13, margin: 0 }}>
+          {`ใช้เศษ ${usedPieces} ชิ้น${freed > 0 ? ` · ${freed} หน้าตัดนี้ไม่ต้องซื้อเส้นใหม่` : ''} · กก. และค่าอลูมิเนียมลดตาม`}
+        </div>
+      )}
+      {issued && <div style={{ fontSize: 12, color: 'var(--text3)' }}>หลังยืนยันใบตัดแล้ว ตาราง 1 ใช้ตัวเลขของใบที่ยืนยัน ไม่เปลี่ยนตามสต็อกที่ขยับภายหลัง</div>}
     </div>
   )
 }

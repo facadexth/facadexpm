@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
   cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis,
-  barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep, offcutLayoutFingerprint, summarySource,
+  barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep, offcutLayoutFingerprint, summarySource, section1Rows,
 } from './projectBomHelpers.js'
 import { buildCutPlan, issuePayload } from '../../lib/cutPlan.js'
+import { buildProjectBom } from '../../lib/projectBom.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
 
 const line = (o = {}) => ({ resolved: true, profile_id: 'p1', series_id: 's1', quantity: 2, length_m: 2, ...o })
@@ -395,5 +396,59 @@ describe('sticker keep ticks', () => {
     const bar = { length_m: 6.4, left_m: 1, pieces: [] }
     const rows = [{ bar, count: 3, nos: [1, 2, 3] }, { bar, count: 1, nos: [4] }]
     expect(splitRowsByKeep(rows, no => no !== 2).map(r => [r.nos, r.count, r.keep])).toEqual([[[1, 3], 2, true], [[2], 1, false], [[4], 1, true]])
+  })
+})
+
+describe('section1Rows', () => {
+  const row = (o = {}) => ({ key: 'p1|f1', profile_id: 'p1', count: 1, stock_length_m: 6.4, unplaced: [], reusable_m: 1.2, scrap_m: 0.1, ...o })
+  const ob = (code, left) => ({ length_m: 1.6, left_m: left, pieces: [{}], offcut: { id: code, code, length_m: 1.6 } })
+  const live = { groups: [
+    { key: 'p1|f1', length_m: 6.4, offcutBars: [ob('OC-0002', 0.4), ob('OC-0003', 0.02)], bars: [], unplaced: [] },
+    { key: 'p2|f1', length_m: 6.4, offcutBars: [], bars: [{ left_m: 1 }, { left_m: 0.1 }], unplaced: [] },
+  ] }
+  const rows = [row(), row({ key: 'p2|f1', profile_id: 'p2', count: 2 })]
+
+  it('live plan: a group cutting from stock offcuts takes the plan\'s new bars, codes and remainders', () => {
+    const [a, b] = section1Rows(rows, { plan: live, issuedPlan: null, minKeepM: 0.5 })
+    expect(a).toMatchObject({ count: 0, base_count: 1, offcut_codes: ['OC-0002', 'OC-0003'], fromPlan: true, stock_length_m: 6.4, unplaced: [] })
+    expect(a.reusable_m).toBe(0)
+    expect(a.scrap_m).toBeCloseTo(0.42, 9)
+    expect(b).toMatchObject({ count: 2, base_count: 2, offcut_codes: [], fromPlan: false, reusable_m: 1.2 })
+  })
+  it('no offcuts in the plan (toggle off) leaves every row as it was', () => {
+    const plain = { groups: live.groups.map(g => ({ ...g, offcutBars: [] })) }
+    const out = section1Rows(rows, { plan: plain, issuedPlan: null, minKeepM: 0.5 })
+    expect(out.map(r => [r.count, r.fromPlan, r.offcut_codes.length])).toEqual([[1, false, 0], [2, false, 0]])
+  })
+  it('issued plan: every group in it takes the issued numbers, offcuts or not', () => {
+    const issuedPlan = { groups: [
+      { key: 'p1|f1', length_m: 6.4, offcutBars: [ob('OC-0002', 0.4)], bars: [], unplaced: [] },
+      { key: 'p2|f1', length_m: 6.0, offcutBars: [], bars: [{ left_m: 0.6 }, { left_m: 0.6 }, { left_m: 0.2 }], unplaced: [] },
+    ] }
+    const [a, b] = section1Rows(rows, { plan: live, issuedPlan, minKeepM: 0.5 })
+    expect(a).toMatchObject({ count: 0, offcut_codes: ['OC-0002'], fromPlan: true })
+    expect(b).toMatchObject({ count: 3, base_count: 2, stock_length_m: 6.0, offcut_codes: [], fromPlan: true })
+    expect(b.reusable_m).toBeCloseTo(1.2, 9)
+    expect(b.scrap_m).toBeCloseTo(0.2, 9)
+  })
+  it('a row missing from the issued plan keeps its own numbers', () => {
+    const issuedPlan = { groups: [live.groups[0]] }
+    const out = section1Rows([...rows, row({ key: 'p3|f1', profile_id: 'p3', count: 4 })], { plan: live, issuedPlan, minKeepM: 0.5 })
+    expect(out[1]).toMatchObject({ count: 2, fromPlan: false })
+    expect(out[2]).toMatchObject({ count: 4, fromPlan: false, offcut_codes: [] })
+  })
+  it('a plan piece that cannot be cut is reported by its length', () => {
+    const issuedPlan = { groups: [{ key: 'p1|f1', length_m: 6.4, offcutBars: [], bars: [], unplaced: [{ length_m: 7.2 }] }] }
+    expect(section1Rows([row()], { plan: null, issuedPlan, minKeepM: 0.5 })[0].unplaced).toEqual([7.2])
+  })
+  it('with the real planner: pieces placed on a stock offcut are not bought again', () => {
+    const entry = { opening_no: 'W-01', item_id: 'i1', item_name: '', quantity: 1, finish_id: 'f1',
+      bom: { profileLines: [line({ length_m: 1.5, quantity: 2 })], gridLines: [], hardwareLines: [] }, addonBom: null, extras: null, unresolved: [] }
+    const bom = buildProjectBom({ entries: [entry], settings: DEFAULT_SETTINGS, stock: { byProfile: {}, projectM: null }, profilesById: { p1: { name: 'กรอบ' } }, finishesById: {}, partsById: {} })
+    expect(bom.profiles[0].count).toBe(1)
+    const plan = buildCutPlan({ entries: [entry], mode: 'stock', settings: DEFAULT_SETTINGS, kgPerM: { 'p1|f1': 1 },
+      offcutsByGroup: { 'p1|f1': [{ id: 'o1', code: 'OC-0001', length_m: 3.2 }] }, overrides: {}, groupInfo: { 'p1|f1': { profile_id: 'p1', finish_id: 'f1', name: 'กรอบ' } } })
+    const [r] = section1Rows(bom.profiles, { plan, issuedPlan: null, minKeepM: DEFAULT_SETTINGS.min_keep_offcut_m })
+    expect(r).toMatchObject({ count: 0, base_count: 1, offcut_codes: ['OC-0001'], fromPlan: true })
   })
 })

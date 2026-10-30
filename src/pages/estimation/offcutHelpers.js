@@ -48,7 +48,8 @@ export function voidBlockers({ offcuts, plans, planId, projectNames }) {
   return { codes: used.map(o => o.code), consumers }
 }
 
-// The text void_cut_plan raises when another job has used an offcut this plan made.
+// The text void_cut_plan raises when another job has used an offcut this plan made. Must match the RAISE text in
+// void_cut_plan (supabase/migrations/2026-10-27-01-cut-plans-offcuts.sql).
 export const USED_BY_OTHER_JOB = 'ถูกงานอื่นใช้ไปแล้ว'
 
 // The cut-sheet error to show: a void refused because another job used this plan's offcuts gets voidBlockers attached
