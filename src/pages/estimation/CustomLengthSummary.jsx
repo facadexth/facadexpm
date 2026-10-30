@@ -4,17 +4,19 @@
 import { useState } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { customLengthSummaryModel } from './projectBomHelpers.js'
+import InlineError from './InlineError.jsx'
 
 const f2 = n => Number(n).toFixed(2)
 const note = { fontSize: 11, color: 'var(--text3)' }
 
 export default function CustomLengthSummary({ plan, compare, prices, kgPerM, settings, canEdit, onUse, onUseAll }) {
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
   const stockL = f2(settings.stock_length_m)
   const m = customLengthSummaryModel({ plan, compare, prices, kgPerM })
   const run = async fn => {
-    setBusy(true)
-    try { await fn() } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) } finally { setBusy(false) }
+    setBusy(true); setError(null)
+    try { await fn() } catch (e) { setError(e.message || String(e)) } finally { setBusy(false) }
   }
   const anyUse = m.rows.some(r => r.canUse)
 
@@ -24,6 +26,7 @@ export default function CustomLengthSummary({ plan, compare, prices, kgPerM, set
         <div style={{ fontWeight: 700 }}>สรุปการซื้อเส้น</div>
         {canEdit && anyUse && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => run(onUseAll)}>ใช้ทั้งหมด</button>}
       </div>
+      {error && <InlineError title="บันทึกไม่สำเร็จ" onClose={() => setError(null)}>{error}</InlineError>}
       <div className="table-wrap">
         <table>
           <thead><tr>

@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { fmtDate } from '../../lib/supabase.js'
 import { discardOffcut } from '../../hooks/useEstimation2b.js'
+import InlineError from './InlineError.jsx'
 
 const mm = m => String(Math.round(Number(m) * 1000))
 const muted = { fontSize: 12, color: 'var(--text3)' }
@@ -62,7 +63,7 @@ export default function OffcutStockPanel({ offcuts, groupInfo, plan, used, setti
         <span style={muted}>เศษที่ติดสติกเกอร์ไว้จากงานก่อน · {used ? 'จัดลงก่อนตัดเส้นใหม่' : 'ไม่ใช้ (ปิดอยู่)'}</span>
       </div>
       {highlightCode && !highlighted && <div style={{ fontSize: 12, color: 'var(--yellow)' }}>เศษ {highlightCode} ไม่อยู่ในหน้าตัดของโครงการนี้</div>}
-      {error && <div style={{ fontSize: 12, color: 'var(--red)' }}>{error}</div>}
+      {error && <InlineError onClose={() => setError(null)}>{error}</InlineError>}
       {rows.length === 0 ? <div style={muted}>ไม่มีเศษในสต็อกของหน้าตัดที่โครงการนี้ใช้</div> : (
         <div className="table-wrap"><table>
           <thead><tr><th>รหัสเศษ</th><th>หน้าตัด</th><th>ยาว (มม.)</th><th>มาจาก</th><th>วันที่</th><th>ผล</th>{canEdit && <th />}</tr></thead>

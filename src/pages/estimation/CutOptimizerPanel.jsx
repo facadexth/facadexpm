@@ -4,25 +4,28 @@
 import { useState, useMemo } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { optimizerView } from './projectBomHelpers.js'
+import InlineError from './InlineError.jsx'
 
 const m2 = n => Number(n).toFixed(2)
 
 export default function CutOptimizerPanel({ profiles, seriesMap, index, settings, asOf, rangeM, canEdit, onUseLength }) {
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
   const group = profiles.find(g => g.key === key) || profiles[0] || null
   const view = useMemo(() => (group ? optimizerView({ group, index, settings, asOf, seriesIds: seriesMap[group.key] || [], rangeM }) : null), [group, index, settings, asOf, seriesMap, rangeM])
   if (!group || !view) return null
 
   const use = async L => {
-    setBusy(true)
-    try { await onUseLength(group.profile_id, L) } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) } finally { setBusy(false) }
+    setBusy(true); setError(null)
+    try { await onUseLength(group.profile_id, L) } catch (e) { setError(e.message || String(e)) } finally { setBusy(false) }
   }
   const best = view.rows.find(r => r.best)
 
   return (
     <div className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
       <div style={{ fontWeight: 700 }}>ตัวช่วยเลือกความยาวเส้น <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text3)' }}>(คิดรวมทั้งโครงการ ไม่ใช่ต่อรายการ)</span></div>
+      {error && <InlineError title="บันทึกไม่สำเร็จ" onClose={() => setError(null)}>{error}</InlineError>}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div><label className="label">หน้าตัด</label>
           <select className="input" value={group.key} onChange={e => setKey(e.target.value)}>

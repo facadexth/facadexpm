@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PAPERS, stickerModel, stickerPages, endLabel, isOffcutKept } from '../../lib/stickers.js'
 import { qrDataUrl, endGlyphDataUrl, downloadStickersPdf } from '../../lib/stickerRender.js'
+import InlineError from './InlineError.jsx'
 
 const ALL = '__all'
 const PRINT_ID = 'sticker-print'
@@ -53,6 +54,7 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
   const [images, setImages] = useState({}) // qr text / glyph key -> data URL
   const [busy, setBusy] = useState(false)
   const [printing, setPrinting] = useState(false)
+  const [error, setError] = useState(null)
   const imagesRef = useRef(images)
   imagesRef.current = images
   const paper = PAPERS[paperKey]
@@ -82,15 +84,15 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
     if (!printing) return undefined
     const id = requestAnimationFrame(() => {
       downloadStickersPdf(PRINT_ID, paper, `สติกเกอร์-${projectName || 'โปรเจกต์'}.pdf`)
-        .catch(e => alert(e.message))
+        .catch(e => setError(e.message || String(e)))
         .finally(() => { setPrinting(false); setBusy(false) })
     })
     return () => cancelAnimationFrame(id)
   }, [printing]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const download = async () => {
-    setBusy(true)
-    try { await ensureImages(toPrint); setPrinting(true) } catch (e) { alert(e.message); setBusy(false) }
+    setBusy(true); setError(null)
+    try { await ensureImages(toPrint); setPrinting(true) } catch (e) { setError(e.message || String(e)); setBusy(false) }
   }
 
   if (!shown) return null
@@ -122,6 +124,7 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
           </button>
         </div>
       </div>
+      {error && <InlineError title="สร้าง PDF ไม่สำเร็จ" onClose={() => setError(null)}>{error}</InlineError>}
       {!issued && <div style={{ fontSize: 12, color: 'var(--yellow)' }}>ยืนยันใบตัดก่อน จึงจะได้รหัสเศษสำหรับสติกเกอร์</div>}
       {codesMissing && <div style={muted}>กำลังโหลดรหัสเศษ...</div>}
       <div style={muted}>
