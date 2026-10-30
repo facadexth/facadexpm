@@ -1,6 +1,6 @@
 // src/lib/stickers.test.js
 import { describe, it, expect } from 'vitest'
-import { stickerModel, notchText, roleTh, endLabel, issuedOffcutCodes, isOffcutKept, shortDate, stickerPages, PAPERS, NEW_OFFCUT_CODE, NO_DIE_TEXT, finishFontMm } from './stickers.js'
+import { stickerModel, notchText, roleTh, endLabel, issuedOffcutCodes, isOffcutKept, shortDate, stickerPages, PAPERS, NEW_OFFCUT_CODE, NO_DIE_TEXT, finishFontMm, barChunks, clampRange, stickersInRange } from './stickers.js'
 import { glyphPoints, qrDataUrl } from './stickerRender.js'
 
 const pc = (len, o = {}) => ({ length_m: len, opening_no: 'W-01', item_id: 'i1', item_name: '', role_name: 'กรอบบานตั้ง', end_a: 'square', end_b: 'square', notch: null, kerf_style: 'square', ...o })
@@ -148,5 +148,32 @@ describe('die no. and finish line', () => {
     expect(finishFontMm('x'.repeat(60))).toBe(1.9)
     expect(finishFontMm('x'.repeat(80))).toBe(1.4)
     expect(finishFontMm('x'.repeat(300))).toBe(1.4)
+  })
+})
+
+describe('bar ranges', () => {
+  it('every sticker knows its new-bar number (null on a stock-offcut bar); pieces carry k and N', () => {
+    const s = stickerModel(args())
+    expect(s.map(x => x.barNo)).toEqual([null, null, 1, 1, 1, 2, 2, 1, 1])
+    expect(s.filter(x => x.kind === 'piece').map(x => [x.seq, x.total])).toEqual([[1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 6]])
+  })
+  it('barChunks splits n bars into rounds of 10', () => {
+    expect(barChunks(25)).toEqual([{ from: 1, to: 10 }, { from: 11, to: 20 }, { from: 21, to: 25 }])
+    expect(barChunks(10)).toEqual([{ from: 1, to: 10 }])
+    expect(barChunks(0)).toEqual([])
+  })
+  it('clampRange keeps whole bars inside 1..n, swaps a backwards range, fills a blank end', () => {
+    expect(clampRange('3', '7', 12)).toEqual({ from: 3, to: 7 })
+    expect(clampRange('12', '3', 12)).toEqual({ from: 3, to: 12 })
+    expect(clampRange('0', '99', 12)).toEqual({ from: 1, to: 12 })
+    expect(clampRange('', '', 12)).toEqual({ from: 1, to: 12 })
+    expect(clampRange('2.7', 'abc', 12)).toEqual({ from: 2, to: 12 })
+    expect(clampRange(5, 5, 12)).toEqual({ from: 5, to: 5 })
+  })
+  it('stickersInRange: one group, bars from..to; stock-offcut bars go with the range that starts at 1', () => {
+    const s = stickerModel(args())
+    expect(stickersInRange(s, 'A|F', 2, 2).map(x => x.footR)).toEqual(['เส้น 2 · 4/6', 'เส้น 2 · 5/6'])
+    expect(stickersInRange(s, 'A|F', 1, 1).map(x => x.footR)).toEqual(['OC-0003 · 1/6', 'OC-0003 · 27/10/69', 'เส้น 1 · 2/6', 'เส้น 1 · 3/6', 'เส้น 1 · 27/10/69'])
+    expect(stickersInRange(s, 'B|F', 1, 1).every(x => x.groupKey === 'B|F')).toBe(true)
   })
 })

@@ -81,15 +81,15 @@ export function stickerModel({ plan, projectName, projectId, items, codes, date 
     const offFinish = [g.name, finish].filter(Boolean).join(' · ')
     const byKey = new Map((g.newOffcuts || []).map(o => [o.key, o]))
     const seq = [
-      ...g.offcutBars.map(b => ({ bar: b, ref: b.offcut.code, label: b.offcut.code })),
-      ...g.bars.map((b, i) => ({ bar: b, ref: String(i + 1), label: `เส้น ${i + 1}` })),
+      ...g.offcutBars.map(b => ({ bar: b, ref: b.offcut.code, label: b.offcut.code, barNo: null })),
+      ...g.bars.map((b, i) => ({ bar: b, ref: String(i + 1), label: `เส้น ${i + 1}`, barNo: i + 1 })),
     ]
-    for (const { bar, ref, label } of seq) {
+    for (const { bar, ref, label, barNo } of seq) {
       for (const p of bar.pieces) {
         k++
         const openingId = p.item_id ?? (items || {})[p.opening_no] ?? null
         out.push({
-          kind: 'piece', groupKey: g.key, title: `${p.opening_no} · ${roleTh(p.role_name)}`, length_mm: mmOf(p.length_m), die, finish,
+          kind: 'piece', groupKey: g.key, barNo, seq: k, total, title: `${p.opening_no} · ${roleTh(p.role_name)}`, length_mm: mmOf(p.length_m), die, finish,
           ends: [p.end_a || 'square', p.end_b || 'square'], notchText: notchText(p.notch), footL: projectName || '', footR: `${label} · ${k}/${total}`,
           qr: openingId ? `#tab=estimation&project=${projectId}&item=${openingId}` : `#tab=estimation&project=${projectId}`,
         })
@@ -98,7 +98,7 @@ export function stickerModel({ plan, projectName, projectId, items, codes, date 
       if (!o || (codes && !isOffcutKept(o, { codes }))) continue
       const code = codes ? codes[o.key] : null
       out.push({
-        kind: 'offcut', groupKey: g.key, title: 'เศษ → เข้าสต็อก', code: code || NEW_OFFCUT_CODE, length_mm: mmOf(o.length_m), die, finish: offFinish,
+        kind: 'offcut', groupKey: g.key, barNo, title: 'เศษ → เข้าสต็อก', code: code || NEW_OFFCUT_CODE, length_mm: mmOf(o.length_m), die, finish: offFinish,
         ends: [o.end_a || 'square', 'square'], notchText: null, footL: `จาก ${projectName || ''}`, footR: `${label} · ${day}`,
         qr: code ? `#tab=estimation&offcut=${code}` : null, offKey: o.key, keepDefault: codes ? true : !!o.keep,
       })
@@ -113,4 +113,30 @@ export function stickerPages(stickers, paper) {
   const pages = []
   for (let i = 0; i < (stickers || []).length; i += per) pages.push(stickers.slice(i, i + per))
   return pages
+}
+
+// Print rounds of `size` bars: [{ from: 1, to: 10 }, { from: 11, to: 20 }, ...] for n new bars.
+export function barChunks(n, size = 10) {
+  const out = []
+  for (let a = 1; a <= n; a += size) out.push({ from: a, to: Math.min(n, a + size - 1) })
+  return out
+}
+
+// A typed bar range (n >= 1): whole numbers inside 1..n, swapped when typed the other way round; a blank or
+// non-number end becomes 1 (from) or n (to).
+export function clampRange(from, to, n) {
+  const whole = (v, fallback) => {
+    const x = Math.trunc(Number(v))
+    return String(v ?? '').trim() !== '' && Number.isFinite(x) ? Math.min(n, Math.max(1, x)) : fallback
+  }
+  let a = whole(from, 1)
+  let b = whole(to, n)
+  if (a > b) [a, b] = [b, a]
+  return { from: a, to: b }
+}
+
+// One profile group's stickers from new bar `from` to bar `to`. Stock-offcut bars are cut before bar 1, so their
+// pieces and remainders belong to the range that starts at bar 1. A remainder goes with its own bar.
+export function stickersInRange(stickers, groupKey, from, to) {
+  return (stickers || []).filter(s => s.groupKey === groupKey && (s.barNo == null ? from <= 1 : s.barNo >= from && s.barNo <= to))
 }

@@ -3,7 +3,7 @@
 // size. Before issue the user ticks "ไม่เก็บ" on remainders not to keep (onFlip); after issue the stickers come from
 // the frozen snapshot with the real offcut codes, and the PDF can be downloaded. QR and end glyphs are PNG images.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PAPERS, stickerModel, stickerPages, endLabel, isOffcutKept, NO_DIE_TEXT, finishFontMm } from '../../lib/stickers.js'
+import { PAPERS, stickerModel, stickerPages, endLabel, isOffcutKept, NO_DIE_TEXT, finishFontMm, barChunks, clampRange, stickersInRange } from '../../lib/stickers.js'
 import { qrDataUrl, endGlyphDataUrl, downloadStickersPdf } from '../../lib/stickerRender.js'
 import InlineError from './InlineError.jsx'
 import MissingDieNotice from './MissingDieNotice.jsx'
@@ -58,6 +58,8 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
   const [busy, setBusy] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [error, setError] = useState(null)
+  // The typed bar range belongs to one profile group; another group starts on its first 10 bars.
+  const [rangeFor, setRangeFor] = useState({ key: null, from: '', to: '' })
   const imagesRef = useRef(images)
   imagesRef.current = images
   const paper = PAPERS[paperKey]
@@ -65,11 +67,24 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
   const all = useMemo(() => stickerModel({ plan: shown, projectName, projectId, items: openingIds, codes: issued ? codes || {} : null, date: issued ? issued.issued_at : undefined }),
     [shown, projectName, projectId, openingIds, codes, issued])
   const selected = groupKey === ALL ? ALL : (groups.some(g => g.key === groupKey) ? groupKey : (groups[0] && groups[0].key))
-  const visible = useMemo(() => (selected === ALL ? all : all.filter(s => s.groupKey === selected)), [all, selected])
+  const selGroup = selected === ALL ? null : groups.find(g => g.key === selected) || null
+  const nBars = selGroup ? selGroup.bars.length : 0
+  const rangeText = rangeFor.key === selected ? rangeFor : { key: selected, from: '1', to: String(Math.min(10, nBars)) }
+  const range = nBars > 0 ? clampRange(rangeText.from, rangeText.to, nBars) : null
+  const setRange = (from, to) => setRangeFor({ key: selected, from: String(from), to: String(to) })
+  const rFrom = range ? range.from : null
+  const rTo = range ? range.to : null
+  const visible = useMemo(() => {
+    if (selected === ALL) return all
+    return rFrom != null ? stickersInRange(all, selected, rFrom, rTo) : all.filter(s => s.groupKey === selected)
+  }, [all, selected, rFrom, rTo])
   // After issue every listed offcut was stocked; a leftover flip from before the issue must not grey it out.
   const kept = s => s.kind !== 'offcut' || !!issued || isOffcutKept({ key: s.offKey, keep: s.keepDefault }, { flipped })
   const toPrint = visible.filter(kept)
   const pieceCount = visible.filter(s => s.kind === 'piece').length
+  const seqs = visible.filter(s => s.kind === 'piece').map(s => s.seq)
+  const totalPieces = all.length ? (all.find(s => s.kind === 'piece') || {}).total || 0 : 0
+  const keptOffCount = visible.filter(s => s.kind === 'offcut' && kept(s)).length
 
   // Draw the missing QR codes and glyphs (browser only; the SSR preview shows placeholders).
   const ensureImages = async list => {
@@ -86,7 +101,8 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
   useEffect(() => {
     if (!printing) return undefined
     const id = requestAnimationFrame(() => {
-      downloadStickersPdf(PRINT_ID, paper, `สติกเกอร์-${projectName || 'โปรเจกต์'}.pdf`)
+      const part = range && selGroup ? `-${selGroup.name || 'หน้าตัด'}-เส้น${range.from}-${range.to}` : ''
+      downloadStickersPdf(PRINT_ID, paper, `สติกเกอร์-${projectName || 'โปรเจกต์'}${part}.pdf`)
         .catch(e => setError(e.message || String(e)))
         .finally(() => { setPrinting(false); setBusy(false) })
     })
@@ -110,12 +126,20 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
         <span style={muted}>เรียงตามลำดับตัด · แปะทันทีที่ตัดแต่ละท่อน · เศษก็แปะ</span>
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div><label className="label">หน้าตัด</label>
-          <select className="input" value={selected || ''} onChange={e => setGroupKey(e.target.value)}>
-            {groups.map(g => <option key={g.key} value={g.key}>{groupLabel(g)}</option>)}
+        <div><label className="label" htmlFor="stk-group">หน้าตัด</label>
+          <select id="stk-group" className="input" value={selected || ''} onChange={e => setGroupKey(e.target.value)}>
+            {groups.map(g => <option key={g.key} value={g.key}>{`${groupLabel(g)} (${g.bars.length} เส้น)`}</option>)}
             {groups.length > 1 && <option value={ALL}>ทุกหน้าตัด</option>}
           </select>
         </div>
+        {range && <>
+          <div><label className="label" htmlFor="stk-from">เส้นที่</label>
+            <input id="stk-from" className="input" type="number" min={1} max={nBars} style={{ width: 72 }} value={rangeText.from} onChange={e => setRangeFor({ ...rangeText, from: e.target.value })} />
+          </div>
+          <div><label className="label" htmlFor="stk-to">ถึง</label>
+            <input id="stk-to" className="input" type="number" min={1} max={nBars} style={{ width: 72 }} value={rangeText.to} onChange={e => setRangeFor({ ...rangeText, to: e.target.value })} />
+          </div>
+        </>}
         <div><label className="label">กระดาษ</label>
           <select className="input" value={paperKey} onChange={e => setPaperKey(e.target.value)}>
             {Object.entries(PAPERS).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
@@ -123,10 +147,29 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
         </div>
         <div style={{ display: 'grid', gap: 4 }}>
           <button type="button" className="btn btn-primary btn-sm" disabled={!issued || codesMissing || busy || toPrint.length === 0} onClick={download}>
-            {busy ? 'กำลังสร้าง PDF...' : 'ดาวน์โหลด PDF สติกเกอร์'}
+            {busy ? 'กำลังสร้าง PDF...' : `ดาวน์โหลด PDF ${toPrint.length} ดวง`}
           </button>
         </div>
       </div>
+      {range && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {nBars > 10 && <span style={muted}>รอบละ 10 เส้น:</span>}
+          {nBars > 10 && barChunks(nBars).map(c => {
+            const on = range.from === c.from && range.to === c.to
+            return <button key={c.from} type="button" aria-pressed={on} className={`btn btn-sm ${on ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRange(c.from, c.to)}>{`${c.from}–${c.to}`}</button>
+          })}
+          {(() => {
+            const on = range.from === 1 && range.to === nBars
+            return <button type="button" aria-pressed={on} className={`btn btn-sm ${on ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRange(1, nBars)}>ทั้งหมด</button>
+          })()}
+        </div>
+      )}
+      {range && (
+        <div style={muted}>
+          {`${selGroup.name || '?'} เส้น ${range.from}–${range.to} = ท่อน ${pieceCount} ดวง + เศษ ${keptOffCount} ดวง`}
+          {seqs.length ? ` · ลำดับ ${seqs[0]}/${totalPieces} … ${seqs[seqs.length - 1]}/${totalPieces}` : ''}
+        </div>
+      )}
       {error && <InlineError title="สร้าง PDF ไม่สำเร็จ" onClose={() => setError(null)}>{error}</InlineError>}
       <MissingDieNotice missing={missingDie} />
       {!issued && <div style={{ fontSize: 12, color: 'var(--yellow)' }}>ยืนยันใบตัดก่อน จึงจะได้รหัสเศษสำหรับสติกเกอร์</div>}

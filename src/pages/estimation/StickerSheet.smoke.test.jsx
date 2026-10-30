@@ -26,7 +26,7 @@ describe('StickerSheet', () => {
     expect(html).toContain('เส้น 1 · 1/3')
     expect(html).toContain('OC-ใหม่')
     expect(html).toContain('ยืนยันใบตัดก่อน จึงจะได้รหัสเศษสำหรับสติกเกอร์')
-    expect(html).toMatch(/disabled=""[^>]*>ดาวน์โหลด PDF สติกเกอร์/)
+    expect(html).toMatch(/disabled=""[^>]*>ดาวน์โหลด PDF \d+ ดวง/)
     const boxes = checkboxes(html)
     expect(boxes).toHaveLength(2)
     expect(boxes.every(b => !b.includes('disabled'))).toBe(true)
@@ -49,7 +49,7 @@ describe('StickerSheet', () => {
     const boxes = checkboxes(html)
     expect(boxes).toHaveLength(1)
     expect(boxes[0]).toContain('disabled')
-    expect(html).not.toMatch(/disabled=""[^>]*>ดาวน์โหลด PDF สติกเกอร์/)
+    expect(html).not.toMatch(/disabled=""[^>]*>ดาวน์โหลด PDF \d+ ดวง/)
     expect(html).not.toContain('ยืนยันใบตัดก่อน')
   })
   it('after issue: a flip left over from before the issue does not grey out a stocked offcut', () => {
@@ -64,7 +64,7 @@ describe('StickerSheet', () => {
     const issued = { id: 'cp1', status: 'issued', signature: 'S', issued_at: '2026-10-27T03:00:00Z', plan }
     const html = render({ issued, codes: null })
     expect(html).toContain('กำลังโหลดรหัสเศษ...')
-    expect(html).toMatch(/disabled=""[^>]*>ดาวน์โหลด PDF สติกเกอร์/)
+    expect(html).toMatch(/disabled=""[^>]*>ดาวน์โหลด PDF \d+ ดวง/)
   })
   it('the die no. leads the title; a profile without one shows the red ไม่มีรหัส tag', () => {
     expect(render({})).toMatch(/background:#111111[^>]*>F7980<\/span>W-01 · กรอบบานตั้ง/)
@@ -84,5 +84,16 @@ describe('StickerSheet', () => {
   it('shows the missing-die warning it is given', () => {
     expect(render({ missingDie: { names: ['เฟรมบน', 'เฟรมล่าง'], series: ['ทั่วไป'] } }))
       .toContain('หน้าตัด 2 ตัวยังไม่มีรหัส: เฟรมบน, เฟรมล่าง (ซีรีส์ ทั่วไป) — กรอกในแคตตาล็อก')
+  })
+  it('the PDF button says how many stickers it will print', () => {
+    // 3 pieces + 2 remainders, of which the short one is dropped by default -> 4 to print
+    expect(render({})).toContain('ดาวน์โหลด PDF 4 ดวง')
+  })
+  it('a group of up to 10 bars: range 1–N, no per-10 buttons, only ทั้งหมด', () => {
+    const html = render({})
+    expect(html).toContain('เส้นที่')
+    expect(html).toContain('ทั้งหมด')
+    expect(html).not.toContain('รอบละ 10 เส้น:')
+    expect(html).toContain('กรอบบาน เส้น 1–2 = ท่อน 3 ดวง + เศษ 1 ดวง · ลำดับ 1/3 … 3/3')
   })
 })
