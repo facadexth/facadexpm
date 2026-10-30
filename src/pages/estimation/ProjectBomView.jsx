@@ -11,7 +11,7 @@ import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
   lengthCompare, bestLengthsByProfile, bomStockBasis, toggleKey, offcutLayoutFingerprint, summarySource,
 } from './projectBomHelpers.js'
-import { voidBlockers } from './offcutHelpers.js'
+import { cutErrorWithBlockers } from './offcutHelpers.js'
 import { issuedOffcutCodes } from '../../lib/stickers.js'
 import { saveProfileStock } from './projectStockSave.js'
 import BomProfilesTable from './BomProfilesTable.jsx'
@@ -116,10 +116,10 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   }
   const issuePlan = () => runCut('issue', () => issueCutPlan(project.id, issuePayload(plan, flipped)))
   const voidPlan = () => runCut('void', () => voidCutPlan(issued.id))
-  // Built from the reloaded offcuts and plans, so the codes and the job named are the current ones.
-  const cutErrorView = useMemo(() => (cutError && cutError.action === 'void' && issued
-    ? { ...cutError, blockers: voidBlockers({ offcuts: offcutsQ.data, plans: plansQ.data, planId: issued.id, projectNames }) }
-    : cutError), [cutError, issued, offcutsQ.data, plansQ.data, projectNames])
+  // Built from the reloaded offcuts and plans, so the codes and the job named are the current ones. Only the server's
+  // "used by another job" refusal gets them; any other void failure shows its own message.
+  const cutErrorView = useMemo(() => cutErrorWithBlockers({ error: cutError, offcuts: offcutsQ.data, plans: plansQ.data, planId: issued ? issued.id : null, projectNames }),
+    [cutError, issued, offcutsQ.data, plansQ.data, projectNames])
 
   if (stockQ.error) return <div className="alert alert-error">โหลดความยาวเส้นไม่สำเร็จ: {String(stockQ.error)}</div>
   if (!items.length) return <div style={{ color: 'var(--text3)', padding: 20 }}>ยังไม่มีรายการในโปรเจกต์</div>

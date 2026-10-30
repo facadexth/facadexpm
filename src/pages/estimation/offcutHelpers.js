@@ -48,6 +48,16 @@ export function voidBlockers({ offcuts, plans, planId, projectNames }) {
   return { codes: used.map(o => o.code), consumers }
 }
 
+// The text void_cut_plan raises when another job has used an offcut this plan made.
+export const USED_BY_OTHER_JOB = 'ถูกงานอื่นใช้ไปแล้ว'
+
+// The cut-sheet error to show: a void refused because another job used this plan's offcuts gets voidBlockers attached
+// (planId = the issued plan); any other error, including other void failures, is returned as it is.
+export function cutErrorWithBlockers({ error, offcuts, plans, planId, projectNames }) {
+  if (!error || error.action !== 'void' || !planId || !String(error.message || '').includes(USED_BY_OTHER_JOB)) return error
+  return { ...error, blockers: voidBlockers({ offcuts, plans, planId, projectNames }) }
+}
+
 // "OC-0002, OC-0003" up to 3 codes; more as "OC-0002 … OC-0007" (the mockup's form).
 export function codesText(codes) {
   const c = codes || []

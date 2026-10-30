@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { offcutTabs, offcutConsumer, voidBlockers, codesText } from './offcutHelpers.js'
+import { offcutTabs, offcutConsumer, voidBlockers, codesText, cutErrorWithBlockers } from './offcutHelpers.js'
 
 const off = (id, code, o = {}) => ({ id, code, profile_id: 'A', finish_id: 'F', length_m: 1.2, status: 'in_stock', source_project_id: 'p0', source_plan_id: 'cpX', used_plan_id: null, ...o })
 const groupInfo = { 'A|F': { profile_id: 'A', finish_id: 'F', name: 'เฟรมข้าง' } }
@@ -79,5 +79,28 @@ describe('codesText', () => {
     expect(codesText(['OC-0002', 'OC-0003', 'OC-0006'])).toBe('OC-0002, OC-0003, OC-0006')
     expect(codesText(['OC-0002', 'OC-0003', 'OC-0006', 'OC-0007'])).toBe('OC-0002 … OC-0007')
     expect(codesText([])).toBe('')
+  })
+})
+
+describe('cutErrorWithBlockers', () => {
+  const offcuts = [off('m2', 'OC-0011', { source_plan_id: 'cp1', status: 'used', used_plan_id: 'cp9' })]
+  const base = { offcuts, plans, planId: 'cp1', projectNames: { p9: 'HOSPITAL' } }
+  it('the server refusal "used by another job" gets the codes and jobs', () => {
+    const error = { action: 'void', message: 'เศษจากใบตัดนี้ถูกงานอื่นใช้ไปแล้ว ยกเลิกไม่ได้' }
+    const v = cutErrorWithBlockers({ error, ...base })
+    expect(v.message).toBe(error.message)
+    expect(v.blockers.codes).toEqual(['OC-0011'])
+    expect(v.blockers.consumers.map(c => c.projectName)).toEqual(['HOSPITAL'])
+  })
+  it('any other void failure stays the plain error, even when offcuts of the plan are used', () => {
+    const error = { action: 'void', message: 'network down' }
+    expect(cutErrorWithBlockers({ error, ...base })).toBe(error)
+  })
+  it('an issue error, no error, or no issued plan pass through unchanged', () => {
+    const issue = { action: 'issue', message: 'เศษจากใบตัดนี้ถูกงานอื่นใช้ไปแล้ว' }
+    expect(cutErrorWithBlockers({ error: issue, ...base })).toBe(issue)
+    expect(cutErrorWithBlockers({ error: null, ...base })).toBeNull()
+    const v = { action: 'void', message: 'เศษจากใบตัดนี้ถูกงานอื่นใช้ไปแล้ว ยกเลิกไม่ได้' }
+    expect(cutErrorWithBlockers({ error: v, ...base, planId: null })).toBe(v)
   })
 })
