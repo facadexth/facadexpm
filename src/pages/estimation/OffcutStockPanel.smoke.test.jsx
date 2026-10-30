@@ -120,7 +120,7 @@ describe('OffcutStockPanel tabs', () => {
 
   it('tab 1 leaves out what this plan made and keeps what it already took (no discard on a used one)', () => {
     tabView()
-    expect(tab('เศษที่งานนี้ใช้ (3)').getAttribute('aria-selected')).toBe('true')
+    expect(tab('เศษจากงานอื่น (3)').getAttribute('aria-selected')).toBe('true')
     expect(tab('เศษที่ใบตัดนี้สร้าง (3)').getAttribute('aria-selected')).toBe('false')
     expect(bodyRows().map(r => r.cells[0].textContent)).toEqual(['OC-0001', 'OC-0002', 'OC-0009'])
     expect(bodyRows()[2].textContent).toContain('ใช้ตัด 1 ท่อน')

@@ -619,7 +619,7 @@ Plan: `docs/superpowers/plans/2026-10-30-cut-sheet-round2.md`. Spec: owner-appro
 1. Section 1 nets out stock offcuts (`section1Rows`): codes per row, new bars = the plan's, old count struck through; after issue it uses the issued plan (fixes the deferred minor "after issue, section 1 follows the live plan"); stock-length input read-only after issue.
 2. Die no. tag before the name on cut-sheet group headers and stickers, red "ไม่มีรหัส" when `alu_profiles.drawing_no` is empty; warning box listing those profiles; finish name on its own sticker line, wraps, smaller font, never "…". Issued plans show the catalogue's current die no. (`withLiveDieNos`).
 5. `InlineError` replaces every `alert()` in the cut-sheet screens (guard test `noBrowserDialogs.test.js`); a refused void names the used offcut codes and the consuming job, built client-side from the reloaded `alu_offcuts` / `alu_cut_plans`.
-6. Offcut panel tabs "เศษที่งานนี้ใช้ (n)" / "เศษที่ใบตัดนี้สร้าง (n)" with status chips; "ทิ้ง" only on in-stock rows.
+6. Offcut panel tabs "เศษจากงานอื่น (n)" / "เศษที่ใบตัดนี้สร้าง (n)" with status chips; "ทิ้ง" only on in-stock rows.
 7. Stickers by bar range (default bars 1–10, per-10 buttons, "ทั้งหมด"); PDF button shows the count; k/N stays whole-project; stock-offcut bars go with the range that starts at bar 1.
 8. Length helper (`CutOptimizerPanel`) shows the best 5 by kg plus the 6.40 m row; "ดีที่สุด" now = least kg (ruling 4), no longer least cost.
 

@@ -26,7 +26,14 @@ function StickerFace({ s, paper, u, qrImg, glyphImg }) {
   return (
     <div style={{ width: '100%', height: '100%', boxSizing: 'border-box', padding: z(1.4), display: 'grid', gridTemplateColumns: '1fr auto', gridTemplateRows: 'auto auto auto auto 1fr', columnGap: z(1.2),
       background: off ? '#eaf6f1' : '#ffffff', color: '#111111', border: off ? `${z(0.5)} solid #1f6f5c` : 'none', fontFamily: 'inherit', lineHeight: 1.2, overflow: 'hidden' }}>
-      <div style={{ ...line, fontWeight: 700, fontSize: z(2.5), color: off ? '#1f6f5c' : '#111111' }}><span className="font-mono" style={dieStyle}>{s.die || NO_DIE_TEXT}</span>{off ? <>{s.title} <span className="font-mono">{s.code}</span></> : s.title}</div>
+      {/* Offcut: the code the worker reads/scans comes right after the die tag and never shrinks; only the short "เศษ" may be cut. */}
+      {off ? (
+        <div style={{ display: 'flex', alignItems: 'baseline', whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0, fontWeight: 700, fontSize: z(2.5), color: '#1f6f5c' }}>
+          <span className="font-mono" style={{ ...dieStyle, flex: '0 0 auto' }}>{s.die || NO_DIE_TEXT}</span><span data-role="offcut-code" className="font-mono" style={{ flex: '0 0 auto', whiteSpace: 'nowrap', marginRight: z(0.8) }}>{s.code}</span><span style={line}>เศษ</span>
+        </div>
+      ) : (
+        <div style={{ ...line, fontWeight: 700, fontSize: z(2.5), color: '#111111' }}><span className="font-mono" style={dieStyle}>{s.die || NO_DIE_TEXT}</span>{s.title}</div>
+      )}
       <div style={{ gridColumn: 2, gridRow: '1 / 4', width: z(11), height: z(11) }}>
         {qrImg ? <img src={qrImg} alt="" style={{ width: '100%', height: '100%', display: 'block' }} />
           : <div style={{ width: '100%', height: '100%', border: '1px dashed #999999', fontSize: z(1.8), display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#777777', textAlign: 'center' }}>QR</div>}

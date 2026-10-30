@@ -1,6 +1,6 @@
 // src/pages/estimation/OffcutStockPanel.jsx
 // "เศษในสต็อก (หน้าตัดที่โครงการนี้ใช้)" in two tabs (offcutHelpers.offcutTabs):
-//   เศษที่งานนี้ใช้ -- other jobs' offcuts of this project's profile+finish groups (in stock, or already taken by this
+//   เศษจากงานอื่น -- other jobs' offcuts of this project's profile+finish groups (in stock, or already taken by this
 //     project's issued plan), with what the shown cut plan does with each (cut n pieces from it, or left in stock);
 //   เศษที่ใบตัดนี้สร้าง -- the offcuts this project's issued plan stocked, with where each one is now.
 // A sticker QR (#tab=estimation&offcut=<code>) lands here with that row highlighted, in its tab. "ทิ้ง" (in-stock rows
@@ -90,7 +90,7 @@ export default function OffcutStockPanel({ offcuts, groupInfo, plan, used, setti
         <span style={muted}>เศษที่ติดสติกเกอร์ไว้จากงานก่อน · {used ? 'จัดลงก่อนตัดเส้นใหม่' : 'ไม่ใช้ (ปิดอยู่)'}</span>
       </div>
       <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {[['use', `เศษที่งานนี้ใช้ (${tabs.use.length})`], ['made', `เศษที่ใบตัดนี้สร้าง (${tabs.made.length})`]].map(([k, label]) => (
+        {[['use', `เศษจากงานอื่น (${tabs.use.length})`], ['made', `เศษที่ใบตัดนี้สร้าง (${tabs.made.length})`]].map(([k, label]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => switchTab(k)}>{label}</button>
         ))}
       </div>

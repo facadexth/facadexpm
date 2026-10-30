@@ -81,6 +81,16 @@ describe('StickerSheet', () => {
     expect(m[1]).not.toContain('ellipsis')
     expect(m[1]).toContain('font-size:7.6px')        // 1.9 mm × 4 px/mm on the preview
   })
+  it('an offcut sticker of a group without a die no. shows its full code, never cut with ellipsis', () => {
+    const issued = { id: 'cp1', status: 'issued', signature: 'S', issued_at: '2026-10-27T03:00:00Z', plan: { signature: 'S', groups: [{ ...group(), die_no: null }] } }
+    const html = render({ issued, codes: { 'A|F#2': 'OC-0006' } })
+    const m = html.match(/<span data-role="offcut-code" class="font-mono" style="([^"]*)">([^<]*)<\/span>/)
+    expect(m).not.toBeNull()
+    expect(m[2]).toBe('OC-0006')
+    expect(m[1]).not.toContain('ellipsis')
+    expect(m[1]).toContain('flex:0 0 auto')
+    expect(html).toMatch(/background:#b3261e[^>]*>ไม่มีรหัส<\/span><span data-role="offcut-code"/)
+  })
   it('shows the missing-die warning it is given', () => {
     expect(render({ missingDie: { names: ['เฟรมบน', 'เฟรมล่าง'], series: ['ทั่วไป'] } }))
       .toContain('หน้าตัด 2 ตัวยังไม่มีรหัส: เฟรมบน, เฟรมล่าง (ซีรีส์ ทั่วไป) — กรอกในแคตตาล็อก')
