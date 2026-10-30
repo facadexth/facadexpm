@@ -608,7 +608,7 @@ PARLLEL TROPICAL W-01 set to white, qty 3, with an issued plan; HOSPITAL test it
 - SettingsTab silently resets the range when min > max or 0 is entered (needs Thai validation).
 - An offcut load failure while issued leaves stickers "loading".
 - An empty plan can be issued (harmless, voidable).
-- After issue, section 1 follows the live plan while the summary and sheet use `issued.plan`.
+- ~~After issue, section 1 follows the live plan while the summary and sheet use `issued.plan`.~~ Fixed in round 2 (`section1Rows`).
 
 # Cut sheet round 2 handover (2026-10-30)
 
