@@ -4,7 +4,7 @@
 import { compareLengths } from '../../lib/cutOptimizer.js'
 import { findVariant, pickLatest, resolveAluPrice } from '../../lib/aluPrice.js'
 import { diffAgainst } from '../../lib/providerCompare.js'
-import { piecesOf, evaluateLength, bestLength, rangeLengths } from '../../lib/cutPlan.js'
+import { piecesOf, evaluateLength, bestLength, rangeLengths, isKeepRemainder } from '../../lib/cutPlan.js'
 
 // The packer allocates one object per piece: above this many pieces the screen refuses to pack and says so.
 export const MAX_PIECES = 20000
@@ -184,7 +184,7 @@ export function section1Rows(profiles, { plan, issuedPlan, minKeepM }) {
     let reusable_m = 0, scrap_m = 0
     for (const b of [...(g.offcutBars || []), ...(g.bars || [])]) {
       const left = Number(b.left_m)
-      if (left + EPS >= minKeepM && left > 0) reusable_m += left; else scrap_m += left
+      if (isKeepRemainder(left, minKeepM) && left > 0) reusable_m += left; else scrap_m += left
     }
     return {
       ...row, stock_length_m: Number(g.length_m), count: (g.bars || []).length, base_count: row.count,

@@ -1,6 +1,6 @@
 // src/lib/cutPlan.test.js
 import { describe, it, expect } from 'vitest'
-import { piecesOf, packWithOffcuts, groupIdenticalBars, rangeLengths, evaluateLength, bestLength, chooseLengths, planSignature, buildCutPlan, issuePayload } from './cutPlan.js'
+import { piecesOf, packWithOffcuts, groupIdenticalBars, rangeLengths, evaluateLength, bestLength, chooseLengths, planSignature, buildCutPlan, issuePayload, isKeepRemainder } from './cutPlan.js'
 
 const S = { kerf_square_mm: 3, kerf_miter_mm: 10, min_keep_offcut_m: 0.5 }
 const line = (o) => ({ resolved: true, profile_id: 'P', length_m: 1, quantity: 1, role_name: 'r', cut_style: 'square', cut_ends: 0, ...o })
@@ -218,5 +218,15 @@ describe('fix round 1', () => {
     const entries = [entry([line({ length_m: 2.0, quantity: 2, cut_style: 'miter45', cut_ends: 2 })])]
     const plan = buildCutPlan({ entries, mode: 'stock', settings: S2, kgPerM: { 'P|F': 0.5 }, offcutsByGroup: {}, overrides: {}, groupInfo: {} })
     expect(plan.groups[0].newOffcuts[0]).toMatchObject({ length_m: 2.38, end_a: 'miter45' })
+  })
+})
+
+describe('isKeepRemainder', () => {
+  it('a remainder at or above the minimum keep length (within float noise) is kept, below it is scrap', () => {
+    expect(isKeepRemainder(0.5, 0.5)).toBe(true)
+    expect(isKeepRemainder(0.5 - 1e-12, 0.5)).toBe(true)
+    expect(isKeepRemainder(0.7, 0.5)).toBe(true)
+    expect(isKeepRemainder(0.499, 0.5)).toBe(false)
+    expect(isKeepRemainder(0, 0)).toBe(true)                 // cutPlan's rule; section1Rows adds its own left > 0 guard
   })
 })

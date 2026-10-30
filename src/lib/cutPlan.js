@@ -7,6 +7,9 @@ const EPS = 1e-9
 const bomsOf = e => [e.bom, e.addonBom, ...(e.addonBoms || []).map(a => a && a.bom)].filter(Boolean)
 const mm = n => Math.round(Number(n) * 1000) / 1000
 
+// A bar's remainder goes back to offcut stock when it is at least the minimum keep length (float noise allowed).
+export const isKeepRemainder = (left_m, minKeepM) => left_m + EPS >= minKeepM
+
 export function piecesOf(entries) {
   const out = new Map()
   for (const e of entries || []) {
@@ -80,7 +83,7 @@ export function rangeLengths(settings) {
 export function evaluateLength(pieces, L, settings, offcuts, kgPerM) {
   const packed = packWithOffcuts(pieces, L, settings, offcuts)
   let keep = 0, scrap = 0
-  for (const b of [...packed.offcutBars, ...packed.bars]) (b.left_m + EPS >= settings.min_keep_offcut_m ? (keep += b.left_m) : (scrap += b.left_m))
+  for (const b of [...packed.offcutBars, ...packed.bars]) (isKeepRemainder(b.left_m, settings.min_keep_offcut_m) ? (keep += b.left_m) : (scrap += b.left_m))
   return { length_m: L, newBars: packed.bars.length, kg: packed.bars.length * L * (Number(kgPerM) || 0), scrap_m: scrap, keep_m: keep,
     feasible: packed.unplaced.length === 0, packed }
 }
@@ -142,7 +145,7 @@ export function buildCutPlan({ entries, mode, settings, kgPerM, offcutsByGroup, 
     const add = (bar, ref) => {
       if (bar.left_m + EPS < MIN_OFFCUT_M) return
       const last = bar.pieces[bar.pieces.length - 1]
-      newOffcuts.push({ key: `${g.key}#${ref}`, bar_ref: ref, length_m: mm(bar.left_m), end_a: last && last.end_b !== 'notch' ? last.end_b : 'square', keep: bar.left_m + EPS >= settings.min_keep_offcut_m })
+      newOffcuts.push({ key: `${g.key}#${ref}`, bar_ref: ref, length_m: mm(bar.left_m), end_a: last && last.end_b !== 'notch' ? last.end_b : 'square', keep: isKeepRemainder(bar.left_m, settings.min_keep_offcut_m) })
     }
     offcutBars.forEach(b => add(b, b.offcut.code))
     bars.forEach((b, i) => add(b, String(i + 1)))
