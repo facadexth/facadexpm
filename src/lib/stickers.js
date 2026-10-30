@@ -1,6 +1,6 @@
 // src/lib/stickers.js
 // Piece and offcut stickers from a cut plan (live or the issued snapshot). Pure: the QR images and end glyphs are
-// drawn in stickerRender.js. Order = cutting order: per group, stock-offcut bars then new bars; each bar's pieces,
+// drawn in stickerRender.js; the text (die tag, finish line) by StickerFace in StickerSheet.jsx. Order = cutting order: per group, stock-offcut bars then new bars; each bar's pieces,
 // then its remainder. Piece numbering k/total runs across the whole project.
 
 export const PAPERS = {
@@ -11,6 +11,17 @@ export const PAPERS = {
 }
 
 export const NEW_OFFCUT_CODE = 'OC-ใหม่'
+
+// Printed in red in place of the die no. when the profile has none (alu_profiles.drawing_no empty).
+export const NO_DIE_TEXT = 'ไม่มีรหัส'
+
+// Font size (mm, on a 50×30 label) of the finish line: the largest that fits the text on 2 lines of the ~35 mm text
+// column beside the QR (about 0.6 em per character), never under 1.4 mm. The line wraps; it is never cut with "…".
+const FINISH_SIZES = [2.2, 1.9, 1.6, 1.4]
+export function finishFontMm(text) {
+  const n = String(text || '').length
+  return FINISH_SIZES.find(fs => Math.ceil((n * 0.6 * fs) / 35) <= 2) ?? FINISH_SIZES[FINISH_SIZES.length - 1]
+}
 
 const END_LABELS = { square: '90°', miter45: '45°', notch: 'บาก' }
 export const endLabel = end => END_LABELS[end] || END_LABELS.square
@@ -65,8 +76,9 @@ export function stickerModel({ plan, projectName, projectId, items, codes, date 
   let k = 0
   for (const g of groups) {
     const finish = g.finish_name || ''
-    const sub = [g.die_no || g.name || '', finish].filter(Boolean).join(' · ')
-    const offSub = [[g.die_no, g.name].filter(Boolean).join(' '), finish].filter(Boolean).join(' · ')
+    const die = g.die_no || null
+    // An offcut sticker has no part name, so its finish line names the profile too.
+    const offFinish = [g.name, finish].filter(Boolean).join(' · ')
     const byKey = new Map((g.newOffcuts || []).map(o => [o.key, o]))
     const seq = [
       ...g.offcutBars.map(b => ({ bar: b, ref: b.offcut.code, label: b.offcut.code })),
@@ -77,7 +89,7 @@ export function stickerModel({ plan, projectName, projectId, items, codes, date 
         k++
         const openingId = p.item_id ?? (items || {})[p.opening_no] ?? null
         out.push({
-          kind: 'piece', groupKey: g.key, title: `${p.opening_no} · ${roleTh(p.role_name)}`, length_mm: mmOf(p.length_m), sub,
+          kind: 'piece', groupKey: g.key, title: `${p.opening_no} · ${roleTh(p.role_name)}`, length_mm: mmOf(p.length_m), die, finish,
           ends: [p.end_a || 'square', p.end_b || 'square'], notchText: notchText(p.notch), footL: projectName || '', footR: `${label} · ${k}/${total}`,
           qr: openingId ? `#tab=estimation&project=${projectId}&item=${openingId}` : `#tab=estimation&project=${projectId}`,
         })
@@ -86,7 +98,7 @@ export function stickerModel({ plan, projectName, projectId, items, codes, date 
       if (!o || (codes && !isOffcutKept(o, { codes }))) continue
       const code = codes ? codes[o.key] : null
       out.push({
-        kind: 'offcut', groupKey: g.key, title: 'เศษ → เข้าสต็อก', code: code || NEW_OFFCUT_CODE, length_mm: mmOf(o.length_m), sub: offSub,
+        kind: 'offcut', groupKey: g.key, title: 'เศษ → เข้าสต็อก', code: code || NEW_OFFCUT_CODE, length_mm: mmOf(o.length_m), die, finish: offFinish,
         ends: [o.end_a || 'square', 'square'], notchText: null, footL: `จาก ${projectName || ''}`, footR: `${label} · ${day}`,
         qr: code ? `#tab=estimation&offcut=${code}` : null, offKey: o.key, keepDefault: codes ? true : !!o.keep,
       })

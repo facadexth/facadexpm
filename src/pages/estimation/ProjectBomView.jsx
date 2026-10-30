@@ -10,6 +10,7 @@ import { useProjectStock, useOffcuts, offcutsByGroup, useCutPlans, issueCutPlan,
 import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
   lengthCompare, bestLengthsByProfile, bomStockBasis, section1Rows, toggleKey, offcutLayoutFingerprint, summarySource,
+  withLiveDieNos, missingDieNos,
 } from './projectBomHelpers.js'
 import { cutErrorWithBlockers } from './offcutHelpers.js'
 import { issuedOffcutCodes } from '../../lib/stickers.js'
@@ -99,6 +100,9 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
     [isCustom, tooMany, offcutsReady, entries, settings, kgPerM, offcuts])
   const prices = useMemo(() => cutGroupPricePerKg({ groupInfo, index, seriesMap, asOf: project.price_as_of, kgPerM }), [groupInfo, index, seriesMap, project.price_as_of, kgPerM])
   const rangeM = useMemo(() => (isCustom ? rangeLengths(settings) : null), [isCustom, settings])
+  // The cut sheet, stickers and offcut panel show the catalogue's current die no. even on a frozen issued plan.
+  const issuedShown = useMemo(() => (issued ? { ...issued, plan: withLiveDieNos(issued.plan, groupInfo) } : issued), [issued, groupInfo])
+  const missingDie = useMemo(() => missingDieNos(issuedShown ? issuedShown.plan : plan, seriesMap, index.series), [issuedShown, plan, seriesMap, index.series])
 
   const saveProfile = async (profileId, value) => { await saveProfileStock(project.id, profileId, value); await stockQ.refetch() }
   // Sequential: one profile's write failing stops the rest, and the list is reloaded either way.
@@ -161,7 +165,7 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
       </Section>
 
       {offcutsQ.data && (
-        <OffcutStockPanel offcuts={offcutsQ.data} groupInfo={groupInfo} plan={issued ? issued.plan : plan} used={offcutsFirst || !!issued} settings={settings}
+        <OffcutStockPanel offcuts={offcutsQ.data} groupInfo={groupInfo} plan={issuedShown ? issuedShown.plan : plan} used={offcutsFirst || !!issued} settings={settings}
           projectNames={projectNames} canEdit={canEdit} highlightCode={highlightOffcut} onDiscarded={offcutsQ.refetch}
           issuedPlanId={issued ? issued.id : null} plans={plansQ.data || []} />
       )}
@@ -180,9 +184,9 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
         ? <div className="alert alert-error">โหลดใบตัดไม่สำเร็จ: {String(plansQ.error.message || plansQ.error)}</div>
         : issued !== undefined && (
           <>
-            <CutSheetView plan={plan} issued={issued} codes={offcutCodes} flipped={flipped} settings={settings} canEdit={canEdit} busy={cutBusy} onIssue={issuePlan} onVoid={voidPlan}
-              error={cutErrorView} onDismissError={() => setCutError(null)} />
-            <StickerSheet plan={plan} issued={issued} codes={offcutCodes} projectName={project.name} projectId={project.id} openingIds={openingIds} flipped={flipped} onFlip={onFlip} />
+            <CutSheetView plan={plan} issued={issuedShown} codes={offcutCodes} flipped={flipped} settings={settings} canEdit={canEdit} busy={cutBusy} onIssue={issuePlan} onVoid={voidPlan}
+              error={cutErrorView} onDismissError={() => setCutError(null)} missingDie={missingDie} />
+            <StickerSheet plan={plan} issued={issuedShown} codes={offcutCodes} projectName={project.name} projectId={project.id} openingIds={openingIds} flipped={flipped} onFlip={onFlip} missingDie={missingDie} />
           </>
         )}
 

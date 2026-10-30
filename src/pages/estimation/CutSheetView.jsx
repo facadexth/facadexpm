@@ -7,10 +7,11 @@
 import { useState } from 'react'
 import { fmtDate } from '../../lib/supabase.js'
 import { groupIdenticalBars, MIN_OFFCUT_M } from '../../lib/cutPlan.js'
-import { isOffcutKept, roleTh } from '../../lib/stickers.js'
+import { isOffcutKept, roleTh, NO_DIE_TEXT } from '../../lib/stickers.js'
 import { barNosLabel, openingColorIndex, splitRowsByKeep } from './projectBomHelpers.js'
 import { codesText } from './offcutHelpers.js'
 import InlineError from './InlineError.jsx'
+import MissingDieNotice from './MissingDieNotice.jsx'
 
 // Remainders under MIN_OFFCUT_M are saw loss (buildCutPlan makes no offcut of them): drawn, never labelled.
 const PALETTE = ['#a8b5e8', '#f0a08c', '#8fd0c8', '#c9c27a', '#d3a8e0', '#9cc7f0', '#f2c38f', '#b5d99c']
@@ -22,6 +23,9 @@ const keepFill = 'rgba(var(--green-rgb), 0.35)'
 // Issued plan whose offcut codes are still loading: kept or not is unknown yet, so neither green nor hatched.
 const pendingFill = 'var(--bg3)'
 const tag = { fontSize: 11, padding: '1px 6px', borderRadius: 4, fontWeight: 600 }
+const DieTag = ({ die }) => (
+  <span className="font-mono" style={{ ...tag, marginRight: 6, background: die ? '#111111' : '#b3261e', color: '#ffffff' }}>{die || NO_DIE_TEXT}</span>
+)
 
 function BarRow({ bar, label, fullLength, colorOf, keep, pending, fromStock }) {
   const L = Number(bar.length_m)
@@ -61,7 +65,7 @@ function GroupSheet({ g, colorOf, keepOf, pending }) {
     <div style={{ display: 'grid', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <div>
-          {g.die_no ? <b className="font-mono">{g.die_no}</b> : null}{g.die_no ? ' · ' : ''}{g.name || '?'}{g.finish_name ? ` · ${g.finish_name}` : ''} · เส้น <b className="font-mono">{f2(L)}</b> ม.
+          <DieTag die={g.die_no} />{g.name || '?'}{g.finish_name ? ` · ${g.finish_name}` : ''} · เส้น <b className="font-mono">{f2(L)}</b> ม.
           {g.custom && <> <span style={{ ...tag, background: 'rgba(255,209,102,0.2)', color: 'var(--yellow)' }}>สั่งพิเศษ</span></>}
         </div>
         <div className="font-mono" style={muted}>
@@ -101,7 +105,7 @@ function CutError({ error, onClose }) {
   return <InlineError title={error.action === 'void' ? 'ยกเลิกใบตัดไม่ได้' : 'ยืนยันใบตัดไม่ได้'} onClose={onClose}>{error.message}</InlineError>
 }
 
-export default function CutSheetView({ plan, issued, codes, flipped, settings, canEdit, onIssue, onVoid, busy, error = null, onDismissError }) {
+export default function CutSheetView({ plan, issued, codes, flipped, settings, canEdit, onIssue, onVoid, busy, error = null, onDismissError, missingDie = null }) {
   const [confirming, setConfirming] = useState(null) // 'issue' | 'void' | null
   const shown = issued ? issued.plan : plan
   const colors = openingColorIndex(shown)
@@ -121,6 +125,7 @@ export default function CutSheetView({ plan, issued, codes, flipped, settings, c
         <span style={muted}>เศษสต็อกตัดก่อน แล้วค่อยเส้นใหม่ · เส้นที่ตัดเหมือนกันรวมแถว · ตัวเลข = มม.</span>
       </div>
       {error && <CutError error={error} onClose={onDismissError} />}
+      <MissingDieNotice missing={missingDie} />
 
       {issued ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

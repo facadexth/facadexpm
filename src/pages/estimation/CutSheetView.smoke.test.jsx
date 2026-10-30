@@ -111,4 +111,11 @@ describe('CutSheetView', () => {
       expect(render({})).not.toContain('role="alert"')
     })
   })
+  it('group headers lead with the die no., or the red ไม่มีรหัส tag', () => {
+    expect(render({})).toMatch(/background:#111111[^>]*>MN-101<\/span>กรอบ/)
+    expect(render({ plan: plan({ die_no: null }) })).toMatch(/background:#b3261e[^>]*>ไม่มีรหัส<\/span>กรอบ/)
+  })
+  it('shows the missing-die warning it is given', () => {
+    expect(render({ missingDie: { names: ['กรอบ'], series: [] } })).toContain('หน้าตัด 1 ตัวยังไม่มีรหัส: กรอบ — กรอกในแคตตาล็อก')
+  })
 })

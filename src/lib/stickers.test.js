@@ -1,6 +1,6 @@
 // src/lib/stickers.test.js
 import { describe, it, expect } from 'vitest'
-import { stickerModel, notchText, roleTh, endLabel, issuedOffcutCodes, isOffcutKept, shortDate, stickerPages, PAPERS, NEW_OFFCUT_CODE } from './stickers.js'
+import { stickerModel, notchText, roleTh, endLabel, issuedOffcutCodes, isOffcutKept, shortDate, stickerPages, PAPERS, NEW_OFFCUT_CODE, NO_DIE_TEXT, finishFontMm } from './stickers.js'
 import { glyphPoints, qrDataUrl } from './stickerRender.js'
 
 const pc = (len, o = {}) => ({ length_m: len, opening_no: 'W-01', item_id: 'i1', item_name: '', role_name: 'กรอบบานตั้ง', end_a: 'square', end_b: 'square', notch: null, kerf_style: 'square', ...o })
@@ -35,10 +35,11 @@ describe('stickerModel', () => {
       'piece:เส้น 1 · 6/6', 'offcut:เส้น 1 · 27/10/69',
     ])
   })
-  it('a piece sticker carries the item, part, length, finish, ends, project and the item QR', () => {
+  it('a piece sticker carries the item, part, length, die no., finish, ends, project and the item QR', () => {
     const p = stickerModel(args())[2]
-    expect(p).toMatchObject({ kind: 'piece', title: 'W-01 · กรอบบานตั้ง', length_mm: 3000, sub: 'F7980 · อบขาว', ends: ['miter45', 'miter45'], notchText: null,
+    expect(p).toMatchObject({ kind: 'piece', title: 'W-01 · กรอบบานตั้ง', length_mm: 3000, die: 'F7980', finish: 'อบขาว', ends: ['miter45', 'miter45'], notchText: null,
       footL: 'PARLLEL TROPICAL', qr: '#tab=estimation&project=pj1&item=i1', groupKey: 'A|F' })
+    expect(p.sub).toBeUndefined()
   })
   it('the QR falls back to items[opening_no] when the piece has no item id', () => {
     const pl = plan(); pl.groups[0].offcutBars[0].pieces[0].item_id = null
@@ -55,8 +56,8 @@ describe('stickerModel', () => {
     expect(offs.map(o => [o.offKey, o.code, o.qr, o.keepDefault])).toEqual([
       ['A|F#OC-0003', NEW_OFFCUT_CODE, null, false], ['A|F#1', NEW_OFFCUT_CODE, null, false], ['B|F#1', NEW_OFFCUT_CODE, null, true],
     ])
-    expect(offs[2]).toMatchObject({ title: 'เศษ → เข้าสต็อก', length_mm: 2400, sub: 'ซอย · อบขาว', ends: ['miter45', 'square'], footL: 'จาก PARLLEL TROPICAL' })
-    expect(offs[0].sub).toBe('F7980 กรอบบาน · อบขาว')
+    expect(offs[2]).toMatchObject({ title: 'เศษ → เข้าสต็อก', length_mm: 2400, die: null, finish: 'ซอย · อบขาว', ends: ['miter45', 'square'], footL: 'จาก PARLLEL TROPICAL' })
+    expect(offs[0]).toMatchObject({ die: 'F7980', finish: 'กรอบบาน · อบขาว' })
   })
   it('after issue only kept remainders have a sticker, with the real code and the offcut QR', () => {
     const offs = stickerModel(args({ codes: { 'A|F#1': 'OC-0010', 'B|F#1': 'OC-0011' } })).filter(x => x.kind === 'offcut')
@@ -132,5 +133,20 @@ describe('stickerRender (node-safe parts)', () => {
   })
   it('QR as a PNG data URL', async () => {
     expect(await qrDataUrl('https://changpm.app/#tab=estimation&offcut=OC-0001')).toMatch(/^data:image\/png;base64,/)
+  })
+})
+
+describe('die no. and finish line', () => {
+  it('a profile without a die no. gives die null (the sticker shows NO_DIE_TEXT)', () => {
+    expect(NO_DIE_TEXT).toBe('ไม่มีรหัส')
+    const s = stickerModel(args()).filter(x => x.groupKey === 'B|F')
+    expect(s.every(x => x.die === null)).toBe(true)
+  })
+  it('finishFontMm: the largest size that fits 2 lines, never under 1.4 mm', () => {
+    expect(finishFontMm('')).toBe(2.2)
+    expect(finishFontMm('POWDER COATING WHITE')).toBe(2.2)
+    expect(finishFontMm('x'.repeat(60))).toBe(1.9)
+    expect(finishFontMm('x'.repeat(80))).toBe(1.4)
+    expect(finishFontMm('x'.repeat(300))).toBe(1.4)
   })
 })

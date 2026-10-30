@@ -66,4 +66,23 @@ describe('StickerSheet', () => {
     expect(html).toContain('กำลังโหลดรหัสเศษ...')
     expect(html).toMatch(/disabled=""[^>]*>ดาวน์โหลด PDF สติกเกอร์/)
   })
+  it('the die no. leads the title; a profile without one shows the red ไม่มีรหัส tag', () => {
+    expect(render({})).toMatch(/background:#111111[^>]*>F7980<\/span>W-01 · กรอบบานตั้ง/)
+    const noDie = { signature: 'S', groups: [{ ...group(), die_no: null }] }
+    expect(render({ plan: noDie })).toMatch(/background:#b3261e[^>]*>ไม่มีรหัส<\/span>W-01 · กรอบบานตั้ง/)
+  })
+  it('a long finish name wraps on its own line in a smaller font, never ellipsis', () => {
+    const long = 'POWDER COATING WHITE SEMI-GLOSS FOR TROPICAL COASTAL EXPOSURE'
+    const html = render({ plan: { signature: 'S', groups: [{ ...group(), finish_name: long }] } })
+    const m = html.match(/<div data-role="finish" style="([^"]*)">([^<]*)<\/div>/)
+    expect(m).not.toBeNull()
+    expect(m[2]).toBe(long)
+    expect(m[1]).toContain('white-space:normal')
+    expect(m[1]).not.toContain('ellipsis')
+    expect(m[1]).toContain('font-size:7.6px')        // 1.9 mm × 4 px/mm on the preview
+  })
+  it('shows the missing-die warning it is given', () => {
+    expect(render({ missingDie: { names: ['เฟรมบน', 'เฟรมล่าง'], series: ['ทั่วไป'] } }))
+      .toContain('หน้าตัด 2 ตัวยังไม่มีรหัส: เฟรมบน, เฟรมล่าง (ซีรีส์ ทั่วไป) — กรอกในแคตตาล็อก')
+  })
 })

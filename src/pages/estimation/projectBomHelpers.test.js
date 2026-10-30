@@ -3,6 +3,7 @@ import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
   cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis,
   barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep, offcutLayoutFingerprint, summarySource, section1Rows,
+  withLiveDieNos, missingDieNos,
 } from './projectBomHelpers.js'
 import { buildCutPlan, issuePayload } from '../../lib/cutPlan.js'
 import { buildProjectBom } from '../../lib/projectBom.js'
@@ -450,5 +451,26 @@ describe('section1Rows', () => {
       offcutsByGroup: { 'p1|f1': [{ id: 'o1', code: 'OC-0001', length_m: 3.2 }] }, overrides: {}, groupInfo: { 'p1|f1': { profile_id: 'p1', finish_id: 'f1', name: 'กรอบ' } } })
     const [r] = section1Rows(bom.profiles, { plan, issuedPlan: null, minKeepM: DEFAULT_SETTINGS.min_keep_offcut_m })
     expect(r).toMatchObject({ count: 0, base_count: 1, offcut_codes: ['OC-0001'], fromPlan: true })
+  })
+})
+
+describe('die numbers', () => {
+  const g = (key, profile_id, die_no, name) => ({ key, profile_id, die_no, name, bars: [], offcutBars: [] })
+  const plan = { signature: 'S', groups: [g('a|f1', 'a', null, 'เฟรมบน'), g('a|f2', 'a', null, 'เฟรมบน'), g('b|f1', 'b', '15100', 'เฟรมล่าง'), g('c|f1', 'c', null, 'เสากุญแจ')] }
+  it('withLiveDieNos shows the catalogue\'s current die no. on a frozen plan', () => {
+    const out = withLiveDieNos(plan, { 'a|f1': { die_no: 'N-1' }, 'b|f1': { die_no: '15100' } })
+    expect(out.groups.map(x => x.die_no)).toEqual(['N-1', null, '15100', null])
+    expect(out.signature).toBe('S')
+    expect(plan.groups[0].die_no).toBeNull()             // the input is not mutated
+    expect(withLiveDieNos(null, {})).toBeNull()
+  })
+  it('missingDieNos lists each profile once, with the series it was priced in', () => {
+    const seriesMap = { 'a|f1': ['s1'], 'a|f2': ['s1'], 'c|f1': ['s1', 's2'] }
+    expect(missingDieNos(plan, seriesMap, { s1: { name: 'ทั่วไป' }, s2: { name: 'MN' } }))
+      .toEqual({ names: ['เฟรมบน', 'เสากุญแจ'], series: ['ทั่วไป', 'MN'] })
+  })
+  it('missingDieNos is null when every profile has one', () => {
+    expect(missingDieNos({ groups: [g('b|f1', 'b', '15100', 'เฟรมล่าง')] }, {}, {})).toBeNull()
+    expect(missingDieNos(null, {}, {})).toBeNull()
   })
 })

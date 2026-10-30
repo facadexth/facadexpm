@@ -3,9 +3,10 @@
 // size. Before issue the user ticks "ไม่เก็บ" on remainders not to keep (onFlip); after issue the stickers come from
 // the frozen snapshot with the real offcut codes, and the PDF can be downloaded. QR and end glyphs are PNG images.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PAPERS, stickerModel, stickerPages, endLabel, isOffcutKept } from '../../lib/stickers.js'
+import { PAPERS, stickerModel, stickerPages, endLabel, isOffcutKept, NO_DIE_TEXT, finishFontMm } from '../../lib/stickers.js'
 import { qrDataUrl, endGlyphDataUrl, downloadStickersPdf } from '../../lib/stickerRender.js'
 import InlineError from './InlineError.jsx'
+import MissingDieNotice from './MissingDieNotice.jsx'
 
 const ALL = '__all'
 const PRINT_ID = 'sticker-print'
@@ -21,16 +22,18 @@ function StickerFace({ s, paper, u, qrImg, glyphImg }) {
   const z = n => u(n * f)
   const off = s.kind === 'offcut'
   const line = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }
+  const dieStyle = { background: s.die ? '#111111' : '#b3261e', color: '#ffffff', borderRadius: z(0.5), padding: `0 ${z(0.6)}`, marginRight: z(0.8) }
   return (
     <div style={{ width: '100%', height: '100%', boxSizing: 'border-box', padding: z(1.4), display: 'grid', gridTemplateColumns: '1fr auto', gridTemplateRows: 'auto auto auto auto 1fr', columnGap: z(1.2),
       background: off ? '#eaf6f1' : '#ffffff', color: '#111111', border: off ? `${z(0.5)} solid #1f6f5c` : 'none', fontFamily: 'inherit', lineHeight: 1.2, overflow: 'hidden' }}>
-      <div style={{ ...line, fontWeight: 700, fontSize: z(2.5), color: off ? '#1f6f5c' : '#111111' }}>{off ? <>{s.title} <span className="font-mono">{s.code}</span></> : s.title}</div>
+      <div style={{ ...line, fontWeight: 700, fontSize: z(2.5), color: off ? '#1f6f5c' : '#111111' }}><span className="font-mono" style={dieStyle}>{s.die || NO_DIE_TEXT}</span>{off ? <>{s.title} <span className="font-mono">{s.code}</span></> : s.title}</div>
       <div style={{ gridColumn: 2, gridRow: '1 / 4', width: z(11), height: z(11) }}>
         {qrImg ? <img src={qrImg} alt="" style={{ width: '100%', height: '100%', display: 'block' }} />
           : <div style={{ width: '100%', height: '100%', border: '1px dashed #999999', fontSize: z(1.8), display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#777777', textAlign: 'center' }}>QR</div>}
       </div>
       <div className="font-mono" style={{ ...line, fontSize: z(5), fontWeight: 600, lineHeight: 1.05 }}>{s.length_mm}<span style={{ fontSize: z(2) }}> มม.</span></div>
-      <div style={{ ...line, fontSize: z(2.2) }}>{s.sub}</div>
+      {/* The finish name: its own line, wraps, smaller when long -- never cut with "…" (screen and PDF alike). */}
+      <div data-role="finish" style={{ fontSize: z(finishFontMm(s.finish)), lineHeight: 1.15, fontWeight: 600, whiteSpace: 'normal', overflowWrap: 'anywhere', minWidth: 0 }}>{s.finish}</div>
       <div style={{ ...line, gridColumn: '1 / 3', display: 'flex', alignItems: 'center', gap: z(0.8), fontSize: z(2.1) }}>
         <b>{endLabel(s.ends[0])}</b>
         {glyphImg ? <img src={glyphImg} alt="" style={{ width: z(17.5), height: z(3.5), flex: '0 0 auto' }} /> : <span style={{ width: z(17.5), height: z(3.5), flex: '0 0 auto', border: '1px solid #111111' }} />}
@@ -45,7 +48,7 @@ function StickerFace({ s, paper, u, qrImg, glyphImg }) {
 }
 
 // codes: issued plan only, { remainder key: offcut code } from issuedOffcutCodes; null while the offcuts load.
-export default function StickerSheet({ plan, issued, codes, projectName, projectId, openingIds, flipped, onFlip }) {
+export default function StickerSheet({ plan, issued, codes, projectName, projectId, openingIds, flipped, onFlip, missingDie = null }) {
   const shown = issued ? issued.plan : plan
   const codesMissing = !!issued && !codes
   const groups = useMemo(() => (shown ? shown.groups : []), [shown])
@@ -125,6 +128,7 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
         </div>
       </div>
       {error && <InlineError title="สร้าง PDF ไม่สำเร็จ" onClose={() => setError(null)}>{error}</InlineError>}
+      <MissingDieNotice missing={missingDie} />
       {!issued && <div style={{ fontSize: 12, color: 'var(--yellow)' }}>ยืนยันใบตัดก่อน จึงจะได้รหัสเศษสำหรับสติกเกอร์</div>}
       {codesMissing && <div style={muted}>กำลังโหลดรหัสเศษ...</div>}
       <div style={muted}>

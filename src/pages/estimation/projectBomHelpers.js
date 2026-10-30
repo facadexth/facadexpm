@@ -365,3 +365,34 @@ export function splitRowsByKeep(rows, keepOf) {
   }
   return out
 }
+
+// The issued snapshot froze each group's die no.; the catalogue may have been filled in since. Shows the current one
+// (groupInfo = cutGroupInfo of the current items); a group no longer in the items keeps the snapshot's.
+export function withLiveDieNos(plan, groupInfo) {
+  if (!plan) return plan
+  return {
+    ...plan,
+    groups: (plan.groups || []).map(g => {
+      const info = (groupInfo || {})[g.key]
+      return info && info.die_no !== g.die_no ? { ...g, die_no: info.die_no } : g
+    }),
+  }
+}
+
+// Profiles of the plan without a die no., once per profile, and the series they were priced in (seriesMap: group key
+// -> series ids, seriesById = index.series). null when every profile has one.
+export function missingDieNos(plan, seriesMap, seriesById) {
+  const names = []
+  const series = []
+  const seen = new Set()
+  for (const g of (plan && plan.groups) || []) {
+    if (g.die_no || seen.has(g.profile_id)) continue
+    seen.add(g.profile_id)
+    names.push(g.name || '?')
+    for (const id of (seriesMap || {})[g.key] || []) {
+      const s = (seriesById || {})[id]
+      if (s && s.name && !series.includes(s.name)) series.push(s.name)
+    }
+  }
+  return names.length ? { names, series } : null
+}
