@@ -1,17 +1,21 @@
 // src/pages/estimation/CutOptimizerPanel.jsx
-// Cut optimizer (mockup screen 7), used for the WHOLE project: one profile at a time, every candidate bar length.
-// Offcuts never lower a cost (reported only). Kerf and min-keep come from the settings and are shown, not edited.
+// Cut optimizer (mockup screen 7), used for the WHOLE project: one profile at a time. Shows the 5 lengths that buy
+// the fewest kg (then less scrap, fewer bars) plus the market bar; "ดูทั้งหมด" shows every candidate. Offcuts never
+// lower a cost here. Kerf and min-keep come from the settings and are shown, not edited.
 import { useState, useMemo } from 'react'
 import { fmt } from '../../lib/supabase.js'
-import { optimizerView } from './projectBomHelpers.js'
+import { optimizerView, shortLengthRows } from './projectBomHelpers.js'
 import InlineError from './InlineError.jsx'
 
 const m2 = n => Number(n).toFixed(2)
+const diffText = d => (d == null ? '—' : d < -1e-6 ? `−${m2(-d)}` : d > 1e-6 ? `+${m2(d)}` : '0')
+const perBar = r => (r.per_bar_min === r.per_bar_max ? String(r.per_bar_max) : `${r.per_bar_min}–${r.per_bar_max}`)
 
 export default function CutOptimizerPanel({ profiles, seriesMap, index, settings, asOf, rangeM, canEdit, onUseLength }) {
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [showAll, setShowAll] = useState(false)
   const group = profiles.find(g => g.key === key) || profiles[0] || null
   const view = useMemo(() => (group ? optimizerView({ group, index, settings, asOf, seriesIds: seriesMap[group.key] || [], rangeM }) : null), [group, index, settings, asOf, seriesMap, rangeM])
   if (!group || !view) return null
@@ -21,6 +25,8 @@ export default function CutOptimizerPanel({ profiles, seriesMap, index, settings
     try { await onUseLength(group.profile_id, L) } catch (e) { setError(e.message || String(e)) } finally { setBusy(false) }
   }
   const best = view.rows.find(r => r.best)
+  const short = shortLengthRows(view.rows)
+  const rows = showAll ? view.rows : short
 
   return (
     <div className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
@@ -38,36 +44,47 @@ export default function CutOptimizerPanel({ profiles, seriesMap, index, settings
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>ความยาวเส้น (ม.)</th><th>จำนวนเส้น</th><th>เศษทิ้ง (ม.)</th><th>เศษเก็บใช้ต่อ (ม.)</th><th>เศษ %</th><th>ค่าอลูมิเนียม (฿)<div style={{ fontWeight: 400, fontSize: 11, color: 'var(--text3)' }}>ต้นทุนซื้อเป็นเส้น ใช้เทียบความยาวเท่านั้น ไม่ใช่ยอดอลูมิเนียมในรายการ</div></th><th>ผล</th><th></th></tr></thead>
+          <thead><tr>
+            <th>ความยาว (ม.)</th><th>ท่อน/เส้น</th><th>เส้น</th><th>กก. ที่ซื้อ</th><th>{`เทียบ ${m2(settings.stock_length_m)}`}</th>
+            <th>ค่าอลูมิเนียม (฿)<div style={{ fontWeight: 400, fontSize: 11, color: 'var(--text3)' }}>ต้นทุนซื้อเป็นเส้น ใช้เทียบความยาวเท่านั้น ไม่ใช่ยอดอลูมิเนียมในรายการ</div></th><th></th>
+          </tr></thead>
           <tbody>
-            {view.rows.map(r => (
+            {rows.map(r => (
               <tr key={r.length_m} style={r.status === 'infeasible' ? { color: 'var(--text3)' } : undefined}>
-                <td className="font-mono">{m2(r.length_m)}{r.isCurrent ? ' (ใช้อยู่)' : ''}</td>
+                <td className="font-mono">
+                  {r.isStock ? <span style={{ color: 'var(--text3)' }}>{`${m2(r.length_m)} (เส้นตลาด)`}</span> : <b>{m2(r.length_m)}</b>}
+                  {r.best && <> <span className="badge" style={{ color: 'var(--green)' }}>ดีที่สุด</span></>}
+                </td>
                 {r.status === 'infeasible' ? (
-                  <>
-                    <td colSpan={5} style={{ color: 'var(--red)' }}>ตัดไม่ได้ — ไม่มีที่ลง {r.unplaced.length} ชิ้น ({[...new Set(r.unplaced)].map(x => Number(x).toFixed(3)).join(', ')} ม.)</td>
-                    <td>ใช้ไม่ได้</td><td />
-                  </>
+                  <td colSpan={5} style={{ color: 'var(--red)' }}>ตัดไม่ได้ — ไม่มีที่ลง {r.unplaced.length} ชิ้น ({[...new Set(r.unplaced)].map(x => Number(x).toFixed(3)).join(', ')} ม.)</td>
                 ) : (
                   <>
-                    <td className="font-mono">{r.count}</td><td className="font-mono">{m2(r.scrap_m)}</td><td className="font-mono">{m2(r.reusable_m)}</td>
-                    <td className="font-mono">{r.waste_pct.toFixed(1)}%</td>
+                    <td className="font-mono">{perBar(r)}</td>
+                    <td className="font-mono">{r.count}</td>
+                    <td className="font-mono">{r.kg == null ? '—' : m2(r.kg)}</td>
+                    <td className="font-mono" style={r.diff_kg != null && r.diff_kg < -1e-6 ? { color: 'var(--green)' } : undefined}>{diffText(r.diff_kg)}</td>
                     <td className="font-mono">{r.cost == null ? '—' : fmt(r.cost)}</td>
-                    <td>{r.best ? <span className="badge" style={{ color: 'var(--green)' }}>ดีที่สุด</span> : ''}</td>
-                    <td>{canEdit && !r.isCurrent && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => use(r.length_m)}>ใช้ความยาวนี้</button>}</td>
                   </>
                 )}
+                <td>
+                  {r.isCurrent
+                    ? <button type="button" className="btn btn-sm btn-primary" aria-pressed="true" disabled>ใช้อยู่</button>
+                    : canEdit && r.status === 'ok' && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => use(r.length_m)}>ใช้</button>}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {view.rows.length > short.length && (
+        <div><button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAll(v => !v)}>
+          {showAll ? 'แสดงเฉพาะ 5 ตัวเลือกที่ดีที่สุด' : `ดูทั้งหมด ${view.rows.length} ความยาว`}
+        </button></div>
+      )}
       <div style={{ fontSize: 12, color: 'var(--text2)', display: 'grid', gap: 2 }}>
-        {best && <div>ดีที่สุด: {m2(best.length_m)} ม. (เทียบจาก{view.basis === 'cost' ? 'ค่าอลูมิเนียม' : 'เศษทิ้งน้อยที่สุด'})</div>}
+        {best && <div>ดีที่สุด: {m2(best.length_m)} ม. (ซื้อน้อยกก.ที่สุด แล้วเศษทิ้งน้อย แล้วจำนวนเส้นน้อย)</div>}
         {!best && view.hasCuts && <div style={{ color: 'var(--red)' }}>ไม่มีความยาวไหนตัดได้ครบ</div>}
-        {view.basis === 'scrap' && <div>บางความยาวไม่มีราคาต่อเส้นของความยาวนั้น จึงเทียบจากเศษทิ้งเท่านั้น (ไม่คิดราคาจากความยาวอื่นมาเฉลี่ย)</div>}
-        <div>เศษที่เก็บใช้ต่อได้ รายงานไว้เฉยๆ ไม่นำมาลดต้นทุน</div>
-        {view.rows.some(r => r.status === 'infeasible') && <div>แถวที่ "ตัดไม่ได้" ไม่นำมาเทียบราคา และไม่เป็นความยาวที่ดีที่สุด</div>}
+        {view.rows.some(r => r.status === 'infeasible') && <div>แถวที่ "ตัดไม่ได้" ไม่นำมาเทียบ และไม่เป็นความยาวที่ดีที่สุด</div>}
       </div>
     </div>
   )

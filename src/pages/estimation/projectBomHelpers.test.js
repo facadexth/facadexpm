@@ -3,9 +3,9 @@ import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
   cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis,
   barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep, offcutLayoutFingerprint, summarySource, section1Rows,
-  withLiveDieNos, missingDieNos,
+  withLiveDieNos, missingDieNos, shortLengthRows,
 } from './projectBomHelpers.js'
-import { buildCutPlan, issuePayload } from '../../lib/cutPlan.js'
+import { buildCutPlan, issuePayload, rangeLengths } from '../../lib/cutPlan.js'
 import { buildProjectBom } from '../../lib/projectBom.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
 
@@ -119,13 +119,25 @@ describe('optimizerView', () => {
     expect(r6.status).toBe('ok')
     expect(r6.isCurrent).toBe(true)
     expect(r6.best).toBe(true)
-    expect(v.basis).toBe('cost')    // the only feasible row (6 m) is priced; the infeasible 5 m row is ignored
   })
-  it('compares by scrap when a feasible row has no price', () => {
-    const g = { ...group, stock_length_m: 6.4 }
-    const v = optimizerView({ group: g, index: index('per_piece'), settings: DEFAULT_SETTINGS, asOf: '2026-09-01', seriesIds: [] })
-    expect(v.basis).toBe('scrap')
-    expect(v.rows.find(r => r.length_m === 6.4).cost).toBeNull()
+  it('always includes the market bar and ranks by kg bought, then scrap, bars, length', () => {
+    const g = { profile_id: 'p1', finish_id: 'f1', stock_length_m: 6, cuts: [{ length_m: 1.8, quantity: 120, style: 'square' }] }
+    const v = optimizerView({ group: g, index: index('per_kg'), settings: DEFAULT_SETTINGS, asOf: '2026-09-01', seriesIds: ['s1'], rangeM: rangeLengths(DEFAULT_SETTINGS) })
+    expect(v.rows).toHaveLength(61)
+    expect(v.rows.slice(0, 5).map(r => r.length_m)).toEqual([5.45, 5.5, 5.55, 5.6, 5.65])
+    expect(v.rows[0]).toMatchObject({ best: true, count: 40, per_bar_min: 3, per_bar_max: 3 })
+    expect(v.rows[0].kg).toBeCloseTo(218, 9)
+    expect(v.rows[0].diff_kg).toBeCloseTo(-38, 9)          // vs 6.40 m: 40 bars, 256 kg
+    expect(v.rows.filter(r => r.best)).toHaveLength(1)
+    const stock = v.rows.find(r => r.isStock)
+    expect(stock).toMatchObject({ length_m: 6.4, isCurrent: false, diff_kg: 0 })
+    expect(v.rows.find(r => r.isCurrent).length_m).toBe(6)
+  })
+  it('no weight: kg and the difference are null, the ranking still follows metres bought', () => {
+    const ix = index('per_kg'); ix.profiles.p1.linear_weight_kg_per_m = null
+    const g = { profile_id: 'p1', finish_id: 'f1', stock_length_m: 6.4, cuts: [{ length_m: 1.8, quantity: 6, style: 'square' }] }
+    const v = optimizerView({ group: g, index: ix, settings: DEFAULT_SETTINGS, asOf: '2026-09-01', seriesIds: ['s1'], rangeM: [5.45, 7] })
+    expect(v.rows[0]).toMatchObject({ length_m: 5.45, kg: null, diff_kg: null, best: true })
   })
 })
 
@@ -481,5 +493,21 @@ describe('die numbers', () => {
   it('missingDieNos is null when every profile has one', () => {
     expect(missingDieNos({ groups: [g('b|f1', 'b', '15100', 'เฟรมล่าง')] }, {}, {})).toBeNull()
     expect(missingDieNos(null, {}, {})).toBeNull()
+  })
+})
+
+describe('shortLengthRows', () => {
+  const r = (L, o = {}) => ({ length_m: L, status: 'ok', isStock: false, isCurrent: false, ...o })
+  const rows = [r(5.45), r(5.5), r(5.55), r(5.6), r(5.65), r(5.7), r(6.0, { isCurrent: true }), r(6.4, { isStock: true }), r(4.0, { status: 'infeasible' })]
+  it('top 5 feasible, then the row in use and the market bar when not among them', () => {
+    expect(shortLengthRows(rows).map(x => x.length_m)).toEqual([5.45, 5.5, 5.55, 5.6, 5.65, 6.0, 6.4])
+  })
+  it('no duplicates when the market bar is already in the top 5', () => {
+    const top = [r(6.4, { isStock: true, isCurrent: true }), r(6.45), r(6.5)]
+    expect(shortLengthRows(top).map(x => x.length_m)).toEqual([6.4, 6.45, 6.5])
+  })
+  it('an infeasible market bar is still listed (it says ตัดไม่ได้)', () => {
+    const rs = [r(7), r(6.4, { isStock: true, status: 'infeasible' })]
+    expect(shortLengthRows(rs).map(x => x.length_m)).toEqual([7, 6.4])
   })
 })

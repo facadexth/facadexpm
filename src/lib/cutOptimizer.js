@@ -51,7 +51,9 @@ export function compareLengths({ cuts, lengths, settings, barPrice }) {
     const s = summarizePacking(packed, L, settings.min_keep_offcut_m)
     const price = barPrice ? barPrice(L) : null
     const feasible = s.unplaced.length === 0 && s.count > 0
-    return { length_m: L, ...s, feasible, cost: feasible && price != null ? price * s.count : null }
+    const per = packed.bars.map(b => b.pieces.length)
+    return { length_m: L, ...s, feasible, cost: feasible && price != null ? price * s.count : null,
+      per_bar_min: per.length ? Math.min(...per) : 0, per_bar_max: per.length ? Math.max(...per) : 0 }
   })
   const ok = rows.filter(r => r.feasible)
   const priced = ok.length > 0 && ok.every(r => r.cost != null)

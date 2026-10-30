@@ -609,3 +609,30 @@ PARLLEL TROPICAL W-01 set to white, qty 3, with an issued plan; HOSPITAL test it
 - An offcut load failure while issued leaves stickers "loading".
 - An empty plan can be issued (harmless, voidable).
 - After issue, section 1 follows the live plan while the summary and sheet use `issued.plan`.
+
+# Cut sheet round 2 handover (2026-10-30)
+
+Plan: `docs/superpowers/plans/2026-10-30-cut-sheet-round2.md`. Spec: owner-approved mockup "ใบตัดรอบแก้ 6 ข้อ" (fix6 `Main.dc.html`). Front-end only, **no migration**. Not merged, not pushed, nothing deployed.
+
+## What changed (gap numbers from the 2026-10-28 live check)
+
+1. Section 1 nets out stock offcuts (`section1Rows`): codes per row, new bars = the plan's, old count struck through; after issue it uses the issued plan (fixes the deferred minor "after issue, section 1 follows the live plan"); stock-length input read-only after issue.
+2. Die no. tag before the name on cut-sheet group headers and stickers, red "ไม่มีรหัส" when `alu_profiles.drawing_no` is empty; warning box listing those profiles; finish name on its own sticker line, wraps, smaller font, never "…". Issued plans show the catalogue's current die no. (`withLiveDieNos`).
+5. `InlineError` replaces every `alert()` in the cut-sheet screens (guard test `noBrowserDialogs.test.js`); a refused void names the used offcut codes and the consuming job, built client-side from the reloaded `alu_offcuts` / `alu_cut_plans`.
+6. Offcut panel tabs "เศษที่งานนี้ใช้ (n)" / "เศษที่ใบตัดนี้สร้าง (n)" with status chips; "ทิ้ง" only on in-stock rows.
+7. Stickers by bar range (default bars 1–10, per-10 buttons, "ทั้งหมด"); PDF button shows the count; k/N stays whole-project; stock-offcut bars go with the range that starts at bar 1.
+8. Length helper (`CutOptimizerPanel`) shows the best 5 by kg plus the 6.40 m row; "ดีที่สุด" now = least kg (ruling 4), no longer least cost.
+
+## Review-driven extras (found in per-task reviews, fixed on this branch)
+
+- `cutErrorWithBlockers` (`offcutHelpers.js`): the "used offcut codes + consuming job" list is added only when the error is the server's void refusal text; any other save error is shown as-is, without a misleading blockers list.
+- One shared `isKeepRemainder` rule (`cutPlan.js`) for the plan's keep/scrap split, the new offcuts and section 1, so the three can no longer disagree at the min-keep boundary.
+- `missingDieNos`: takes the series of every finish group of a profile (a second finish may be priced in another series), names each profile once by `profile_id || key` (old snapshots without `profile_id` keep each group).
+- Sticker range summary appends " (ไม่เก็บ X)" when remainders in the range are ticked ไม่เก็บ before issue; the range inputs and quick buttons are disabled while the PDF is being built.
+
+## Live check still to do (owner / controller, on the dev server with a real login)
+
+- PARLLEL TROPICAL: section 1 vs cut sheet new-bar counts agree; offcut tab 2 shows OC-0001.. with HOSPITAL usage chips.
+- HOSPITAL: section 1 shows OC-0002/3/6/7 chips and 0 new bars on those profiles; try "ยกเลิกใบตัด" on PARLLEL → in-card error naming HOSPITAL.
+- Stickers: download roll 50×30 and A4 PDFs for bars 1–10; check the finish line is whole and the die tag / red tag prints.
+- Length helper: 6 rows, 5.45 "ดีที่สุด" on the เฟรมบน case.

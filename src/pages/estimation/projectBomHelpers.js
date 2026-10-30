@@ -104,25 +104,52 @@ export function candidateLengths(index, profileId, finishId, stockLengthM, range
   return [...set].sort((a, b) => a - b)
 }
 
-// View model of the cut optimizer for one profile group (an item of buildProjectBom().profiles).
+// a - b, but equal within e (float sums of bar lengths).
+const near = (a, b, e) => (Math.abs(a - b) < e ? 0 : a - b)
+// The cut plan's order for a length (owner ruling 4): least kg bought (= metres bought, one profile), then less scrap,
+// then fewer bars, then the shorter bar.
+const byBought = (a, b) => near(a.stock_m, b.stock_m, 1e-6) || near(a.scrap_m, b.scrap_m, EPS) || a.count - b.count || a.length_m - b.length_m
+
+// View model of the cut optimizer for one profile group (an item of buildProjectBom().profiles). The market bar
+// (settings.stock_length_m) is always a candidate. Rows come ranked (byBought), infeasible rows last by length;
+// best = the first feasible row. kg needs the profile's kg/m (null without it); diff_kg = kg minus the market bar's.
 export function optimizerView({ group, index, settings, asOf, seriesIds, rangeM }) {
   const profile = index.profiles[group.profile_id]
   const finish = group.finish_id ? index.finishes[group.finish_id] : null
   const barPrice = makeBarPrice({ index, profile, finish, seriesIds: seriesIds || [], asOf })
-  const lengths = candidateLengths(index, group.profile_id, group.finish_id, group.stock_length_m, rangeM)
+  const stockL = Number(settings.stock_length_m)
+  const w = Number(profile && profile.linear_weight_kg_per_m)
+  const kgPerM = w > 0 ? w : null
+  const lengths = candidateLengths(index, group.profile_id, group.finish_id, group.stock_length_m, [stockL, ...(rangeM || [])])
   const result = compareLengths({ cuts: group.cuts, lengths, settings, barPrice })
   const rows = result.rows.map(r => {
     const infeasible = r.feasible === false
     return {
-      length_m: r.length_m, isCurrent: Math.abs(r.length_m - group.stock_length_m) < EPS,
+      length_m: r.length_m, isCurrent: Math.abs(r.length_m - group.stock_length_m) < EPS, isStock: Math.abs(r.length_m - stockL) < EPS,
       status: infeasible ? 'infeasible' : 'ok',
       unplaced: infeasible ? r.unplaced : [],
-      count: infeasible ? null : r.count, scrap_m: infeasible ? null : r.scrap_m, reusable_m: infeasible ? null : r.reusable_m,
+      count: infeasible ? null : r.count, stock_m: infeasible ? null : r.stock_m, scrap_m: infeasible ? null : r.scrap_m, reusable_m: infeasible ? null : r.reusable_m,
       waste_pct: infeasible ? null : r.waste_pct, cost: infeasible ? null : r.cost,
-      best: !!result.best && result.best.length_m === r.length_m,
+      per_bar_min: infeasible ? null : r.per_bar_min, per_bar_max: infeasible ? null : r.per_bar_max,
+      kg: infeasible || kgPerM == null ? null : r.stock_m * kgPerM,
     }
   })
-  return { rows, basis: result.basis, hasCuts: group.cuts.length > 0 }
+  const ok = rows.filter(r => r.status === 'ok').sort(byBought)
+  const bad = rows.filter(r => r.status !== 'ok').sort((a, b) => a.length_m - b.length_m)
+  const stockRow = ok.find(r => r.isStock) || null
+  const ranked = [...ok, ...bad].map((r, i) => ({
+    ...r, best: r.status === 'ok' && i === 0,
+    diff_kg: r.kg != null && stockRow && stockRow.kg != null ? r.kg - stockRow.kg : null,
+  }))
+  return { rows: ranked, hasCuts: group.cuts.length > 0 }
+}
+
+// The length helper's short list: the first n feasible rows (rows come ranked), plus the market-bar row and the row
+// in use when they are not among them.
+export function shortLengthRows(rows, n = 5) {
+  const out = (rows || []).filter(r => r.status === 'ok').slice(0, n)
+  for (const r of rows || []) if ((r.isStock || r.isCurrent) && !out.includes(r)) out.push(r)
+  return out
 }
 
 // ---- Cut plan (cutPlan.js buildCutPlan) inputs and the custom-length summary ----

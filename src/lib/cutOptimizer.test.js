@@ -77,3 +77,11 @@ describe('compareLengths', () => {
     expect(r.basis).toBeNull()
   })
 })
+
+describe('compareLengths pieces per bar', () => {
+  it('reports the fewest and most pieces on one bar', () => {
+    const r = compareLengths({ cuts: [{ length_m: 1.8, quantity: 4, style: 'square' }], lengths: [5.45], settings: S, barPrice: null }).rows[0]
+    expect(r.count).toBe(2)
+    expect([r.per_bar_min, r.per_bar_max]).toEqual([1, 3])
+  })
+})
