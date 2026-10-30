@@ -84,4 +84,31 @@ describe('CutSheetView', () => {
     expect(html).not.toContain('Horizontal rail')
     expect(html).not.toContain('Vertical mullion')
   })
+
+  describe('issue / void errors in the card', () => {
+    const issued = { id: 'cp1', status: 'issued', signature: 'S1', issued_at: '2026-10-27T03:00:00Z', plan: plan() }
+    it('a refused void names the used offcut codes and the job that used them, with a close button', () => {
+      const error = { action: 'void', message: 'เศษจากใบตัดนี้ถูกงานอื่นใช้ไปแล้ว ยกเลิกไม่ได้',
+        blockers: { codes: ['OC-0002', 'OC-0003', 'OC-0006', 'OC-0007'], consumers: [{ plan_id: 'cp9', projectName: 'HOSPITAL', issued_at: '2026-10-28T03:00:00Z' }] } }
+      const html = render({ issued, error, onDismissError: () => {} })
+      expect(html).toContain('role="alert"')
+      expect(html).toContain('ยกเลิกใบตัดไม่ได้')
+      expect(html).toContain('เศษจากใบตัดนี้ถูกงานอื่นใช้ไปแล้ว: <span class="font-mono">OC-0002 … OC-0007</span> (HOSPITAL · ใบตัดยืนยัน 27 ต.ค. 2569) ต้องยกเลิกใบตัดของ HOSPITAL ก่อน')
+      expect(html).toContain('aria-label="ปิดข้อความ"')
+    })
+    it('a consumer whose project is not visible is called งานอื่น', () => {
+      const error = { action: 'void', message: 'x', blockers: { codes: ['OC-0020'], consumers: [{ plan_id: 'cp8', projectName: null, issued_at: null }] } }
+      const html = render({ issued, error, onDismissError: () => {} })
+      expect(html).toContain('<span class="font-mono">OC-0020</span> (งานอื่น) ต้องยกเลิกใบตัดของ งานอื่น ก่อน')
+    })
+    it('any other failure shows the server text under the action title', () => {
+      expect(render({ error: { action: 'issue', message: 'เศษบางชิ้นถูกใช้หรือทิ้งไปแล้ว คำนวณใบตัดใหม่แล้วลองอีกครั้ง' }, onDismissError: () => {} }))
+        .toContain('<b>ยืนยันใบตัดไม่ได้</b><br/>เศษบางชิ้นถูกใช้หรือทิ้งไปแล้ว คำนวณใบตัดใหม่แล้วลองอีกครั้ง')
+      expect(render({ issued, error: { action: 'void', message: 'network down', blockers: { codes: [], consumers: [] } }, onDismissError: () => {} }))
+        .toContain('<b>ยกเลิกใบตัดไม่ได้</b><br/>network down')
+    })
+    it('no error, no banner', () => {
+      expect(render({})).not.toContain('role="alert"')
+    })
+  })
 })

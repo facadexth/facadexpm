@@ -11,6 +11,7 @@ import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
   lengthCompare, bestLengthsByProfile, bomStockBasis, toggleKey, offcutLayoutFingerprint, summarySource,
 } from './projectBomHelpers.js'
+import { voidBlockers } from './offcutHelpers.js'
 import { issuedOffcutCodes } from '../../lib/stickers.js'
 import { saveProfileStock } from './projectStockSave.js'
 import BomProfilesTable from './BomProfilesTable.jsx'
@@ -104,15 +105,21 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   }
 
   // Issue / void, then reload the plans and the offcut stock either way (a failed issue may mean an offcut was taken).
-  const runCut = async fn => {
-    setCutBusy(true)
-    try { await fn(); setFlipped(new Set()) } catch (e) { alert(e.message) } finally {
+  // The error stays in the cut-sheet card until closed or the next try.
+  const [cutError, setCutError] = useState(null) // { action: 'issue' | 'void', message }
+  const runCut = async (action, fn) => {
+    setCutBusy(true); setCutError(null)
+    try { await fn(); setFlipped(new Set()) } catch (e) { setCutError({ action, message: e.message || String(e) }) } finally {
       await Promise.all([plansQ.refetch(), offcutsQ.refetch()])
       setCutBusy(false)
     }
   }
-  const issuePlan = () => runCut(() => issueCutPlan(project.id, issuePayload(plan, flipped)))
-  const voidPlan = () => runCut(() => voidCutPlan(issued.id))
+  const issuePlan = () => runCut('issue', () => issueCutPlan(project.id, issuePayload(plan, flipped)))
+  const voidPlan = () => runCut('void', () => voidCutPlan(issued.id))
+  // Built from the reloaded offcuts and plans, so the codes and the job named are the current ones.
+  const cutErrorView = useMemo(() => (cutError && cutError.action === 'void' && issued
+    ? { ...cutError, blockers: voidBlockers({ offcuts: offcutsQ.data, plans: plansQ.data, planId: issued.id, projectNames }) }
+    : cutError), [cutError, issued, offcutsQ.data, plansQ.data, projectNames])
 
   if (stockQ.error) return <div className="alert alert-error">โหลดความยาวเส้นไม่สำเร็จ: {String(stockQ.error)}</div>
   if (!items.length) return <div style={{ color: 'var(--text3)', padding: 20 }}>ยังไม่มีรายการในโปรเจกต์</div>
@@ -169,7 +176,8 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
         ? <div className="alert alert-error">โหลดใบตัดไม่สำเร็จ: {String(plansQ.error.message || plansQ.error)}</div>
         : issued !== undefined && (
           <>
-            <CutSheetView plan={plan} issued={issued} codes={offcutCodes} flipped={flipped} settings={settings} canEdit={canEdit} busy={cutBusy} onIssue={issuePlan} onVoid={voidPlan} />
+            <CutSheetView plan={plan} issued={issued} codes={offcutCodes} flipped={flipped} settings={settings} canEdit={canEdit} busy={cutBusy} onIssue={issuePlan} onVoid={voidPlan}
+              error={cutErrorView} onDismissError={() => setCutError(null)} />
             <StickerSheet plan={plan} issued={issued} codes={offcutCodes} projectName={project.name} projectId={project.id} openingIds={openingIds} flipped={flipped} onFlip={onFlip} />
           </>
         )}

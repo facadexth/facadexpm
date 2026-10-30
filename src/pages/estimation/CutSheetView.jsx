@@ -9,6 +9,8 @@ import { fmtDate } from '../../lib/supabase.js'
 import { groupIdenticalBars, MIN_OFFCUT_M } from '../../lib/cutPlan.js'
 import { isOffcutKept, roleTh } from '../../lib/stickers.js'
 import { barNosLabel, openingColorIndex, splitRowsByKeep } from './projectBomHelpers.js'
+import { codesText } from './offcutHelpers.js'
+import InlineError from './InlineError.jsx'
 
 // Remainders under MIN_OFFCUT_M are saw loss (buildCutPlan makes no offcut of them): drawn, never labelled.
 const PALETTE = ['#a8b5e8', '#f0a08c', '#8fd0c8', '#c9c27a', '#d3a8e0', '#9cc7f0', '#f2c38f', '#b5d99c']
@@ -82,7 +84,24 @@ function GroupSheet({ g, colorOf, keepOf, pending }) {
   )
 }
 
-export default function CutSheetView({ plan, issued, codes, flipped, settings, canEdit, onIssue, onVoid, busy }) {
+// error: { action: 'issue' | 'void', message, blockers? } from the parent. A void refused because another job used this
+// plan's offcuts names those codes and jobs (blockers = offcutHelpers.voidBlockers on the reloaded data).
+function CutError({ error, onClose }) {
+  const b = error.blockers
+  if (error.action === 'void' && b && b.codes.length) {
+    const name = c => c.projectName || 'งานอื่น'
+    const who = b.consumers.map(c => `${name(c)}${c.issued_at ? ` · ใบตัดยืนยัน ${fmtDate(c.issued_at)}` : ''}`).join(', ')
+    const jobs = [...new Set(b.consumers.map(name))].join(', ')
+    return (
+      <InlineError title="ยกเลิกใบตัดไม่ได้" onClose={onClose}>
+        {'เศษจากใบตัดนี้ถูกงานอื่นใช้ไปแล้ว: '}<span className="font-mono">{codesText(b.codes)}</span>{` (${who}) ต้องยกเลิกใบตัดของ ${jobs} ก่อน`}
+      </InlineError>
+    )
+  }
+  return <InlineError title={error.action === 'void' ? 'ยกเลิกใบตัดไม่ได้' : 'ยืนยันใบตัดไม่ได้'} onClose={onClose}>{error.message}</InlineError>
+}
+
+export default function CutSheetView({ plan, issued, codes, flipped, settings, canEdit, onIssue, onVoid, busy, error = null, onDismissError }) {
   const [confirming, setConfirming] = useState(null) // 'issue' | 'void' | null
   const shown = issued ? issued.plan : plan
   const colors = openingColorIndex(shown)
@@ -101,6 +120,7 @@ export default function CutSheetView({ plan, issued, codes, flipped, settings, c
         <div style={{ fontWeight: 700 }}>ใบตัด — แยกตามหน้าตัด</div>
         <span style={muted}>เศษสต็อกตัดก่อน แล้วค่อยเส้นใหม่ · เส้นที่ตัดเหมือนกันรวมแถว · ตัวเลข = มม.</span>
       </div>
+      {error && <CutError error={error} onClose={onDismissError} />}
 
       {issued ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
