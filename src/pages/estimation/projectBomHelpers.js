@@ -198,6 +198,15 @@ export function bomStockBasis(cutMode, plan) {
   return { byProfile, projectM: null }
 }
 
+// Section 1's stock basis: the live plan's lengths with the issued plan's on top (issued wins for the profiles it has),
+// so a profile added after issue keeps its live custom length instead of falling back to the market bar. A project
+// job waits (null) while the live plan is loading.
+export function sectionOneStockBasis(cutMode, plan, issuedPlan) {
+  const live = bomStockBasis(cutMode, plan)
+  if (!live || !issuedPlan) return live
+  return { byProfile: { ...live.byProfile, ...bomStockBasis(cutMode, issuedPlan).byProfile }, projectM: null }
+}
+
 // Section 1 rows (buildProjectBom().profiles) with the cut plan's bars. issuedPlan: every row whose group is in it
 // takes the issued group's numbers (frozen; the offcut stock moving later does not change them). Otherwise only a
 // group the live plan cuts from stock offcuts changes: its new bars are the plan's, and the codes it uses are listed.

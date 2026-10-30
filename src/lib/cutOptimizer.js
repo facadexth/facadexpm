@@ -43,7 +43,9 @@ export function summarizePacking(packed, barLengthM, minKeepM) {
 }
 
 // Tries every candidate length. barPrice(L) is the price of one whole bar (or null when unknown).
-// Best = lowest total cost when every feasible row is priced, otherwise least scrap; ties: fewer bars, then shorter bar.
+// Its best/basis (lowest total cost when every feasible row is priced, otherwise least scrap; ties: fewer bars, then
+// shorter bar) is NOT the length helper's rule: the panel ranks the rows itself by least bought (byBought in
+// projectBomHelpers.optimizerView: fewest metres, i.e. least kg of that profile). Only the rows are used there.
 // Kept offcuts do NOT reduce the cost (conservative ruling); they are only reported.
 export function compareLengths({ cuts, lengths, settings, barPrice }) {
   const rows = (lengths || []).map(L => {

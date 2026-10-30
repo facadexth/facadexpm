@@ -9,7 +9,7 @@ import { buildCutPlan, rangeLengths, issuePayload } from '../../lib/cutPlan.js'
 import { useProjectStock, useOffcuts, offcutsByGroup, useCutPlans, issueCutPlan, voidCutPlan } from '../../hooks/useEstimation2b.js'
 import {
   buildEntries, entriesPieceCount, seriesByGroup, MAX_PIECES, cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg,
-  lengthCompare, bestLengthsByProfile, bomStockBasis, section1Rows, toggleKey, offcutLayoutFingerprint, summarySource,
+  lengthCompare, bestLengthsByProfile, sectionOneStockBasis, section1Rows, toggleKey, offcutLayoutFingerprint, summarySource,
   withLiveDieNos, missingDieNos,
 } from './projectBomHelpers.js'
 import { cutErrorWithBlockers } from './offcutHelpers.js'
@@ -79,8 +79,8 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   const plan = useMemo(() => (tooMany || !stockRows || !offcutsReady ? null : buildCutPlan({ entries, mode: cutMode, settings, kgPerM, offcutsByGroup: offcuts, overrides, groupInfo })),
     [tooMany, stockRows, offcutsReady, entries, cutMode, settings, kgPerM, offcuts, overrides, groupInfo])
   // Section 1 buys the lengths the cut plan chose (market bar in a normal job), so it never disagrees with the summary
-  // or the cut sheet; once issued, the issued plan's. A project job waits for the plan.
-  const stock = useMemo(() => bomStockBasis(cutMode, issued ? issued.plan : plan), [cutMode, issued, plan])
+  // or the cut sheet; once issued, the issued plan's (a profile not in it keeps the live plan's). A project job waits for the plan.
+  const stock = useMemo(() => sectionOneStockBasis(cutMode, plan, issued ? issued.plan : null), [cutMode, issued, plan])
   const bom = useMemo(() => (tooMany || !stockRows || !stock ? null : buildProjectBom({ entries, settings, stock, profilesById: index.profiles, finishesById: index.finishes, partsById: index.parts })),
     [entries, settings, stock, index, tooMany, stockRows])
   // ...and nets out the stock offcuts the plan cuts from (the issued plan's numbers once issued).
@@ -178,7 +178,7 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
         <BomProfilesTable profiles={section1} overrides={isCustom ? projectStock.byProfile : {}} canEdit={canEdit && isCustom && !issued} onSaveStock={saveProfile} issued={!!issued} />
       </Section>
 
-      {isCustom && <CutOptimizerPanel profiles={bom.profiles} seriesMap={seriesMap} index={index} settings={settings} asOf={project.price_as_of} rangeM={rangeM} canEdit={canEdit} onUseLength={saveProfile} />}
+      {isCustom && <CutOptimizerPanel profiles={bom.profiles} seriesMap={seriesMap} index={index} settings={settings} asOf={project.price_as_of} rangeM={rangeM} canEdit={canEdit && !issued} onUseLength={saveProfile} />}
 
       {plansQ.error
         ? <div className="alert alert-error">โหลดใบตัดไม่สำเร็จ: {String(plansQ.error.message || plansQ.error)}</div>

@@ -628,6 +628,7 @@ Plan: `docs/superpowers/plans/2026-10-30-cut-sheet-round2.md`. Spec: owner-appro
 - `cutErrorWithBlockers` (`offcutHelpers.js`): the "used offcut codes + consuming job" list is added only when the error is the server's void refusal text; any other save error is shown as-is, without a misleading blockers list.
 - One shared `isKeepRemainder` rule (`cutPlan.js`) for the plan's keep/scrap split, the new offcuts and section 1, so the three can no longer disagree at the min-keep boundary.
 - `missingDieNos`: takes the series of every finish group of a profile (a second finish may be priced in another series), names each profile once by `profile_id || key` (old snapshots without `profile_id` keep each group).
+- Final review: after issue, section 1's stock basis is the live plan's lengths with the issued plan's on top (`sectionOneStockBasis`), so a profile not in the issued plan keeps its live custom length instead of 6.40; the length helper's "ใช้" is hidden after issue (`canEdit && !issued`).
 - Sticker range summary appends " (ไม่เก็บ X)" when remainders in the range are ticked ไม่เก็บ before issue; the range inputs and quick buttons are disabled while the PDF is being built.
 
 ## Live check still to do (owner / controller, on the dev server with a real login)
@@ -636,3 +637,7 @@ Plan: `docs/superpowers/plans/2026-10-30-cut-sheet-round2.md`. Spec: owner-appro
 - HOSPITAL: section 1 shows OC-0002/3/6/7 chips and 0 new bars on those profiles; try "ยกเลิกใบตัด" on PARLLEL → in-card error naming HOSPITAL.
 - Stickers: download roll 50×30 and A4 PDFs for bars 1–10; check the finish line is whole and the die tag / red tag prints.
 - Length helper: 6 rows, 5.45 "ดีที่สุด" on the เฟรมบน case.
+
+## Open / deferred (round 2)
+
+- After issue, section 1's cut list columns (รายการตัด / ความยาวรวม / openings) come from the live BOM while bar counts come from the issued plan — can disagree if items are edited after issue. A "รายการแก้หลังยืนยัน" marker (signature mismatch) can come later.

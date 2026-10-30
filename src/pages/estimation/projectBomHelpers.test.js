@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
-  cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis,
+  cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis, sectionOneStockBasis,
   barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep, offcutLayoutFingerprint, summarySource, section1Rows,
   withLiveDieNos, missingDieNos, shortLengthRows,
 } from './projectBomHelpers.js'
@@ -285,6 +285,23 @@ describe('bestLengthsByProfile', () => {
     const plan = { groups: [g({ length_m: 6.4, kg: 3 }), g({ key: 'p1|f2', finish_id: 'f2', length_m: 6.4, kg: 10 })] }
     const compare = { 'p1|f1': { base: { kg: 20 }, best: { length_m: 5.0, kg: 2 } }, 'p1|f2': { base: { kg: 5 }, best: { length_m: 5.5, kg: 9 } } }
     expect(bestLengthsByProfile(plan, compare)).toEqual([{ profile_id: 'p1', length_m: 5.5 }])
+  })
+})
+
+describe('sectionOneStockBasis', () => {
+  const live = { groups: [g({ length_m: 6.4 }), g({ key: 'p2|f1', profile_id: 'p2', length_m: 5.85 })] }
+  const issued = { groups: [g({ length_m: 5.2 })] }
+  it('issued lengths win for the profiles they contain; a profile not in the issued plan keeps its live length', () => {
+    expect(sectionOneStockBasis('custom', live, issued)).toEqual({ byProfile: { p1: 5.2, p2: 5.85 }, projectM: null })
+  })
+  it('no issued plan = the live plan\'s lengths', () => {
+    expect(sectionOneStockBasis('custom', live, null)).toEqual(bomStockBasis('custom', live))
+  })
+  it('a project job still waits (null) while the live plan is loading, even when issued', () => {
+    expect(sectionOneStockBasis('custom', null, issued)).toBeNull()
+  })
+  it('a normal job stays on the market bar', () => {
+    expect(sectionOneStockBasis('stock', live, issued)).toEqual({ byProfile: {}, projectM: null })
   })
 })
 
