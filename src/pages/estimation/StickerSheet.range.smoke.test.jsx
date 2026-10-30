@@ -25,7 +25,7 @@ const fromStock = {
 }
 fromStock.newOffcuts = [{ key: 'B|F#OC-0006', bar_ref: 'OC-0006', length_m: 0.6, end_a: 'square', keep: true }]
 const plan = { signature: 'S', groups: [big, fromStock] }
-const view = () => render(<StickerSheet plan={plan} issued={null} codes={null} projectName="PARLLEL TROPICAL" projectId="pj1" openingIds={{}} flipped={new Set()} onFlip={() => {}} />)
+const view = (flipped = new Set()) => render(<StickerSheet plan={plan} issued={null} codes={null} projectName="PARLLEL TROPICAL" projectId="pj1" openingIds={{}} flipped={flipped} onFlip={() => {}} />)
 const text = () => document.body.textContent
 
 describe('StickerSheet bar range', () => {
@@ -61,5 +61,10 @@ describe('StickerSheet bar range', () => {
     expect(text()).not.toContain('รอบละ 10 เส้น:')
     expect(text()).toContain('2 ท่อน + เศษ 1 ชิ้น')
     expect(screen.getByText('ดาวน์โหลด PDF 3 ดวง')).toBeTruthy()
+  })
+  it('remainders ticked ไม่เก็บ in the range are named in the summary', () => {
+    view(new Set(['A|F#1', 'A|F#2']))
+    expect(text()).toContain('เฟรมบน เส้น 1–10 = ท่อน 30 ดวง + เศษ 8 ดวง (ไม่เก็บ 2) · ลำดับ')
+    expect(screen.getByText('ดาวน์โหลด PDF 38 ดวง')).toBeTruthy()
   })
 })

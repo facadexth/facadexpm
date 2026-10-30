@@ -391,8 +391,8 @@ export function missingDieNos(plan, seriesMap, seriesById) {
     // of every finish group: the second finish may have been priced in another series.
     const id = g.profile_id || g.key
     if (!seen.has(id)) { seen.add(id); names.push(g.name || '?') }
-    for (const id of (seriesMap || {})[g.key] || []) {
-      const s = (seriesById || {})[id]
+    for (const sid of (seriesMap || {})[g.key] || []) {
+      const s = (seriesById || {})[sid]
       if (s && s.name && !series.includes(s.name)) series.push(s.name)
     }
   }

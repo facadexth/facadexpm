@@ -85,6 +85,7 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
   const seqs = visible.filter(s => s.kind === 'piece').map(s => s.seq)
   const totalPieces = all.length ? (all.find(s => s.kind === 'piece') || {}).total || 0 : 0
   const keptOffCount = visible.filter(s => s.kind === 'offcut' && kept(s)).length
+  const droppedOffCount = visible.filter(s => s.kind === 'offcut').length - keptOffCount
 
   // Draw the missing QR codes and glyphs (browser only; the SSR preview shows placeholders).
   const ensureImages = async list => {
@@ -134,10 +135,10 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
         </div>
         {range && <>
           <div><label className="label" htmlFor="stk-from">เส้นที่</label>
-            <input id="stk-from" className="input" type="number" min={1} max={nBars} style={{ width: 72 }} value={rangeText.from} onChange={e => setRangeFor({ ...rangeText, from: e.target.value })} />
+            <input id="stk-from" className="input" type="number" min={1} max={nBars} style={{ width: 72 }} disabled={busy} value={rangeText.from} onChange={e => setRangeFor({ ...rangeText, from: e.target.value })} />
           </div>
           <div><label className="label" htmlFor="stk-to">ถึง</label>
-            <input id="stk-to" className="input" type="number" min={1} max={nBars} style={{ width: 72 }} value={rangeText.to} onChange={e => setRangeFor({ ...rangeText, to: e.target.value })} />
+            <input id="stk-to" className="input" type="number" min={1} max={nBars} style={{ width: 72 }} disabled={busy} value={rangeText.to} onChange={e => setRangeFor({ ...rangeText, to: e.target.value })} />
           </div>
         </>}
         <div><label className="label">กระดาษ</label>
@@ -156,17 +157,17 @@ export default function StickerSheet({ plan, issued, codes, projectName, project
           {nBars > 10 && <span style={muted}>รอบละ 10 เส้น:</span>}
           {nBars > 10 && barChunks(nBars).map(c => {
             const on = range.from === c.from && range.to === c.to
-            return <button key={c.from} type="button" aria-pressed={on} className={`btn btn-sm ${on ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRange(c.from, c.to)}>{`${c.from}–${c.to}`}</button>
+            return <button key={c.from} type="button" aria-pressed={on} className={`btn btn-sm ${on ? 'btn-primary' : 'btn-ghost'}`} disabled={busy} onClick={() => setRange(c.from, c.to)}>{`${c.from}–${c.to}`}</button>
           })}
           {(() => {
             const on = range.from === 1 && range.to === nBars
-            return <button type="button" aria-pressed={on} className={`btn btn-sm ${on ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRange(1, nBars)}>ทั้งหมด</button>
+            return <button type="button" aria-pressed={on} className={`btn btn-sm ${on ? 'btn-primary' : 'btn-ghost'}`} disabled={busy} onClick={() => setRange(1, nBars)}>ทั้งหมด</button>
           })()}
         </div>
       )}
       {range && (
         <div style={muted}>
-          {`${selGroup.name || '?'} เส้น ${range.from}–${range.to} = ท่อน ${pieceCount} ดวง + เศษ ${keptOffCount} ดวง`}
+          {`${selGroup.name || '?'} เส้น ${range.from}–${range.to} = ท่อน ${pieceCount} ดวง + เศษ ${keptOffCount} ดวง${droppedOffCount ? ` (ไม่เก็บ ${droppedOffCount})` : ''}`}
           {seqs.length ? ` · ลำดับ ${seqs[0]}/${totalPieces} … ${seqs[seqs.length - 1]}/${totalPieces}` : ''}
         </div>
       )}

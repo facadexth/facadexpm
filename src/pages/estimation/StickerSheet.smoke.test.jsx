@@ -94,6 +94,6 @@ describe('StickerSheet', () => {
     expect(html).toContain('เส้นที่')
     expect(html).toContain('ทั้งหมด')
     expect(html).not.toContain('รอบละ 10 เส้น:')
-    expect(html).toContain('กรอบบาน เส้น 1–2 = ท่อน 3 ดวง + เศษ 1 ดวง · ลำดับ 1/3 … 3/3')
+    expect(html).toContain('กรอบบาน เส้น 1–2 = ท่อน 3 ดวง + เศษ 1 ดวง (ไม่เก็บ 1) · ลำดับ 1/3 … 3/3')
   })
 })
