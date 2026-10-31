@@ -68,8 +68,11 @@ export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h
   )
 
   // full-day block (both shifts identical)
+  // Week lets a long site name wrap to 2 lines; on phone the label is also width-capped,
+  // because there the table is width:max-content and a nowrap name would stretch the column.
   if (same) {
     const info = segInfo(morning, variant, isPhone)
+    const twoLine = variant !== 'month'
     return (
       <div style={{ position: 'relative', width: w, height: h }}>
         <div onClick={() => onEdit('morning')} title={info.title}
@@ -77,9 +80,13 @@ export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h
             width: '100%', height: '100%', borderRadius: 4, display: 'flex', alignItems: 'center',
             justifyContent: 'center', cursor: 'pointer', fontSize, fontWeight: 700,
             background: info.bg, color: info.color, overflow: 'hidden', padding: '0 4px',
-            whiteSpace: 'nowrap',
+            whiteSpace: twoLine ? 'normal' : 'nowrap',
           }}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{info.label}</span>
+          <span style={twoLine ? {
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            overflow: 'hidden', textAlign: 'center', lineHeight: 1.2, wordBreak: 'break-word',
+            maxWidth: isPhone ? 120 : undefined,
+          } : { overflow: 'hidden', textOverflow: 'ellipsis' }}>{info.label}</span>
         </div>
         {otBadge}
         {leaderBadge}
