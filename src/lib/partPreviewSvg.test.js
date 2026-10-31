@@ -28,7 +28,7 @@ describe('partSvgString', () => {
       expect(svg).toContain('>1.80 ม.</text>')
       expect(svg).toContain('>1.20 ม.</text>')
       expect(svg).not.toMatch(/NaN|undefined|<style|<script|marker|\son[a-z]+=/i)
-      expect(svg.match(/<(\w+)/g).every(t => ['<svg', '<rect', '<line', '<text', '<polyline'].includes(t))).toBe(true)
+      expect(svg.match(/<(\w+)/g).every(t => ['<svg', '<rect', '<line', '<text', '<polyline', '<polygon'].includes(t))).toBe(true)
     }
   })
 
@@ -139,7 +139,7 @@ describe('Task 8 — partSvgString for every layout kind', () => {
         expect(typeof s).toBe('string')
         expect(safeSvgDataUri(s)).not.toBeNull()
         expect(s).not.toMatch(/NaN|undefined|Infinity|<style|<script|marker|\son[a-z]+=/i)
-        expect(s.match(/<(\w+)/g).every((t) => ['<svg', '<rect', '<line', '<text', '<polyline'].includes(t))).toBe(true)
+        expect(s.match(/<(\w+)/g).every((t) => ['<svg', '<rect', '<line', '<text', '<polyline', '<polygon'].includes(t))).toBe(true)
         expect(s).toBe(svg8(kind, {}, { style, view, lengthsByPiece }))
         if (view === 'out') seen.add(s)
       }
@@ -200,7 +200,7 @@ describe('Task 8 — partSvgString for every layout kind', () => {
     const fl = svg8('frameless_door')
     for (const k of ['patch', 'pull', 'floor_lock']) expect(fl).toContain(`data-kind="${k}"`)
   })
-  it('mitred sashes draw their 45° corners (4 diagonals per sash)', () => {
+  it('mitred sashes draw their 45° corners (4 mitred members per sash, no square-end lines)', () => {
     expect(count(svg8('awning_grid'), /data-kind="mitre"/g)).toBe(4 * 4)
     expect(count(svg8('fixed_grid'), /data-kind="mitre"/g)).toBe(0)
   })

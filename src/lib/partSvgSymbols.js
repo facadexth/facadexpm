@@ -1,7 +1,7 @@
 // SVG markup (strings) for the millimetre drawing of every layout kind except sliding_2: glass / spandrel / frameless panes,
 // pieces in the four D14 styles, mitre corners, opening symbols, hardware marks and dimension lines. Ported from the accepted
 // mockup's Draw helpers (docs/reference/type-previews-mockup.html: bar / glass / vsym / arrow / dim). Pure.
-// Inline attributes only (svg, rect, line, polyline, text): safe for attachmentPages.safeSvgDataUri.
+// Inline attributes only (svg, rect, line, polyline, polygon, text): safe for attachmentPages.safeSvgDataUri.
 import { fmtMm } from './partExpand.js'
 
 export const INK = '#1f2328'
@@ -38,6 +38,20 @@ export function glassSvg(g, style, sw) {
   return out.join('')
 }
 
+// A mitred sash member (owner 2026-10-31: corners cut 45°, nothing else at the corner): the four members are laid out full
+// length and overlap at the corners, so each is drawn as a trapezoid — outer edge full length, inner edge short by the
+// member's own thickness, the 45° cut as the end. A rect there left the square-end lines inside every corner. null = a rect.
+function mitreShape(p) {
+  if (!p.mitre || !p.mside) return null
+  const { x, y, w, h } = p
+  if (p.mside === 'top') return [[x, y], [x + w, y], [x + w - h, y + h], [x + h, y + h]]
+  if (p.mside === 'bottom') return [[x, y + h], [x + w, y + h], [x + w - h, y], [x + h, y]]
+  if (p.mside === 'left') return [[x, y], [x + w, y + w], [x + w, y + h - w], [x, y + h]]
+  if (p.mside === 'right') return [[x + w, y], [x, y + w], [x, y + h - w], [x + w, y + h]]
+  return null
+}
+const polygon = (pts, attrs) => `<polygon points="${pts.map(([px, py]) => `${n2(px)},${n2(py)}`).join(' ')}" ${attrs}/>`
+
 // A piece in one of the four D14 styles (mockup Draw._bar): double = white with a 1.3 px outline (default, quotations),
 // lengths = double + the piece's CUT length (R-F3: `lengthMm`, from the expanded rows — partPreviewSvg.cutLengthsByPiece;
 // no label when it is not given, e.g. an unpriced piece or a decorative free-line strip), solid = filled tones without
@@ -47,14 +61,10 @@ export function pieceSvg(p, style, sw, lengthMm = null) {
   const sash = !FRAME_PARTS.has(p.part)
   const ink = sash ? SASH_INK : INK
   const out = []
-  if (style === 'solid') out.push(rect(p.x, p.y, p.w, p.h, `data-role="piece" fill="${sash ? FILL.sash : FILL.frame}" stroke="none"`))
-  else out.push(rect(p.x, p.y, p.w, p.h, `data-role="piece" fill="${style === 'cad' ? 'none' : '#ffffff'}" stroke="${ink}" stroke-width="1.3" ${NS}`))
-  if (p.mitre && p.orient === 'h' && (p.mside === 'top' || p.mside === 'bottom')) {
-    const t = p.h, top = p.mside === 'top'
-    const yo = top ? p.y : p.y + p.h, yi = top ? p.y + t : p.y
-    const a = `data-kind="mitre" stroke="${ink}" stroke-width="0.8" ${NS}`
-    out.push(line(p.x, yo, p.x + t, yi, a), line(p.x + p.w, yo, p.x + p.w - t, yi, a))
-  }
+  const shape = mitreShape(p)
+  const draw = shape ? attrs => polygon(shape, `data-kind="mitre" ${attrs}`) : attrs => rect(p.x, p.y, p.w, p.h, attrs)
+  if (style === 'solid') out.push(draw(`data-role="piece" fill="${sash ? FILL.sash : FILL.frame}" stroke="none"`))
+  else out.push(draw(`data-role="piece" fill="${style === 'cad' ? 'none' : '#ffffff'}" stroke="${ink}" stroke-width="1.3" ${NS}`))
   if (style === 'lengths' && typeof lengthMm === 'number' && Number.isFinite(lengthMm)) {
     const L = Math.round(lengthMm), cx = p.x + p.w / 2, cy = p.y + p.h / 2, ty = cy + sw * 2.5
     const rot = p.h > p.w ? ` transform="rotate(-90 ${n2(cx)} ${n2(cy)})"` : ''
