@@ -64,10 +64,11 @@ export function stockMatches({ items, categoryNames, query, limit = 20 }) {
     .slice(0, limit)
 }
 
-// "คงเหลือ 24 ชิ้น · ซื้อล่าสุด 145" / "หมดสต๊อก · ซื้อล่าสุด 98" / "… · ยังไม่มีราคาซื้อ"
-export function stockLineText({ onHand, unit, price }) {
+// "คงเหลือ 24 ชิ้น · ซื้อล่าสุด 145" / "หมดสต๊อก · ซื้อล่าสุด 98" / "… · ยังไม่มีราคาซื้อ" / "… · โหลดราคาซื้อไม่สำเร็จ" (priceFailed)
+export function stockLineText({ onHand, unit, price, priceFailed = false }) {
   const n = Number(onHand) || 0
-  return [n > 0 ? `คงเหลือ ${qtyText(n)} ${unit || ''}`.trim() : 'หมดสต๊อก', price ? `ซื้อล่าสุด ${qtyText(price.unit_cost)}` : 'ยังไม่มีราคาซื้อ'].join(' · ')
+  const priceText = price ? `ซื้อล่าสุด ${qtyText(price.unit_cost)}` : priceFailed ? 'โหลดราคาซื้อไม่สำเร็จ' : 'ยังไม่มีราคาซื้อ'
+  return [n > 0 ? `คงเหลือ ${qtyText(n)} ${unit || ''}`.trim() : 'หมดสต๊อก', priceText].join(' · ')
 }
 
 export function seriesChips({ setId, seriesParts, seriesById, providersById, typesById }) {

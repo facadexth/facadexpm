@@ -2,7 +2,8 @@
 // ชุดอุปกรณ์ (spec 2026-10-31 section 12, mockup hwset.html v2). Left: the sets (search, "+ ชุดใหม่"). Right: the chosen
 // set: 1 อุปกรณ์, 2 วัสดุสิ้นเปลือง (each from stock or created new), 3 ใช้กับซีรีส์. A set has no unit (saved as 'ชุด').
 // Prices: latest purchase price for stock-linked parts, else the catalogue price; the set total = Σ quantity × price.
-// Errors show inline (InlineError), never in a browser dialog.
+// Errors show inline (InlineError), never in a browser dialog; the set form's errors inside its modal. "ลบชุด" asks in the
+// page and removes a set only when nothing uses it (hardwareSetRemove.js, owner 2026-11-01).
 import { useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { useQuery } from '../../hooks/useSupabase.js'
@@ -15,6 +16,7 @@ import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import { typePickerOptions } from '../../lib/catalogTypeForm.js'
 import { localDateString } from '../../lib/localDate.js'
 import { priceSourceText } from '../../lib/latestPurchasePrice.js'
+import { removeHardwareSet } from '../../lib/hardwareSetRemove.js'
 import { SECTIONS, setLines, setSummaryText, priceLines, setTotal, seriesChips, newSeriesLinks, rpcErrorText, addResultText } from '../../lib/hardwareSetView.js'
 import StockItemPicker from './StockItemPicker.jsx'
 import SeriesLinkPicker from './SeriesLinkPicker.jsx'
@@ -29,7 +31,7 @@ export const setFields = providers => [
 ]
 
 // The chosen set (pure view). lines = { hardware, consumable } priced lines; pickerFor(sectionKey) -> node | null.
-export function SetDetail({ set, lines, total, chips, canEdit, pickerFor, seriesPicker, on }) {
+export function SetDetail({ set, lines, total, chips, canEdit, pickerFor, seriesPicker, on, removing = false, busy = false }) {
   return (
     <div className="card" style={{ padding: 16, display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -43,9 +45,17 @@ export function SetDetail({ set, lines, total, chips, canEdit, pickerFor, series
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             <button type="button" className="btn btn-sm btn-ghost" onClick={on.edit}>แก้ชื่อ</button>
             <button type="button" className="btn btn-sm btn-ghost" onClick={on.toggleActive}>{set.active === false ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</button>
+            <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={on.askRemove}>ลบชุด</button>
           </div>
         )}
       </div>
+      {canEdit && removing && (
+        <div className="card" style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--bg3)' }}>
+          <div style={{ fontSize: 13, flex: 1, minWidth: 200 }}>ลบชุด {set.name}? ลบได้เฉพาะชุดที่ยังไม่มีรายการใช้อยู่ (ของในชุดและการผูกซีรีส์จะถูกลบไปด้วย)</div>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={on.cancelRemove}>ยกเลิก</button>
+          <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={on.confirmRemove}>ยืนยันลบ</button>
+        </div>
+      )}
 
       {SECTIONS.map((s, i) => (
         <section key={s.key} style={{ display: 'grid', gap: 8 }}>
@@ -115,6 +125,8 @@ export default function HardwareSetsPanel({ canEdit }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [note, setNote] = useState(null)
+  const [formErr, setFormErr] = useState(null)    // errors of the set form, shown inside its modal
+  const [removing, setRemoving] = useState(false) // the in-page "ลบชุด" question is open
 
   const linkedIds = useMemo(() => [...new Set((parts.data || []).map(p => p.inventory_item_id).filter(Boolean))].sort(), [parts.data])
   const purchase = useQuery(async () => {
@@ -152,24 +164,45 @@ export default function HardwareSetsPanel({ canEdit }) {
     } catch (e) { setErr(rpcErrorText(e)) }
     finally { setBusy(false) }
   }
-  const saveSet = form => {
+  const openForm = row => { setFormErr(null); setEditing(row) }
+  const closeForm = () => { setFormErr(null); setEditing(null) }
+  // errors stay inside the open form (the page behind it is covered by the modal overlay)
+  const saveSet = async form => {
     const missing = missingRequired(fields, form)
-    if (missing.length) { setErr('กรุณากรอก: ' + missing.join(', ')); return }
+    if (missing.length) { setFormErr('กรุณากรอก: ' + missing.join(', ')); return }
     const payload = buildPayload(fields, form, editing === 'new' ? null : editing)
-    run(async () => {
+    setBusy(true); setFormErr(null); setErr(null); setNote(null)
+    try {
+      let id = editing === 'new' ? null : editing.id
       if (editing === 'new') {
         const { data, error } = await supabase.from('alu_parts').insert({ ...payload, kind: 'hardware_set', unit: 'ชุด' }).select('id').single()
         if (error) throw error
-        return data.id
+        id = data.id
+      } else {
+        const { error } = await supabase.from('alu_parts').update(payload).eq('id', id)
+        if (error) throw error
       }
-      const { error } = await supabase.from('alu_parts').update(payload).eq('id', editing.id)
-      if (error) throw error
-      return editing.id
-    }, async id => { setEditing(null); await parts.refetch(); setSetId(id) })
+      closeForm()
+      await parts.refetch()
+      setSetId(id)
+    } catch (e) { setFormErr(rpcErrorText(e)) }
+    finally { setBusy(false) }
   }
   const kindOf = key => SECTIONS.find(s => s.key === key).kind
   const on = {
-    edit: () => setEditing(set),
+    edit: () => openForm(set),
+    askRemove: () => { setPicking(null); setSeriesOpen(false); setRemoving(true) },
+    cancelRemove: () => setRemoving(false),
+    confirmRemove: () => {
+      const name = set.name
+      run(() => removeHardwareSet(supabase, set.id), async r => {
+        setRemoving(false)
+        if (!r.removed) { setErr(r.message); return }
+        setSetId('')
+        await Promise.all([parts.refetch(), setItems.refetch(), seriesParts.refetch()])
+        setNote(`ลบชุด ${name} แล้ว`)
+      })
+    },
     toggleActive: () => run(async () => {
       const { error } = await supabase.from('alu_parts').update({ active: set.active === false }).eq('id', set.id)
       if (error) throw error
@@ -219,13 +252,13 @@ export default function HardwareSetsPanel({ canEdit }) {
       <div className="card" style={{ padding: 12, display: 'grid', gap: 8, alignContent: 'start' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ fontWeight: 700 }}>ชุดอุปกรณ์</div>
-          {canEdit && <button type="button" className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}>+ ชุดใหม่</button>}
+          {canEdit && <button type="button" className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }} onClick={() => openForm('new')}>+ ชุดใหม่</button>}
         </div>
         <input className="input" placeholder="ค้นหาชุด" value={search} onChange={e => setSearch(e.target.value)} />
         {shownSets.map(s => (
           <button key={s.id} type="button" className={`btn btn-sm ${s.id === setId ? 'btn-primary' : 'btn-ghost'}`}
             style={{ display: 'grid', justifyItems: 'start', textAlign: 'left' }}
-            onClick={() => { setSetId(s.id); setPicking(null); setSeriesOpen(false); setErr(null); setNote(null) }}>
+            onClick={() => { setSetId(s.id); setPicking(null); setSeriesOpen(false); setRemoving(false); setErr(null); setNote(null) }}>
             <span>{s.name}{s.active === false ? ' (ปิดใช้งาน)' : ''}</span>
             <span style={{ fontSize: 11, opacity: 0.75 }}>{s.code} · {setSummaryText(setLines({ setId: s.id, setItems: setItems.data, partsById }))}</span>
           </button>
@@ -236,8 +269,9 @@ export default function HardwareSetsPanel({ canEdit }) {
       <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
         {err && <InlineError onClose={() => setErr(null)}>{err}</InlineError>}
         {note && <div style={{ fontSize: 13, color: 'var(--green)' }}>{note}</div>}
+        {set && purchase.error && <div style={{ fontSize: 13, color: 'var(--red)' }}>โหลดราคาซื้อล่าสุดไม่สำเร็จ — แสดงราคาแคตตาล็อกแทน</div>}
         {set ? (
-          <SetDetail set={set} lines={lines} total={total} chips={chips} canEdit={canEdit} on={on}
+          <SetDetail set={set} lines={lines} total={total} chips={chips} canEdit={canEdit} on={on} removing={removing} busy={busy}
             pickerFor={key => (picking === key ? (
               <StockItemPicker section={SECTIONS.find(s => s.key === key)} busy={busy}
                 onPick={item => addFromStock(key, item)} onCreate={f => addNew(key, f)} onClose={() => setPicking(null)} />
@@ -249,8 +283,9 @@ export default function HardwareSetsPanel({ canEdit }) {
       </div>
 
       {editing && (
-        <Modal title={editing === 'new' ? 'ชุดอุปกรณ์ใหม่' : 'แก้ชุดอุปกรณ์'} onClose={() => setEditing(null)} maxWidth={440}>
-          <CrudForm fields={fields} row={editing === 'new' ? null : editing} loading={busy} onSave={saveSet} onCancel={() => setEditing(null)}
+        <Modal title={editing === 'new' ? 'ชุดอุปกรณ์ใหม่' : 'แก้ชุดอุปกรณ์'} onClose={closeForm} maxWidth={440}>
+          {formErr && <div style={{ padding: '12px 16px 0' }}><InlineError onClose={() => setFormErr(null)}>{formErr}</InlineError></div>}
+          <CrudForm fields={fields} row={editing === 'new' ? null : editing} loading={busy} onSave={saveSet} onCancel={closeForm}
             initial={editing === 'new' ? emptyForm(fields) : formFromRow(fields, editing)} />
         </Modal>
       )}

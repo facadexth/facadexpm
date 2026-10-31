@@ -53,6 +53,8 @@ describe('stock search', () => {
     expect(stockLineText({ onHand: 24, unit: 'ชิ้น', price: { unit_cost: 145 } })).toBe('คงเหลือ 24 ชิ้น · ซื้อล่าสุด 145')
     expect(stockLineText({ onHand: 0, unit: 'ชิ้น', price: { unit_cost: 98 } })).toBe('หมดสต๊อก · ซื้อล่าสุด 98')
     expect(stockLineText({ onHand: undefined, unit: 'ชิ้น', price: null })).toBe('หมดสต๊อก · ยังไม่มีราคาซื้อ')
+    // the price load failed: never claim there is no purchase price
+    expect(stockLineText({ onHand: 24, unit: 'ชิ้น', price: null, priceFailed: true })).toBe('คงเหลือ 24 ชิ้น · โหลดราคาซื้อไม่สำเร็จ')
   })
 })
 

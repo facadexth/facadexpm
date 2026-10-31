@@ -9,14 +9,14 @@ import { fetchAllRows } from '../../lib/fetchAllRows.js'
 import { stockMatches, onHandByItem, stockLineText } from '../../lib/hardwareSetView.js'
 import { latestPurchasePrice } from '../../lib/latestPurchasePrice.js'
 
-export function StockResults({ matches, onHand, prices, busy, onPick }) {
+export function StockResults({ matches, onHand, prices, priceError = false, busy, onPick }) {
   return (
     <div style={{ display: 'grid', gap: 4 }}>
       {matches.map(i => (
         <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div><span className="font-mono" style={{ color: 'var(--text3)' }}>{i.code}</span> {i.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{stockLineText({ onHand: (onHand || {})[i.id], unit: i.base_unit, price: latestPurchasePrice(prices, i.id) })}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{stockLineText({ onHand: (onHand || {})[i.id], unit: i.base_unit, price: latestPurchasePrice(prices, i.id), priceFailed: priceError })}</div>
           </div>
           <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => onPick(i)}>เลือก</button>
         </div>
@@ -63,7 +63,8 @@ export default function StockItemPicker({ section, busy, onPick, onCreate, onClo
       <input className="input" autoFocus placeholder="พิมพ์ชื่อหรือรหัสสินค้า" value={query} onChange={e => setQuery(e.target.value)} />
       {stock.error && <div style={{ color: 'var(--red)', fontSize: 13 }}>โหลดสต๊อกไม่สำเร็จ: {stock.error}</div>}
       {!stock.data && !stock.error && <div style={{ fontSize: 13, color: 'var(--text3)' }}>กำลังโหลดสต๊อก...</div>}
-      {stock.data && <StockResults matches={matches} onHand={stock.data.onHand} prices={prices.data || []} busy={busy} onPick={onPick} />}
+      {stock.data && prices.error && <div style={{ color: 'var(--red)', fontSize: 13 }}>โหลดราคาซื้อไม่สำเร็จ</div>}
+      {stock.data && <StockResults matches={matches} onHand={stock.data.onHand} prices={prices.data || []} priceError={!!prices.error} busy={busy} onPick={onPick} />}
       {stock.data && !matches.length && <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบในสต๊อก</div>}
       {!creating
         ? <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={() => { setCreating(true); setDraft(d => ({ ...d, name: d.name || query.trim() })) }}>+ สร้างรายการใหม่ (ยังไม่มีในสต๊อก)</button>
