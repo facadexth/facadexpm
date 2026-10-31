@@ -192,7 +192,7 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
 
       <Section title="2. อุปกรณ์และชิ้นส่วน">
         {hardware.length > 0 && <><div style={{ fontSize: 12, color: 'var(--text3)' }}>อุปกรณ์ (hardware)</div><PartsTable rows={hardware} /></>}
-        {accessories.length > 0 && <><div style={{ fontSize: 12, color: 'var(--text3)' }}>อุปกรณ์เสริม (accessory)</div><PartsTable rows={accessories} /></>}
+        {accessories.length > 0 && <><div style={{ fontSize: 12, color: 'var(--text3)' }}>วัสดุสิ้นเปลือง (accessory)</div><PartsTable rows={accessories} /></>}
         {!bom.parts.length && <div style={{ color: 'var(--text3)', fontSize: 13 }}>ไม่มีอุปกรณ์</div>}
         {notLinked && <div style={{ fontSize: 12, color: 'var(--text3)' }}>shim / สกรู / พุกพลาสติก ยังปิดอยู่ จนกว่าจะผูกชิ้นส่วนในตั้งค่าการประเมินราคา</div>}
       </Section>
