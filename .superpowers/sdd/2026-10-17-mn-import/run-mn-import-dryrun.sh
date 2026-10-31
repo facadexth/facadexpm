@@ -23,7 +23,9 @@ SELECT CASE WHEN p.id IS NOT NULL
        (SELECT count(*) FROM alu_finishes f WHERE f.provider_id = p.id) AS finishes,
        (SELECT count(*) FROM alu_profile_variants v JOIN alu_profiles x ON x.id = v.profile_id WHERE x.provider_id = p.id) AS variants,
        (SELECT count(*) FROM alu_piece_prices pp JOIN alu_profile_variants v ON v.id = pp.variant_id JOIN alu_profiles x ON x.id = v.profile_id WHERE x.provider_id = p.id) AS piece_prices,
-       (SELECT count(*) FROM alu_series_types st JOIN alu_series s ON s.id = st.series_id WHERE s.provider_id = p.id) AS series_types
+       (SELECT count(*) FROM alu_series_types st JOIN alu_series s ON s.id = st.series_id WHERE s.provider_id = p.id) AS series_types,
+       p.price_basis,
+       (SELECT string_agg(f.name || '=' || k.price_per_kg, ', ' ORDER BY f.name) FROM alu_kg_prices k JOIN alu_finishes f ON f.id = k.finish_id WHERE k.provider_id = p.id) AS kg_prices
   FROM (SELECT 1) one LEFT JOIN alu_providers p ON p.name = 'บจก. แม่น้ำเมทอลซัพพลาย' AND p.tenant_id = '1b9affc4-2136-4ed1-b168-a36e6624e743';
 ROLLBACK;
 SQL
