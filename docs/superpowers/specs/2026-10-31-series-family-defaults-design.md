@@ -7,11 +7,12 @@
 - "ต้อง เลือก project default แต่ในแต่ละ item แก้ไข รายละเอียดได้"
 - "ค่าเริ่มต้นของ project เซฟแล้ว กดย่อได้ แล้วโชว์แค่ wording หลักๆ ที่เราเลือก"
 
-## 2. สมมติฐาน (เจ้าของยังไม่ตอบ — แก้ได้ก่อนวางแผน)
-- A1 HOMELIFE รวมเป็น family เดียว (บานเลื่อน 3 รุ่น) — รายการบานเลื่อนได้รุ่นแรกตามชื่อ เปลี่ยนในรายการได้
-- A2 PROLINE รวมเป็น family เดียว (ช่องแสง 2 รุ่น) — กติกาเดียวกับ A1
-- A3 MN, เค ซี, Aluminium calculation ไม่จัดกลุ่ม: แต่ละชุดเป็น family ของตัวเอง
-- ตาราง family ที่เติมตอนแรกคือตารางใน artifact ข้างบน
+## 2. ตาราง family (artifact v3) และคำตอบเจ้าของ 2026-10-31
+- STANDARD = หน้าตัดทั่วไป ความหนาให้เลือก 1.0 / 1.2 / 1.5 / 1.8 / 2.0 มม.: SMS = SMS001 ทั้ง 6 ชุด, Alumet = MINI MC, MN = GROUP 01 (ยืนยันแล้ว)
+- MN จัดตามหัวข้อชุดในไฟล์ราคา PriceList2024 (15 family + 13 ชุดเดี่ยว) — รายการเต็มใน artifact v3 และ scratchpad report
+- KC = ผู้ขายส่ง (ขาย SMS/FUJI) ไม่มี family; FUJI ยังไม่มีในแคตตาล็อก (งานแยก); แยก "ผู้ขาย" จาก "โรงรีด" = งานแยก
+- สมมติฐาน (ยังไม่ตอบ): HOMELIFE และ PROLINE รวมเป็น family เดียว — หลายชุดต่อประเภท → ชุดแรกตามชื่อ เปลี่ยนในรายการได้
+- พบระหว่างอ่านไฟล์ราคา (ไม่อยู่ในงานนี้): "ชุด ULTRA SLIM MN-7112" กับ "T-SLOT SOLID BARS" น่าจะสลับโปรไฟล์กัน
 
 ## 3. ข้อมูลจริงตอนนี้ (อ่านจาก CHANG 2026-10-31)
 - `alu_series` 115 แถว คอลัมน์: id, tenant_id, provider_id, name, is_base, active, created_at — ยังไม่มี family
@@ -19,18 +20,19 @@
 - `alu_hardware_packages` 0 แถว
 
 ## 4. Data model
-1. `alu_series.family text NULL` — ชื่อซีรีส์หลัก เช่น 'ICONIQ EURO'. NULL = family ของตัวเอง (ชื่อ = `name`). family เป็นของโรงรีดเดียว (กุญแจ = provider_id + family).
-2. `estimation_projects.default_family text NULL` — family ที่โปรเจกต์เลือก (คู่กับ `primary_provider_id` ที่มีอยู่แล้ว).
+1. ตารางใหม่ `alu_series_families (id, tenant_id, provider_id, name, thickness_options numeric[] NULL, sort_order, active)` unique (tenant_id, provider_id, name). `thickness_options` NULL = ใช้ทุกความหนาของชุดในกลุ่ม; STANDARD = {1.0,1.2,1.5,1.8,2.0}.
+   `alu_series.series_family_id uuid NULL` FK → family. NULL = family ของตัวเอง (ชื่อ = `name`). **ห้ามใช้ชื่อคอลัมน์ `family`** — `alu_profiles.family` มีอยู่แล้วและหมายถึงกลุ่มรูปทรง (ท่อกลม, ฉาก …).
+2. `estimation_projects.default_series_family_id uuid NULL` FK → alu_series_families; โปรเจกต์ที่เลือกชุดเดี่ยว (ไม่มี family) ยังใช้ `default_series_id` ได้.
 3. `estimation_projects.default_series_id` เก็บไว้ ไม่ลบ (กันข้อมูลหาย/โค้ดเก่า) แต่หน้าเว็บใหม่ไม่เขียนลงอีก (ตั้งเป็น NULL ตอนบันทึก family).
 4. Migration `2026-10-31-01-alu-series-family.sql` (+ `.dryrun.sql` BEGIN..ROLLBACK ที่พิมพ์ตารางก่อน/หลัง):
    - ADD COLUMN ทั้งสอง (ตรวจ view `x.*` ที่อ่านตารางพวกนี้ — กฎ view column freeze)
-   - เติม family ตามชื่อ ด้วยรายการ (provider name, series name prefix → family) แบบ explicit ไม่ใช่ regex เดา; series ที่ไม่ตรงรายการคง NULL
-   - ย้ายโปรเจกต์: `default_family = coalesce(s.family, s.name)`, `primary_provider_id = coalesce(primary_provider_id, s.provider_id)`, `default_series_id = NULL` จาก series ที่ตั้งไว้
+   - สร้าง family + เติม `series_family_id` จากรายการ explicit (provider name, series name ตรงตัว → family) ตามตาราง v3; series ไม่อยู่ในรายการคง NULL; RLS เหมือน alu_series
+   - ย้ายโปรเจกต์: ถ้า default_series_id อยู่ใน family → `default_series_family_id` = family นั้น, `primary_provider_id = coalesce(primary_provider_id, s.provider_id)`, `default_series_id = NULL`; ไม่อยู่ใน family → คงเดิม
    - เจ้าของรันของจริงด้วย `!`; ผมรัน dry-run ก่อน
 
 ## 5. การเลือกชุดอัตโนมัติ (หัวใจ)
 ฟังก์ชันใหม่ pure ใน `src/lib/seriesFamily.js`:
-- `familyKey(series)` → `series.family || series.name`
+- `familyKey(series)` → `series.series_family_id || 'series:' + series.id`
 - `familyChoices(index, providerId)` → [{value: family, label, count}] เฉพาะ active, เรียงชื่อ
 - `familySeries(index, providerId, family)` → series ทั้งหมดใน family (active, เรียงชื่อ)
 - `familySeriesForType(index, seriesTypes, providerId, family, typeId)` → series แรกตามชื่อใน family ที่มี link `alu_series_types` ตรง typeId; ไม่มี → null
@@ -48,7 +50,7 @@
 ## 6. ค่าเริ่มต้นโปรเจกต์ (ProjectDefaultsPanel)
 - ช่อง "ซีรีส์" → "ซีรีส์หลัก" แสดง `familyChoices` ของโรงรีดหลัก (label เช่น "ICONIQ EURO · 3 ชุด")
 - สี: ของโรงรีด (เหมือนเดิม — สีผูกโรงรีด)
-- ความหนาวงกบ: union ของ `thicknessesForSeries` ทุกชุดใน family; มีค่าเดียว → เลือกให้
+- ความหนาวงกบ: `thickness_options` ของ family ถ้ามี (STANDARD = 5 ค่า) ไม่งั้น union ของ `thicknessesForSeries` ทุกชุดใน family; มีค่าเดียว → เลือกให้. ในรายการยังเลือกความหนาอื่นของชุดได้
 - ความหนาบาน: แสดงถ้ามีชุดใดใน family ที่ allow_mixed_thickness
 - ชุดอุปกรณ์: package ที่ `series_id` NULL หรืออยู่ใน family
 - คำเตือนเปลี่ยนค่า: `itemsAffectedByDefaultFamily` = รายการที่สืบทอดแต่ family ไม่มีชุดสำหรับประเภทของมัน
@@ -62,10 +64,10 @@
 - สี/ความหนาในรายการ: แก้ได้เหมือนเดิม
 
 ## 8. หน้าแคตตาล็อก (HierarchyTab)
-- แต่ละ series มีช่อง "ซีรีส์หลัก" (text + datalist ของ family ที่มีในโรงรีดนั้น) แก้ได้; ว่าง = ใช้ชื่อตัวเอง
+- แต่ละ series มีช่อง "ซีรีส์หลัก" (select family ของโรงรีดนั้น + "ไม่มี") แก้ได้; จัดการ family (ชื่อ, ความหนาที่ให้เลือก) ในแท็บเดียวกัน
 
 ## 9. ไม่ทำ (YAGNI)
-- ตาราง family แยก, รูป/คำอธิบาย family, family ข้ามโรงรีด, เปลี่ยน schema ของ series_types
+- รูป/คำอธิบาย family, family ข้ามโรงรีด, เปลี่ยน schema ของ series_types, ผู้ขาย (KC) แยกจากโรงรีด, นำเข้า FUJI, แก้ ULTRA SLIM/T-SLOT
 
 ## 10. ทดสอบ
 - unit: seriesFamily.js (key, choices, first-by-name, ไม่มีชุด, inactive), resolveItemInputs ลำดับ 1–4, thickness union, packages, itemsAffected
