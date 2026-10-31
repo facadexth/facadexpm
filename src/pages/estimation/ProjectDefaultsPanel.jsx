@@ -11,7 +11,7 @@ import { DESCRIPTION_TOKENS, buildItemDescription } from '../../lib/descriptionF
 import { familyChoices, familyLabel, familySeries, familyThicknesses, familyAllowsMixed, keyProviderId } from '../../lib/seriesFamily.js'
 import {
   draftFromProject, reconcileDraft, finishChoices, sashDisplayValue, validateDraft, buildPatch, draftSeriesKey, applySeriesKey,
-  patchChangesSeries,
+  hasSavedDefaults, defaultsSummary, patchChangesSeries,
 } from './projectDefaults.js'
 
 const Field = ({ label, hint, children }) => (
@@ -27,6 +27,9 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)   // { patch, affected }
   const [saveError, setSaveError] = useState(null)
+  // Collapsed after a save, or when an already-set project opens; a new project opens expanded (spec section 6).
+  const [open, setOpen] = useState(() => !hasSavedDefaults(project))
+  useEffect(() => { setOpen(!hasSavedDefaults(project)) }, [project.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset only for another project or after our own successful save, never on a plain refetch (unsaved edits stay).
   const [saveTick, setSaveTick] = useState(0)
@@ -68,6 +71,7 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
       if (e) throw e
       await onSaved()
       setSaveTick(t => t + 1)
+      setOpen(false)
     } catch (e) { setSaveError('บันทึกไม่สำเร็จ: ' + e.message) }
     finally { setSaving(false); setConfirm(null) }
   }
@@ -86,9 +90,35 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
   const move = (i, d) => { const a = [...fmtList]; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; setDraft(x => ({ ...x, description_format: a })) }
   const dis = !canEdit
 
+  if (!open) {
+    const chips = defaultsSummary({ project, index, infillTypes })
+    return (
+      <div className="card" style={{ padding: '12px 16px', display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 700 }}>ค่าเริ่มต้นของโปรเจกต์</div>
+          {dirty
+            ? <span className="badge" style={{ color: 'var(--red)' }}>มีค่าที่ยังไม่บันทึก</span>
+            : <span className="badge badge-paid">✓ บันทึกแล้ว</span>}
+          <button type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setOpen(true)}>{canEdit ? 'แก้ไข ▾' : 'ดู ▾'}</button>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {chips.map(c => (
+            <span key={c.label} className="badge" style={{ padding: '3px 8px', display: 'inline-flex', gap: 4 }}>
+              <span style={{ color: 'var(--text3)' }}>{c.label}</span><span>{c.value}</span>
+            </span>
+          ))}
+          {!chips.length && <span style={{ fontSize: 12, color: 'var(--text3)' }}>ยังไม่ได้ตั้งค่า — เลือกต่อรายการ</span>}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="card" style={{ padding: 16, display: 'grid', gap: 12 }}>
-      <div style={{ fontWeight: 700 }}>ค่าเริ่มต้นของโปรเจกต์ <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text3)' }}>(ว่าง = เลือกต่อรายการ)</span></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontWeight: 700 }}>ค่าเริ่มต้นของโปรเจกต์ <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text3)' }}>(ว่าง = เลือกต่อรายการ)</span></div>
+        <button type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setOpen(false)}>ย่อ ▴</button>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
         <Field label="โรงรีดหลัก">
           <select className="input" disabled={dis} value={draft.primary_provider_id} onChange={e => change('primary_provider_id', e.target.value)}>

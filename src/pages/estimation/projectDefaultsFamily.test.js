@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import { withFamilyResolver } from '../../lib/seriesFamily.js'
-import { hardwareBanners, availabilityIssues, draftFromProject, reconcileDraft, buildPatch, draftSeriesKey, applySeriesKey, patchChangesSeries } from './projectDefaults.js'
+import { hardwareBanners, availabilityIssues, draftFromProject, reconcileDraft, buildPatch, draftSeriesKey, applySeriesKey, patchChangesSeries, hasSavedDefaults, defaultsSummary, thaiDate } from './projectDefaults.js'
 import { packagesForSeriesIds } from '../../lib/projectHardware.js'
 
 export const famIndex = buildCatalogIndex({
@@ -84,5 +84,31 @@ describe('the ซีรีส์หลัก draft', () => {
     const pk = [{ id: 'a', name: 'B', series_id: null }, { id: 'b', name: 'A', series_id: 'iOpen' }, { id: 'c', name: 'C', series_id: 'b1' }, { id: 'd', name: 'D', series_id: null, active: false }]
     expect(packagesForSeriesIds(pk, ['iOpen', 'iSlide']).map(p => p.id)).toEqual(['b', 'a'])
     expect(packagesForSeriesIds(pk, []).map(p => p.id)).toEqual(['a'])
+  })
+})
+
+describe('collapsed card helpers', () => {
+  it('a new project (only profit and price date) is not "set"; any default is', () => {
+    expect(hasSavedDefaults({ profit_pct: 30, price_as_of: '2026-10-31' })).toBe(false)
+    expect(hasSavedDefaults({ default_series_family_id: 'fI' })).toBe(true)
+    expect(hasSavedDefaults({ labour_per_sqm: 0 })).toBe(true)
+    expect(hasSavedDefaults(null)).toBe(false)
+  })
+  it('summary chips in the mockup order, blanks left out', () => {
+    const project = { primary_provider_id: 'A', default_series_family_id: 'fI', default_finish_id: 'fin', default_infill_id: 'g', profit_pct: 50, price_as_of: '2026-10-09' }
+    expect(defaultsSummary({ project, index: famIndex, infillTypes: [{ id: 'g', name: 'กระจกใส 6มม.' }] })).toEqual([
+      { label: 'โรงรีด', value: 'บจก. อลูเม็ท (Alumet)' },
+      { label: 'ซีรีส์หลัก', value: 'ICONIQ EURO' },
+      { label: 'สี', value: '15664 Heritage Oak' },
+      { label: 'อุดช่อง', value: 'กระจกใส 6มม.' },
+      { label: 'กำไร', value: '50%' },
+      { label: 'วันที่ราคา', value: '9 ต.ค. 2569' },
+    ])
+    expect(defaultsSummary({ project: { profit_pct: null, price_as_of: null }, index: famIndex, infillTypes: [] })).toEqual([])
+  })
+  it('thaiDate', () => {
+    expect(thaiDate('2026-01-31')).toBe('31 ม.ค. 2569')
+    expect(thaiDate('')).toBe('')
+    expect(thaiDate(null)).toBe('')
   })
 })

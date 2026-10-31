@@ -7,7 +7,7 @@ import { mergeSettings } from '../../lib/estimationSettings.js'
 import { localDateString } from '../../lib/localDate.js'
 import { costOpening, partPreviewCtx } from '../../lib/openingCost.js'
 import { typeAvailability, inheritedSeries } from '../../lib/estimationInherit.js'
-import { projectSeriesIds, familyThicknesses, familyAllowsMixed, keyProviderId, isSoloKey, soloSeriesId, soloKey } from '../../lib/seriesFamily.js'
+import { projectSeriesIds, familyThicknesses, familyAllowsMixed, keyProviderId, isSoloKey, soloSeriesId, soloKey, familyLabel, projectFamilyKey } from '../../lib/seriesFamily.js'
 import { missingHardwareTypeIds } from '../../lib/projectHardware.js'
 import { unresolvedText } from '../../lib/reasonText.js'
 import { previewFrames, itemPreviewSignature } from '../../lib/itemPreviewSignature.js'
@@ -282,4 +282,34 @@ export function addonCostMaps({ addonPieces, itemAddons }) {
     itemAddonsByOpening: i.loaded ? i.itemAddonsByOpening : undefined,
     addonsLoading: !!(p.loading || i.loading),
   }
+}
+
+// Columns whose value means the owner has set the defaults. profit_pct and price_as_of are filled when a project is
+// created (newProjectRow), so they alone do not count.
+const SET_COLUMNS = ['primary_provider_id', 'default_series_family_id', 'default_series_id', 'default_finish_id', 'default_thickness_mm',
+  'default_sash_thickness_mm', 'default_infill_id', 'hardware_package_id', 'labour_per_sqm']
+export const hasSavedDefaults = project => !!project && SET_COLUMNS.some(c => project[c] !== null && project[c] !== undefined && project[c] !== '')
+
+const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+// '2026-10-09' -> '9 ต.ค. 2569' (Buddhist year); '' for anything that is not a YYYY-MM-DD date.
+export function thaiDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''))
+  return m ? `${Number(m[3])} ${TH_MONTHS[Number(m[2]) - 1]} ${Number(m[1]) + 543}` : ''
+}
+
+// The collapsed card's chips (mockup order); a blank default is left out (= chosen per item).
+export function defaultsSummary({ project, index, infillTypes }) {
+  const pj = project || {}
+  const prov = pj.primary_provider_id ? index.providers[pj.primary_provider_id] : null
+  const finish = pj.default_finish_id ? index.finishes[pj.default_finish_id] : null
+  const infill = pj.default_infill_id ? (infillTypes || []).find(g => g.id === pj.default_infill_id) : null
+  const profit = pj.profit_pct === null || pj.profit_pct === undefined || pj.profit_pct === '' ? NaN : Number(pj.profit_pct)
+  return [
+    ['โรงรีด', prov ? prov.name : ''],
+    ['ซีรีส์หลัก', familyLabel(index, projectFamilyKey(pj))],
+    ['สี', finish ? finish.name : ''],
+    ['อุดช่อง', infill ? infill.name : ''],
+    ['กำไร', Number.isFinite(profit) ? `${profit}%` : ''],
+    ['วันที่ราคา', thaiDate(pj.price_as_of)],
+  ].filter(([, v]) => v).map(([label, value]) => ({ label, value }))
 }
