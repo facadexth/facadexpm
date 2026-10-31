@@ -10,7 +10,6 @@ const ALLOWED = new Set([
   'src/lib/estimationInherit.js',
   'src/lib/seriesFamily.js',
   'src/pages/estimation/projectDefaults.js',
-  'src/pages/estimation/ProviderCompare.jsx',        // leaves this list in Task 7
 ])
 function walk(dir, out = []) {
   for (const f of readdirSync(dir)) {

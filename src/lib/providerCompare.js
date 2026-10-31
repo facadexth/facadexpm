@@ -1,19 +1,21 @@
 // src/lib/providerCompare.js
 // "Compare extruders" for a whole project: recompute the ALUMINIUM cost of every item as if it were built in a
 // candidate extruder's series and colour. Read-only: nothing in the project changes. Pure.
-// Candidate = { providerId, seriesId, finishId } (the screen lets the owner pick the series + colour per candidate).
+// Candidate = { providerId, seriesId | seriesKey, finishId }: seriesKey (a ซีรีส์หลัก key) gives each item its family's series for its type.
 // Items keep their size, template and thickness (frame and sash); a candidate series that lacks a thickness or
 // profile makes those lines unresolved, and the row says how many lines could not be priced.
 // Built on costOpening so joints, role thickness and inheritance behave exactly as in the item form.
 import { costOpening, costBoms, isAddonIssue } from './openingCost.js'
+import { familySeriesForType } from './seriesFamily.js'
 
 // ctx: { project, items, templatesById, componentsByTemplate, jointsByTemplate, partModelByTemplate?, addonPiecesByTemplate?,
-//        itemAddonsByOpening?, addonPiecesError?, itemAddonsError?, typesById, infillTypesById, index, settings, candidates, asOf }
+//        itemAddonsByOpening?, addonPiecesError?, itemAddonsError?, typesById, infillTypesById, index, settings, candidates, asOf,
+//        seriesTypes? (expanded series-type links; read for a seriesKey candidate) }
 export function compareProviders(ctx) {
   const { items, templatesById, index } = ctx
   return (ctx.candidates || []).map(cand => {
-    // early return if seriesId or finishId is missing
-    if (!cand.seriesId || !cand.finishId) {
+    // early return if the series (seriesKey or seriesId) or finishId is missing
+    if (!(cand.seriesKey || cand.seriesId) || !cand.finishId) {
       return { ...cand, aluminium: 0, unresolvedLines: 1, itemsPriced: 0, complete: false }
     }
 
@@ -24,8 +26,17 @@ export function compareProviders(ctx) {
     for (const item of items || []) {
       const template = (templatesById || {})[item.template_id]
       if (!template) { unresolvedLines += Number(item.quantity) > 0 ? Number(item.quantity) : 1; continue }
+      const qty = Number(item.quantity) > 0 ? Number(item.quantity) : 1
+      const seriesId = cand.seriesKey
+        ? familySeriesForType(index, ctx.seriesTypes, cand.providerId, cand.seriesKey, template.type_id || null)
+        : cand.seriesId
+      if (!seriesId) {
+        unresolvedLines += qty
+        failedItems.push({ id: item.id, opening_no: item.opening_no, text: 'ซีรีส์หลักนี้ไม่มีชุดสำหรับประเภทนี้' })
+        continue
+      }
       // the same item, forced onto the candidate series + colour; hardware is not part of this comparison
-      const forced = { ...item, series_id: cand.seriesId, alu_finish_id: cand.finishId, no_hardware_set: true, hardware_set_id: null }
+      const forced = { ...item, series_id: seriesId, alu_finish_id: cand.finishId, no_hardware_set: true, hardware_set_id: null }
       const addonTemplate = item.addon_template_id ? (templatesById || {})[item.addon_template_id] : null
       try {
         const r = costOpening({
@@ -35,7 +46,6 @@ export function compareProviders(ctx) {
           typesById: ctx.typesById, infillTypesById: ctx.infillTypesById, index, settings: ctx.settings, asOf: ctx.asOf,
         })
         const lines = costBoms(r).flatMap(b => [...b.profileLines, ...b.gridLines])
-        const qty = Number(item.quantity) > 0 ? Number(item.quantity) : 1
         aluminium += lines.reduce((s, l) => s + l.cost, 0) * qty
         unresolvedLines += lines.filter(l => !l.resolved).length * qty
         // also count unresolved dimensions and joints

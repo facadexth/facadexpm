@@ -343,12 +343,14 @@ export function comparisonRows(results, baseId) {
   return (results || []).map(r => {
     const isBase = r.providerId === baseId
     const d = isBase ? null : diffAgainst(base, r)
+    const chosen = r.seriesKey || r.seriesId
     return {
       providerId: r.providerId, seriesId: r.seriesId, finishId: r.finishId, isBase,
+      ...(r.seriesKey !== undefined ? { seriesKey: r.seriesKey } : {}),
       complete: !!r.complete, aluminium: r.complete ? r.aluminium : null,
       diff: d, unresolvedLines: r.complete ? 0 : r.unresolvedLines,
-      pending: !r.seriesId || !r.finishId,
-      canApply: !isBase && !!r.complete && !!r.seriesId && !!r.finishId,
+      pending: !chosen || !r.finishId,
+      canApply: !isBase && !!r.complete && !!chosen && !!r.finishId,
     }
   })
 }
