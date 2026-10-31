@@ -67,6 +67,10 @@ describe('2026-10-31-02 functions', () => {
     const d = dry('2026-10-31-02-alu-parts-stock-link')
     // 'text' || jsonb_var resolves to jsonb || jsonb and fails with "invalid input syntax for type json"
     expect(d).not.toMatch(/'\s*\|\|\s*res\d\b(?!::text)/)
-    for (let i = 1; i <= 8; i++) expect(d).toContain(`'FAIL ${i} exception: ' || SQLERRM`)
+    for (const i of [1, 2, 3, 4, 5, 6, 7, 8, 11, 12]) expect(d).toContain(`'FAIL ${i} exception: ' || SQLERRM`)
+    // the sample item is picked by purchase history (case A/B/C printed) and its prices are checked against the source rows
+    expect(d).toContain("' case ' || v_case")
+    expect(d).toContain("'PASS 11 tax-invoice price")
+    expect(d).toContain("'PASS 12 PO price")
   })
 })

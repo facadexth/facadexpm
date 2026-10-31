@@ -139,6 +139,13 @@ DECLARE
   n       INT;
   txt     TEXT;
   r       RECORD;
+  v_case  TEXT;
+  n_src   INT;
+  got     NUMERIC;
+  exp_sti NUMERIC;
+  exp_sti_date DATE;
+  exp_po  NUMERIC;
+  exp_po_date  DATE;
 BEGIN
   BEGIN
     INSERT INTO _res(line) VALUES (CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_alu_parts_inventory_item')
@@ -177,24 +184,81 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 4 exception: ' || SQLERRM);
   END;
 
-  -- setup: a sample stock item, then act as the tenant OWNER. If setup fails, stop (the later checks would run as
-  -- the wrong role) but keep the results so far.
+  -- setup 1 (as the migration runner, no RLS): pick the sample stock item deterministically.
+  --   case A: a posted supplier tax-invoice line AND a non-cancelled PO line in the item's base unit
+  --   case B: a posted supplier tax-invoice line only
+  --   case C: no purchase history at all (any active item; the price checks then prove nothing)
+  -- If setup fails, stop (the later checks would run as the wrong role) but keep the results so far.
   BEGIN
-    -- the stock item with the most recent posted tax invoice line in category อุปกรณ์ (falls back to any active item)
     SELECT li.inventory_item_id INTO v_item
-      FROM supplier_tax_invoice_items li JOIN supplier_tax_invoices inv ON inv.id = li.invoice_id AND inv.status = 'posted'
-      JOIN inventory_items i ON i.id = li.inventory_item_id JOIN expense_categories c ON c.id = i.category_id AND c.name = 'อุปกรณ์'
-     WHERE inv.tenant_id = v_t ORDER BY inv.invoice_date DESC LIMIT 1;
-    IF v_item IS NULL THEN SELECT id INTO v_item FROM inventory_items WHERE tenant_id = v_t AND active ORDER BY name LIMIT 1; END IF;
-    INSERT INTO _res(line) VALUES ('info sample stock item: ' || COALESCE(v_item::text, 'none'));
+      FROM supplier_tax_invoice_items li
+      JOIN supplier_tax_invoices inv ON inv.id = li.invoice_id AND inv.status = 'posted'
+      JOIN inventory_items i ON i.id = li.inventory_item_id
+     WHERE inv.tenant_id = v_t AND li.base_unit_cost IS NOT NULL
+       AND EXISTS (SELECT 1 FROM purchase_order_items pl JOIN purchase_orders o ON o.id = pl.po_id AND o.status <> 'cancelled'
+                    WHERE pl.inventory_item_id = i.id AND pl.unit_price > 0
+                      AND (NULLIF(btrim(pl.unit), '') IS NULL OR btrim(pl.unit) = btrim(i.base_unit)))
+     ORDER BY inv.invoice_date DESC, li.inventory_item_id LIMIT 1;
+    v_case := 'A (tax invoice + PO)';
+    IF v_item IS NULL THEN
+      SELECT li.inventory_item_id INTO v_item
+        FROM supplier_tax_invoice_items li
+        JOIN supplier_tax_invoices inv ON inv.id = li.invoice_id AND inv.status = 'posted'
+       WHERE inv.tenant_id = v_t AND li.base_unit_cost IS NOT NULL AND li.inventory_item_id IS NOT NULL
+       ORDER BY inv.invoice_date DESC, li.inventory_item_id LIMIT 1;
+      v_case := 'B (tax invoice only)';
+    END IF;
+    IF v_item IS NULL THEN
+      SELECT id INTO v_item FROM inventory_items WHERE tenant_id = v_t AND active ORDER BY name, id LIMIT 1;
+      v_case := 'C (no purchase history: price checks prove nothing)';
+    END IF;
+    INSERT INTO _res(line) VALUES ('info sample stock item: ' || COALESCE(v_item::text, 'none') || ' case ' || v_case);
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _res(line) VALUES ('FAIL setup exception: ' || SQLERRM);
+    RETURN;
+  END;
 
-    -- from here on: the tenant OWNER, role authenticated (a block that ends normally keeps the SET LOCAL)
+  -- expected prices, straight from the source tables (still no RLS): the latest date of each source, last line of that day
+  BEGIN
+    SELECT inv.invoice_date, li.base_unit_cost INTO exp_sti_date, exp_sti
+      FROM supplier_tax_invoice_items li JOIN supplier_tax_invoices inv ON inv.id = li.invoice_id AND inv.status = 'posted'
+     WHERE li.inventory_item_id = v_item AND li.base_unit_cost IS NOT NULL
+     ORDER BY inv.invoice_date DESC, inv.posted_at DESC NULLS LAST, li.sort_order DESC LIMIT 1;
+    SELECT o.date,
+           round(pl.unit_price * (1 - COALESCE(pl.discount_pct, 0) / 100)
+                 / CASE WHEN o.has_vat AND o.price_includes_vat THEN 1.07 ELSE 1 END, 4)
+      INTO exp_po_date, exp_po
+      FROM purchase_order_items pl JOIN purchase_orders o ON o.id = pl.po_id AND o.status <> 'cancelled'
+      JOIN inventory_items i ON i.id = pl.inventory_item_id
+     WHERE pl.inventory_item_id = v_item AND pl.unit_price > 0
+       AND (NULLIF(btrim(pl.unit), '') IS NULL OR btrim(pl.unit) = btrim(i.base_unit))
+     ORDER BY o.date DESC, o.created_at DESC NULLS LAST, pl.sort_order DESC LIMIT 1;
+    SELECT count(*) INTO n_src FROM supplier_tax_invoice_items li
+      JOIN supplier_tax_invoices inv ON inv.id = li.invoice_id AND inv.status = 'posted'
+     WHERE li.inventory_item_id = v_item AND li.base_unit_cost IS NOT NULL;
+    INSERT INTO _res(line) VALUES (format('info expected (no RLS): tax invoice %s on %s (%s posted lines), PO %s on %s',
+      exp_sti, exp_sti_date, n_src, exp_po, exp_po_date));
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _res(line) VALUES ('FAIL 11 exception: ' || SQLERRM);
+  END;
+
+  -- setup 2: from here on, the tenant OWNER, role authenticated (a block that ends normally keeps the SET LOCAL)
+  BEGIN
     SELECT user_email INTO v_mail FROM user_roles WHERE tenant_id = v_t AND role = 'OWNER' ORDER BY user_email LIMIT 1;
     PERFORM set_config('request.jwt.claims', json_build_object('sub', gen_random_uuid(), 'role', 'authenticated', 'email', v_mail)::text, true);
     EXECUTE 'SET LOCAL role authenticated';
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _res(line) VALUES ('FAIL setup exception: ' || SQLERRM);
     RETURN;
+  END;
+
+  -- the RLS gate of the purchase tables (is_admin_or_owner AND has_module_access('purchase_orders')) for the simulated owner
+  BEGIN
+    SELECT count(*) INTO n_src FROM supplier_tax_invoice_items WHERE inventory_item_id = v_item;
+    INSERT INTO _res(line) VALUES (format('info rls as owner %s: is_admin_or_owner=%s has_module_access(purchase_orders)=%s current_tenant_id=%s tax-invoice lines visible=%s',
+      v_mail, is_admin_or_owner(), has_module_access('purchase_orders'), current_tenant_id(), n_src));
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _res(line) VALUES ('FAIL rls exception: ' || SQLERRM);
   END;
 
   BEGIN
@@ -247,6 +311,32 @@ BEGIN
     INSERT INTO _res(line) VALUES ('FAIL 10 a non-set accepted');
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _res(line) VALUES (CASE WHEN SQLERRM = 'not_a_set' THEN 'PASS 10 not_a_set refused' ELSE 'FAIL 10 ' || SQLERRM END);
+  END;
+  -- 11/12: what the function returns as the owner (RLS on) equals the value computed straight from the source tables
+  BEGIN
+    IF exp_sti IS NULL THEN
+      INSERT INTO _res(line) VALUES ('info 11 the sample item has no posted tax-invoice price (case C): nothing to compare');
+    ELSE
+      SELECT unit_cost INTO got FROM stock_item_purchase_prices(ARRAY[v_item])
+       WHERE source = 'tax_invoice' AND effective_from = exp_sti_date;
+      INSERT INTO _res(line) VALUES (CASE WHEN got = exp_sti
+        THEN format('PASS 11 tax-invoice price %s on %s matches the source line (%s)', got, exp_sti_date, exp_sti)
+        ELSE format('FAIL 11 tax-invoice price on %s: function %s, source line %s', exp_sti_date, COALESCE(got::text, 'no row'), exp_sti) END);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 11 exception: ' || SQLERRM);
+  END;
+  BEGIN
+    got := NULL;
+    IF exp_po IS NULL THEN
+      INSERT INTO _res(line) VALUES ('info 12 the sample item has no PO line in its base unit: nothing to compare');
+    ELSE
+      SELECT unit_cost INTO got FROM stock_item_purchase_prices(ARRAY[v_item])
+       WHERE source = 'po' AND effective_from = exp_po_date;
+      INSERT INTO _res(line) VALUES (CASE WHEN got = exp_po
+        THEN format('PASS 12 PO price %s on %s matches the source line (%s)', got, exp_po_date, exp_po)
+        ELSE format('FAIL 12 PO price on %s: function %s, source line %s', exp_po_date, COALESCE(got::text, 'no row'), exp_po) END);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 12 exception: ' || SQLERRM);
   END;
   EXECUTE 'RESET ROLE';
 EXCEPTION WHEN OTHERS THEN
