@@ -3,6 +3,7 @@
 // top-level type (from the type tree) and a responsive grid of cards; each card is a real button with the template's
 // drawing (templateCards.templateThumb, no dimensions), its name and its type. Used by the BOM Templates page and the
 // item form. chips={false} hides the chips (the item form filters with its type cascade instead).
+// emptyText (null = none) is shown when there are no templates at all.
 // Inactive templates are drawn faded with 🚫 before the name, like the page's old text list.
 import { useMemo, useState } from 'react'
 import PreviewSvg from './PreviewSvg.jsx'
@@ -75,7 +76,7 @@ export default function TemplateCardGrid({ templates, typesById, partModelByTemp
           )
         })}
       </div>
-      {!list.length && <div style={{ fontSize: 12, color: 'var(--text3)', padding: 8 }}>{emptyText}</div>}
+      {!list.length && emptyText && <div style={{ fontSize: 12, color: 'var(--text3)', padding: 8 }}>{emptyText}</div>}
       {list.length > 0 && !shown.length && <div style={{ padding: 16, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>ไม่พบเทมเพลตที่ตรงกับคำค้น</div>}
     </div>
   )

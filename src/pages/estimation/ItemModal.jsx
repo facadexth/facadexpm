@@ -13,6 +13,7 @@ import { snapshotFor } from '../../lib/itemPreviewSignature.js'
 import { bomTemplatesForType } from '../../lib/layoutTemplates.js'
 import { typePath, pickInPath, cascadeLevels, typeTreeOf, templatesForType, reconcileItemForm, validateItemForm, applyCardToForm, layoutRowFromItem, layoutSaveErrorText, convertLegacyAddon, mainMmOf } from './itemForm.js'
 import { saveItemWithAddons, addonSavePlan } from './itemSave.js'
+import { pickTemplate } from './templateCards.js'
 import ItemAddons from './ItemAddons.jsx'
 import { useItemModel } from './useItemModel.js'
 import ItemFields from './ItemFields.jsx'
@@ -83,6 +84,13 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
     const leaf = cascadeLevels(typeTreeOf(index.types), next).leafId
     const first = leaf ? templatesForType((templates || []).filter(t => t.active !== false), leaf, null)[0] : null
     update({ template_id: first ? first.id : '' })
+  }
+  // a picture card: the template, and the type cascade jumps to that template's type
+  const pickTemplateCard = t => {
+    const next = pickTemplate(index.types, t)
+    setPath(next.path)
+    setLayoutPick(null)
+    update({ template_id: next.template_id })
   }
   const pickAddonType = value => {
     setLayoutPick(null)
@@ -160,7 +168,7 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
     <Modal title={rowId ? `แก้ไขรายการ ${form.opening_no || ''}` : 'เพิ่มรายการ'} onClose={() => (busy ? false : onClose())} maxWidth={1180}>
       <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 18, alignItems: 'start' }}>
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
-          <ItemFields form={form} update={update} dis={dis} m={{ ...m, pickType, own, setOwn }} />
+          <ItemFields form={form} update={update} dis={dis} m={{ ...m, pickType, pickTemplate: pickTemplateCard, partModelByTemplate: ctx.partModelByTemplate, typesById: index.types, own, setOwn }} />
           {m.violations.map((msg, i) => <div key={i} className="alert alert-error" style={{ fontSize: 13 }}>⚠️ {msg}</div>)}
           {/* also shown when another (non-part-editor) template was picked with add-ons left, so they can be removed */}
           {((m.template && m.template.layout_kind) || (form.addons || []).length > 0) && (

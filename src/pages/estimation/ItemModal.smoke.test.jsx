@@ -34,6 +34,16 @@ describe('ItemModal renders', () => {
     expect(html).toContain('เพิ่มรายการ')
     expect(html).toContain('ภาพตัวอย่าง')
     expect(html).not.toContain('จำนวนชุด')
+    // the BOM template is picked from picture cards: every active template, none selected yet
+    expect(html).toMatch(/<button[^>]*aria-pressed="false"[^>]*title="เลื่อน"/)
+    expect(html).toMatch(/<button[^>]*aria-pressed="false"[^>]*title="ติดตาย"/)
+  })
+  it('an existing item: its template card is the selected one', () => {
+    const opening = { id: 'o9', project_id: 'p1', opening_no: 'W-09', template_id: 'tF', width_m: '1.2', height_m: 1.2, panel_count: 1, quantity: 1, extra_lines: [] }
+    const html = renderToString(<ItemModal {...props} opening={opening} currentSig={null} />)
+    expect(html).toMatch(/<button[^>]*aria-pressed="true"[^>]*title="ติดตาย"/)
+    // the cascade sits on the template's type (หน้าต่าง › บานติดตาย), so the cards narrow to it
+    expect(html).not.toMatch(/title="เลื่อน"/)
   })
   it('existing item with an add-on, a stale snapshot, constraint violation and a priced cost', () => {
     const opening = { id: 'o1', project_id: 'p1', opening_no: 'W-01', template_id: 'tS', width_m: '1.8', height_m: 1.2, panel_count: 2, addon_template_id: 'tF', addon_width_m: 1.8, addon_height_m: 0.4, addon_position: 'top', addon_panel_count: 1, quantity: 2, preview_svg_out: '<svg/>', preview_sig: 'old', extra_lines: [] }
@@ -52,7 +62,7 @@ describe('ItemModal renders', () => {
     const pctx = { ...ctx, templatesById: { ...ctx.templatesById, tP: tPart }, partModelByTemplate: { tP: model } }
     const opening = { id: 'o2', project_id: 'p1', opening_no: 'W-02', template_id: 'tP', width_m: '1.8', height_m: 1.2, panel_count: 2, quantity: 1, extra_lines: [] }
     const html = renderToString(<ItemModal {...props} ctx={pctx} templates={[tSlide, tFix, tPart]} opening={opening} currentSig={null} />)
-    expect(html).toContain('data:image/svg+xml')
+    expect(html).toMatch(/<img src="data:image\/svg\+xml[^"]*" alt="ภาพตัวอย่างวงกบและบาน"/)
     expect(html).not.toContain('เส้นเดียว (CAD)')
     expect(html).not.toMatch(/NaN/)
   })

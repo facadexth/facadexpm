@@ -42,7 +42,7 @@ function setup(kind, params = {}, openingExtra = {}, fixedKeys = null) {
   return render(<ItemModal {...props} opening={opening} currentSig={null} />)
 }
 const panel = () => within(screen.getByRole('group', { name: 'ค่าของแบบชิ้นส่วน' }))
-const svgOf = (c) => decodeURIComponent(c.querySelector('img[src^="data:image/svg+xml"]').getAttribute('src').split(',').slice(1).join(','))
+const svgOf = (c) => decodeURIComponent(c.querySelector('img[alt="ภาพตัวอย่างวงกบและบาน"][src^="data:image/svg+xml"]').getAttribute('src').split(',').slice(1).join(','))
 
 describe('item form layout inputs', () => {
   it('sliding_n shows n (the template value), and the door flag (fixed by the type) is not shown', () => {
@@ -100,7 +100,7 @@ describe('item form layout inputs', () => {
     fireEvent.change(panel().getByLabelText(/จำนวนบานพับซ้าย/), { target: { value: '0' } })
     fireEvent.change(panel().getByLabelText(/จำนวนบานพับขวา/), { target: { value: '0' } })
     expect(screen.getAllByText(/ใส่จำนวนบานซ้าย\/ขวา/).length).toBeGreaterThan(0)
-    expect(container.querySelector('img[src^="data:image/svg+xml"]')).toBeNull()
+    expect(container.querySelector('img[alt="ภาพตัวอย่างวงกบและบาน"][src^="data:image/svg+xml"]')).toBeNull()
   })
   it('folding door 0 + 0: saving is refused with the hint and nothing is written', async () => {
     setup('folding_door')

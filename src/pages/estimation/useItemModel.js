@@ -15,6 +15,7 @@ import {
   typeTreeOf, cascadeLevels, templatesForType, addonTypeOptions, liveItem, showSashField, inheritedHardware,
   partLabels, layoutCards, descriptionContext, evaluateConstraints, withCurrent, costRowFlags, itemLayoutInputs, liveAddons,
 } from './itemForm.js'
+import { templatesUnderPath } from './templateCards.js'
 
 // The live item's stand-in id: costOpening reads inline add-ons from ctx.itemAddonsByOpening[item.id], so the form's
 // add-ons (not the saved ones) are costed under this key. The drawing (part.addons) and the snapshot take live.addons directly.
@@ -56,6 +57,8 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
 
     const { levels, leafId } = cascadeLevels(tree, path)
     const templateOptions = optionsOf(templatesForType(activeTemplates, leafId, form.template_id, templates))
+    // the picture cards: every active template, narrowed by the chosen type level, the current one always kept
+    const cardTemplates = templatesUnderPath(templates, index.types, path, form.template_id)
     const addonTemplates = addonTemplatesForSeries(activeTemplates, seriesId, seriesTypes)
 
     const thicknesses = seriesId ? thicknessesForSeries(index, seriesId) : []
@@ -82,7 +85,7 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     const generatedDescription = buildItemDescription(descriptionContext({ item, resolved, index, template, infillTypesById }), pj.description_format)
     const cons = c => (constraints || []).filter(x => x.template_id === c)
     return {
-      template, addonTemplate, item, addonPartial, resolved, cost, addons: live.addons, addonIndexOf: live.indexOf, frames, inputs, part, labels, layoutInputs, leafId, levels, templateOptions,
+      template, addonTemplate, item, addonPartial, resolved, cost, addons: live.addons, addonIndexOf: live.indexOf, frames, inputs, part, labels, layoutInputs, leafId, levels, templateOptions, cardTemplates,
       typeWarn: path.length && !leafId ? 'เลือกประเภทให้ถึงชั้นสุดท้าย' : null,
       templateHint: leafId && !templateOptions.length ? 'ประเภทนี้ยังไม่มีเทมเพลต BOM สร้างได้ที่หน้าเทมเพลต BOM' : null,
       availability: typeAvailability(template, seriesId, seriesTypes),

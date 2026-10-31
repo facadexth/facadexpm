@@ -2,8 +2,10 @@
 // Left column of the item popup (mockup screen 2): number / name, type cascade + BOM template, size, series,
 // thicknesses, colour, infill, hardware set, labour / profit and extra lines. No quantity (Ruling 16).
 // Every field the project can supply shows "ใช้ค่าโปรเจกต์" (empty = inherit) and the inherited value as a hint.
-// A layout_kind template adds its layout inputs under the size (ItemLayoutInputs, Task 10).
+// The BOM template is picked from picture cards (TemplateCardGrid); the type cascade above narrows them, and a card sets
+// the cascade to its own type. A layout_kind template adds its layout inputs under the size (ItemLayoutInputs, Task 10).
 import ItemLayoutInputs from './ItemLayoutInputs.jsx'
+import TemplateCardGrid from './TemplateCardGrid.jsx'
 
 export const Field = ({ label, hint, warn, children }) => (
   <div style={{ minWidth: 0 }}>
@@ -38,7 +40,7 @@ export default function ItemFields({ form, m, update, dis }) {
         <Field label="ชื่อรายการ" hint="ชื่อสั้นสำหรับเรียกในโปรเจกต์"><input className="input" disabled={dis} value={form.item_name} onChange={e => update({ item_name: e.target.value })} /></Field>
       </div>
 
-      <Field label="ประเภท ★" hint="เลือกทีละชั้น ช่องถัดไปขึ้นเมื่อประเภทนั้นมีประเภทย่อย" warn={m.typeWarn}>
+      <Field label="ประเภท ★" hint="เลือกประเภทเพื่อกรองรูปด้านล่าง หรือกดเลือกรูปได้เลย" warn={m.typeWarn}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {m.levels.map((lv, i) => (
             <select key={i} className="input" style={{ flex: 1, minWidth: 110 }} disabled={dis} value={lv.value} onChange={e => m.pickType(i, e.target.value)}>
@@ -49,10 +51,8 @@ export default function ItemFields({ form, m, update, dis }) {
         </div>
       </Field>
       <Field label="เทมเพลต BOM ★" hint={m.templateHint}>
-        <select className="input" disabled={dis || !m.templateOptions.length} value={form.template_id} onChange={e => update({ template_id: e.target.value })}>
-          {!form.template_id && <option value="">— เลือก —</option>}
-          <Options list={m.templateOptions} />
-        </select>
+        <TemplateCardGrid templates={m.cardTemplates} typesById={m.typesById} partModelByTemplate={m.partModelByTemplate} selectedId={form.template_id || null}
+          onPick={m.pickTemplate} chips={false} disabled={dis} maxHeight={340} emptyText={m.templateHint ? null : 'ยังไม่มีเทมเพลต BOM'} />
       </Field>
 
       <div style={grid(110)}>
