@@ -123,6 +123,8 @@ CREATE TEMP TABLE _res (n SERIAL, line TEXT);
 GRANT ALL ON _res TO authenticated;
 GRANT USAGE, SELECT ON SEQUENCE _res_n_seq TO authenticated;
 
+-- Each numbered check has its own BEGIN ... EXCEPTION block, so one check that throws records 'FAIL <n> exception'
+-- and the others still report.
 DO $t$
 DECLARE
   v_t     UUID := '1b9affc4-2136-4ed1-b168-a36e6624e743'::uuid;
@@ -138,66 +140,101 @@ DECLARE
   txt     TEXT;
   r       RECORD;
 BEGIN
-  INSERT INTO _res(line) VALUES (CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_alu_parts_inventory_item')
-    THEN 'PASS 1 unique index on alu_parts.inventory_item_id' ELSE 'FAIL 1 index missing' END);
+  BEGIN
+    INSERT INTO _res(line) VALUES (CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_alu_parts_inventory_item')
+      THEN 'PASS 1 unique index on alu_parts.inventory_item_id' ELSE 'FAIL 1 index missing' END);
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 1 exception: ' || SQLERRM);
+  END;
 
-  INSERT INTO _res(line) VALUES (CASE WHEN
-        NOT has_function_privilege('anon', 'public.stock_item_purchase_prices(uuid[])', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.alu_add_stock_item_to_set(uuid,uuid,text,numeric)', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.alu_add_new_part_to_set(uuid,text,text,text,numeric,numeric,date)', 'EXECUTE')
-    AND has_function_privilege('authenticated', 'public.stock_item_purchase_prices(uuid[])', 'EXECUTE')
-    AND has_function_privilege('authenticated', 'public.alu_add_stock_item_to_set(uuid,uuid,text,numeric)', 'EXECUTE')
-    AND has_function_privilege('authenticated', 'public.alu_add_new_part_to_set(uuid,text,text,text,numeric,numeric,date)', 'EXECUTE')
-    THEN 'PASS 2 grants: authenticated only' ELSE 'FAIL 2 grants' END);
+  BEGIN
+    INSERT INTO _res(line) VALUES (CASE WHEN
+          NOT has_function_privilege('anon', 'public.stock_item_purchase_prices(uuid[])', 'EXECUTE')
+      AND NOT has_function_privilege('anon', 'public.alu_add_stock_item_to_set(uuid,uuid,text,numeric)', 'EXECUTE')
+      AND NOT has_function_privilege('anon', 'public.alu_add_new_part_to_set(uuid,text,text,text,numeric,numeric,date)', 'EXECUTE')
+      AND has_function_privilege('authenticated', 'public.stock_item_purchase_prices(uuid[])', 'EXECUTE')
+      AND has_function_privilege('authenticated', 'public.alu_add_stock_item_to_set(uuid,uuid,text,numeric)', 'EXECUTE')
+      AND has_function_privilege('authenticated', 'public.alu_add_new_part_to_set(uuid,text,text,text,numeric,numeric,date)', 'EXECUTE')
+      THEN 'PASS 2 grants: authenticated only' ELSE 'FAIL 2 grants' END);
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 2 exception: ' || SQLERRM);
+  END;
 
-  SELECT string_agg(DISTINCT v.relname, ', ') INTO txt
-    FROM pg_depend d JOIN pg_rewrite rw ON rw.oid = d.objid JOIN pg_class v ON v.oid = rw.ev_class
-    JOIN pg_class t ON t.oid = d.refobjid
-   WHERE t.relnamespace = 'public'::regnamespace AND t.relname = 'alu_parts' AND v.oid <> t.oid;
-  INSERT INTO _res(line) VALUES (CASE WHEN txt IS NULL THEN 'PASS 3 no view depends on alu_parts' ELSE 'FAIL 3 views: ' || txt END);
+  BEGIN
+    SELECT string_agg(DISTINCT v.relname, ', ') INTO txt
+      FROM pg_depend d JOIN pg_rewrite rw ON rw.oid = d.objid JOIN pg_class v ON v.oid = rw.ev_class
+      JOIN pg_class t ON t.oid = d.refobjid
+     WHERE t.relnamespace = 'public'::regnamespace AND t.relname = 'alu_parts' AND v.oid <> t.oid;
+    INSERT INTO _res(line) VALUES (CASE WHEN txt IS NULL THEN 'PASS 3 no view depends on alu_parts' ELSE 'FAIL 3 views: ' || txt END);
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 3 exception: ' || SQLERRM);
+  END;
 
   -- posted tax invoices whose lines do not add up to net_before_vat (then base_unit_cost might not be ex-VAT)
-  SELECT count(*) INTO n FROM supplier_tax_invoices inv
-   WHERE inv.status = 'posted'
-     AND abs(COALESCE((SELECT sum(amount) FROM supplier_tax_invoice_items li WHERE li.invoice_id = inv.id), 0) - inv.net_before_vat) > 1;
-  INSERT INTO _res(line) VALUES (CASE WHEN n = 0 THEN 'PASS 4 every posted tax invoice: lines add up to net_before_vat (ex-VAT)'
-    ELSE 'info 4 posted invoices whose lines differ from net_before_vat by > 1 baht: ' || n || ' (look before trusting base_unit_cost)' END);
+  BEGIN
+    SELECT count(*) INTO n FROM supplier_tax_invoices inv
+     WHERE inv.status = 'posted'
+       AND abs(COALESCE((SELECT sum(amount) FROM supplier_tax_invoice_items li WHERE li.invoice_id = inv.id), 0) - inv.net_before_vat) > 1;
+    INSERT INTO _res(line) VALUES (CASE WHEN n = 0 THEN 'PASS 4 every posted tax invoice: lines add up to net_before_vat (ex-VAT)'
+      ELSE 'info 4 posted invoices whose lines differ from net_before_vat by > 1 baht: ' || n || ' (look before trusting base_unit_cost)' END);
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 4 exception: ' || SQLERRM);
+  END;
 
-  -- the stock item with the most recent posted tax invoice line in category อุปกรณ์ (falls back to any active item)
-  SELECT li.inventory_item_id INTO v_item
-    FROM supplier_tax_invoice_items li JOIN supplier_tax_invoices inv ON inv.id = li.invoice_id AND inv.status = 'posted'
-    JOIN inventory_items i ON i.id = li.inventory_item_id JOIN expense_categories c ON c.id = i.category_id AND c.name = 'อุปกรณ์'
-   WHERE inv.tenant_id = v_t ORDER BY inv.invoice_date DESC LIMIT 1;
-  IF v_item IS NULL THEN SELECT id INTO v_item FROM inventory_items WHERE tenant_id = v_t AND active ORDER BY name LIMIT 1; END IF;
+  -- setup: a sample stock item, then act as the tenant OWNER. If setup fails, stop (the later checks would run as
+  -- the wrong role) but keep the results so far.
+  BEGIN
+    -- the stock item with the most recent posted tax invoice line in category อุปกรณ์ (falls back to any active item)
+    SELECT li.inventory_item_id INTO v_item
+      FROM supplier_tax_invoice_items li JOIN supplier_tax_invoices inv ON inv.id = li.invoice_id AND inv.status = 'posted'
+      JOIN inventory_items i ON i.id = li.inventory_item_id JOIN expense_categories c ON c.id = i.category_id AND c.name = 'อุปกรณ์'
+     WHERE inv.tenant_id = v_t ORDER BY inv.invoice_date DESC LIMIT 1;
+    IF v_item IS NULL THEN SELECT id INTO v_item FROM inventory_items WHERE tenant_id = v_t AND active ORDER BY name LIMIT 1; END IF;
+    INSERT INTO _res(line) VALUES ('info sample stock item: ' || COALESCE(v_item::text, 'none'));
 
-  SELECT user_email INTO v_mail FROM user_roles WHERE tenant_id = v_t AND role = 'OWNER' ORDER BY user_email LIMIT 1;
-  PERFORM set_config('request.jwt.claims', json_build_object('sub', gen_random_uuid(), 'role', 'authenticated', 'email', v_mail)::text, true);
-  EXECUTE 'SET LOCAL role authenticated';
+    -- from here on: the tenant OWNER, role authenticated (a block that ends normally keeps the SET LOCAL)
+    SELECT user_email INTO v_mail FROM user_roles WHERE tenant_id = v_t AND role = 'OWNER' ORDER BY user_email LIMIT 1;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', gen_random_uuid(), 'role', 'authenticated', 'email', v_mail)::text, true);
+    EXECUTE 'SET LOCAL role authenticated';
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _res(line) VALUES ('FAIL setup exception: ' || SQLERRM);
+    RETURN;
+  END;
 
-  FOR r IN SELECT * FROM stock_item_purchase_prices(ARRAY[v_item]) ORDER BY effective_from DESC LIMIT 3 LOOP
-    INSERT INTO _res(line) VALUES (format('info 5 price row %s %s %s %s (%s)', r.source, r.effective_from, r.unit_cost, r.doc_no, r.id));
-  END LOOP;
+  BEGIN
+    FOR r IN SELECT * FROM stock_item_purchase_prices(ARRAY[v_item]) ORDER BY effective_from DESC LIMIT 3 LOOP
+      INSERT INTO _res(line) VALUES (format('info 5 price row %s %s %s %s (%s)', r.source, r.effective_from, r.unit_cost, r.doc_no, r.id));
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 5 exception: ' || SQLERRM);
+  END;
 
-  INSERT INTO alu_parts (name, kind, unit) VALUES ('dry-run set 1', 'hardware_set', 'ชุด') RETURNING id INTO v_set1;
-  INSERT INTO alu_parts (name, kind, unit) VALUES ('dry-run set 2', 'hardware_set', 'ชุด') RETURNING id INTO v_set2;
-  res1 := alu_add_stock_item_to_set(v_set1, v_item, 'hardware', 2);
-  res2 := alu_add_stock_item_to_set(v_set1, v_item, 'hardware', 5);
-  res3 := alu_add_stock_item_to_set(v_set2, v_item, 'accessory', 1);
-  SELECT count(*) INTO n FROM alu_parts WHERE inventory_item_id = v_item;
-  INSERT INTO _res(line) VALUES (CASE WHEN (res1->>'added')::boolean AND NOT (res2->>'added')::boolean AND (res3->>'added')::boolean
-      AND res1->>'part_id' = res2->>'part_id' AND res1->>'part_id' = res3->>'part_id' AND n = 1
-      AND (SELECT quantity FROM alu_part_set_items WHERE set_id = v_set1 AND part_id = (res1->>'part_id')::uuid) = 2
-    THEN 'PASS 6 one part per stock item, reused across sets, a second add changes nothing'
-    ELSE format('FAIL 6 %s %s %s parts=%s', res1, res2, res3, n) END);
+  BEGIN
+    INSERT INTO alu_parts (name, kind, unit) VALUES ('dry-run set 1', 'hardware_set', 'ชุด') RETURNING id INTO v_set1;
+    INSERT INTO alu_parts (name, kind, unit) VALUES ('dry-run set 2', 'hardware_set', 'ชุด') RETURNING id INTO v_set2;
+    res1 := alu_add_stock_item_to_set(v_set1, v_item, 'hardware', 2);
+    res2 := alu_add_stock_item_to_set(v_set1, v_item, 'hardware', 5);
+    res3 := alu_add_stock_item_to_set(v_set2, v_item, 'accessory', 1);
+    SELECT count(*) INTO n FROM alu_parts WHERE inventory_item_id = v_item;
+    INSERT INTO _res(line) VALUES (CASE WHEN (res1->>'added')::boolean AND NOT (res2->>'added')::boolean AND (res3->>'added')::boolean
+        AND res1->>'part_id' = res2->>'part_id' AND res1->>'part_id' = res3->>'part_id' AND n = 1
+        AND (SELECT quantity FROM alu_part_set_items WHERE set_id = v_set1 AND part_id = (res1->>'part_id')::uuid) = 2
+      THEN 'PASS 6 one part per stock item, reused across sets, a second add changes nothing'
+      ELSE format('FAIL 6 %s %s %s parts=%s', res1, res2, res3, n) END);
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 6 exception: ' || SQLERRM);
+  END;
 
-  SELECT count(*) INTO n FROM stock_item_purchase_prices(NULL) WHERE inventory_item_id = v_item;
-  INSERT INTO _res(line) VALUES ('info 7 engine rows for the linked item: ' || n);
+  -- checks 7-10 need the sets made in check 6; they record their own FAIL if check 6 could not make them
+  BEGIN
+    SELECT count(*) INTO n FROM stock_item_purchase_prices(NULL) WHERE inventory_item_id = v_item;
+    INSERT INTO _res(line) VALUES ('info 7 engine rows for the linked item: ' || n);
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 7 exception: ' || SQLERRM);
+  END;
 
-  res4 := alu_add_new_part_to_set(v_set1, 'dry-run new part', 'ชิ้น', 'accessory', 3, 12.5, DATE '2026-10-31');
-  INSERT INTO _res(line) VALUES (CASE WHEN EXISTS (SELECT 1 FROM alu_part_prices WHERE part_id = (res4->>'part_id')::uuid AND list_price = 12.5 AND effective_from = DATE '2026-10-31')
-      AND EXISTS (SELECT 1 FROM alu_part_set_items WHERE set_id = v_set1 AND part_id = (res4->>'part_id')::uuid AND quantity = 3)
-      AND (SELECT kind FROM alu_parts WHERE id = (res4->>'part_id')::uuid) = 'accessory'
-    THEN 'PASS 8 new part with a price lands in the set' ELSE 'FAIL 8 ' || res4 END);
+  BEGIN
+    res4 := alu_add_new_part_to_set(v_set1, 'dry-run new part', 'ชิ้น', 'accessory', 3, 12.5, DATE '2026-10-31');
+    -- res4 is jsonb: concatenate it as text (a text literal || jsonb would be read as jsonb || jsonb)
+    INSERT INTO _res(line) VALUES (CASE WHEN EXISTS (SELECT 1 FROM alu_part_prices WHERE part_id = (res4->>'part_id')::uuid AND list_price = 12.5 AND effective_from = DATE '2026-10-31')
+        AND EXISTS (SELECT 1 FROM alu_part_set_items WHERE set_id = v_set1 AND part_id = (res4->>'part_id')::uuid AND quantity = 3)
+        AND (SELECT kind FROM alu_parts WHERE id = (res4->>'part_id')::uuid) = 'accessory'
+      THEN 'PASS 8 new part with a price lands in the set' ELSE 'FAIL 8 ' || res4::text END);
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _res(line) VALUES ('FAIL 8 exception: ' || SQLERRM);
+  END;
 
   BEGIN
     PERFORM alu_add_stock_item_to_set(v_set1, v_item, 'hardware_set', 1);
@@ -213,7 +250,7 @@ BEGIN
   END;
   EXECUTE 'RESET ROLE';
 EXCEPTION WHEN OTHERS THEN
-  INSERT INTO _res(line) VALUES ('FAIL exception: ' || SQLERRM);
+  INSERT INTO _res(line) VALUES ('FAIL exception outside the numbered checks: ' || SQLERRM);
 END $t$;
 
 DO $z$ BEGIN RAISE EXCEPTION 'RESULTS: %', (SELECT string_agg(line, E'\n' ORDER BY n) FROM _res); END $z$;

@@ -63,4 +63,10 @@ describe('2026-10-31-02 functions', () => {
     }
     expect(s).not.toMatch(/SECURITY DEFINER/)
   })
+  it('dry run: a text literal is never joined to a jsonb result without ::text, and each numbered check traps its own error', () => {
+    const d = dry('2026-10-31-02-alu-parts-stock-link')
+    // 'text' || jsonb_var resolves to jsonb || jsonb and fails with "invalid input syntax for type json"
+    expect(d).not.toMatch(/'\s*\|\|\s*res\d\b(?!::text)/)
+    for (let i = 1; i <= 8; i++) expect(d).toContain(`'FAIL ${i} exception: ' || SQLERRM`)
+  })
 })
