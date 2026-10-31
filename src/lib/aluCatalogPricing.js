@@ -22,6 +22,7 @@ export function buildCatalogIndex(rows = {}) {
   return {
     providers: byId(rows.providers),
     series: byId(rows.series),
+    seriesFamilies: byId(rows.seriesFamilies),
     profiles: byId(rows.profiles),
     finishes: byId(rows.finishes),
     parts: byId(rows.parts),

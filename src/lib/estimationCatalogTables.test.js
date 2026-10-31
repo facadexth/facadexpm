@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { ESTIMATION_CATALOG_TABLES } from './estimationCatalogTables.js'
 
 const migrations = readdirSync('supabase/migrations')
-  .filter(f => /^2026-10-10-0[123]-alu-catalog-/.test(f))
+  .filter(f => /^2026-10-10-0[123]-alu-catalog-/.test(f) || f === '2026-10-31-01-alu-series-family.sql')
   .map(f => readFileSync(`supabase/migrations/${f}`, 'utf8'))
   .join('\n')
 
@@ -14,7 +14,7 @@ describe('ESTIMATION_CATALOG_TABLES', () => {
       expect(migrations).toMatch(new RegExp(`CREATE TABLE ${table}\\b`))
     }
   })
-  it('covers all 14 catalog tables exactly once', () => {
+  it('covers all 15 catalog tables exactly once', () => {
     const created = [...migrations.matchAll(/CREATE TABLE (\w+)/g)].map(m => m[1]).sort()
     expect(Object.values(ESTIMATION_CATALOG_TABLES).sort()).toEqual(created)
   })

@@ -3,6 +3,7 @@
 export const ESTIMATION_CATALOG_TABLES = {
   providers: 'alu_providers',
   series: 'alu_series',
+  seriesFamilies: 'alu_series_families',
   seriesTypes: 'alu_series_types',
   types: 'door_window_types',
   profiles: 'alu_profiles',
