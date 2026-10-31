@@ -58,19 +58,23 @@ describe('removing a hardware set (owner 2026-11-01: only when nothing uses it)'
     await expect(removeHardwareSet(db, 'SET')).rejects.toMatchObject({ code: '42501' })
     expect(removes(log)).toEqual([])
   })
-  it('unused: items, then series links, then the set row', async () => {
-    const { db, log } = fakeDb((table, calls) => (isRemove(calls) ? { data: [{ id: 'x' }], error: null } : { count: 0, error: null }))
+  it('unused: one request removes only the set row (its items and series links cascade), after every check', async () => {
+    const { db, log } = fakeDb((table, calls) => (isRemove(calls) ? { data: [{ id: 'SET' }], error: null } : { count: 0, error: null }))
     expect(await removeHardwareSet(db, 'SET')).toEqual({ removed: true })
-    expect(removes(log)).toEqual([
-      ['alu_part_set_items', ['set_id', 'SET']],
-      ['alu_series_parts', ['part_id', 'SET']],
-      ['alu_parts', ['id', 'SET']],
-    ])
+    expect(removes(log)).toEqual([['alu_parts', ['id', 'SET']]])
+    expect(log.length).toBe(SET_USAGE.length + 1)
+    expect(log[log.length - 1].table).toBe('alu_parts')
+    expect(log[log.length - 1].calls).toContainEqual(['select', 'id'])
   })
-  it('the database still refuses (FK 23503): the same message', async () => {
-    const { db } = fakeDb((table, calls) => (!isRemove(calls) ? { count: 0, error: null }
-      : table === 'alu_parts' ? { data: null, error: { code: '23503', message: 'fk' } } : { data: [], error: null }))
+  it('the database still refuses (FK 23503): the same message, and that one request was the only removal', async () => {
+    const { db, log } = fakeDb((table, calls) => (!isRemove(calls) ? { count: 0, error: null }
+      : { data: null, error: { code: '23503', message: 'fk' } }))
     expect(await removeHardwareSet(db, 'SET')).toEqual({ removed: false, message: SET_IN_USE_TEXT })
+    expect(removes(log)).toEqual([['alu_parts', ['id', 'SET']]])
+  })
+  it('another database error is thrown', async () => {
+    const { db } = fakeDb((table, calls) => (!isRemove(calls) ? { count: 0, error: null } : { data: null, error: { code: '42501', message: 'denied' } }))
+    await expect(removeHardwareSet(db, 'SET')).rejects.toMatchObject({ code: '42501' })
   })
   it('the set row did not go (no rights): an error, not a silent success', async () => {
     const { db } = fakeDb((table, calls) => (!isRemove(calls) ? { count: 0, error: null } : { data: [], error: null }))

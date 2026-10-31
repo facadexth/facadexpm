@@ -1,8 +1,8 @@
 // src/lib/hardwareSetRemove.js
 // Removing a hardware set (owner 2026-11-01): allowed only when nothing uses it. Every column that stores a set id is
-// checked first (SET_USAGE, from the foreign keys on alu_parts in supabase/migrations); only when all are clear are the
-// set's contents (alu_part_set_items), its series links (alu_series_parts) and then the set row (alu_parts) removed.
-// A database refusal (23503) still says "in use". db = the supabase client (PostgREST), passed in for tests.
+// checked first (SET_USAGE, from the foreign keys on alu_parts in supabase/migrations); only when all are clear is the
+// set's alu_parts row removed, in one request (its contents and series links cascade). A database refusal (23503)
+// still says "in use". db = the supabase client (PostgREST), passed in for tests.
 export const SET_IN_USE_TEXT = 'ชุดนี้มีรายการใช้อยู่ — ปิดใช้งานแทน'
 
 export const SET_USAGE = [
@@ -24,17 +24,14 @@ export async function removeHardwareSet(db, setId) {
     if (error) throw error
     if (count) return { removed: false, message: SET_IN_USE_TEXT }
   }
-  try {
-    for (const [table, column] of [['alu_part_set_items', 'set_id'], ['alu_series_parts', 'part_id']]) {
-      const { error } = await db.from(table).delete().eq(column, setId)
-      if (error) throw error
-    }
-    const { data, error } = await db.from('alu_parts').delete().eq('id', setId).select('id')
-    if (error) throw error
-    if (!data || !data.length) throw { code: '42501', message: 'set row not removed' }
-  } catch (e) {
-    if (e && e.code === '23503') return { removed: false, message: SET_IN_USE_TEXT }
-    throw e
+  // One request, so it is all or nothing: the database cascades the set's own rows (alu_part_set_items.set_id and
+  // alu_series_parts.part_id are ON DELETE CASCADE, 2026-10-10-02), and any blocking reference fails the whole
+  // delete with 23503, so a used set never loses its contents.
+  const { data, error } = await db.from('alu_parts').delete().eq('id', setId).select('id')
+  if (error) {
+    if (error.code === '23503') return { removed: false, message: SET_IN_USE_TEXT }
+    throw error
   }
+  if (!data || !data.length) throw { code: '42501', message: 'set row not removed' }   // RLS hid it: not a success
   return { removed: true }
 }

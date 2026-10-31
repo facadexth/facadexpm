@@ -109,14 +109,14 @@ describe('ลบชุด', () => {
     expect(screen.queryByRole('button', { name: 'ยืนยันลบ' })).toBeNull()
     expect(state.log.length).toBe(0)
   })
-  it('an unused set is removed (items, links, set) and the list reloads', async () => {
+  it('an unused set is removed (one request on the set row) and the list reloads', async () => {
     state.answer = (table, calls) => (isRemove(calls) ? { data: [{ id: 'x' }], error: null } : ok())
     render(<HardwareSetsPanel canEdit />)
     await openSet()
     fireEvent.click(screen.getByRole('button', { name: 'ลบชุด' }))
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันลบ' }))
     await screen.findByText('ลบชุด อุปกรณ์หน้าต่างบานเลื่อนสวน แล้ว')
-    expect(state.log.filter(e => isRemove(e.calls)).map(e => e.table)).toEqual(['alu_part_set_items', 'alu_series_parts', 'alu_parts'])
+    expect(state.log.filter(e => isRemove(e.calls)).map(e => e.table)).toEqual(['alu_parts'])
     expect(refetch).toHaveBeenCalled()
   })
 })
