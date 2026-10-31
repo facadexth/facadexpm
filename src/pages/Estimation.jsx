@@ -22,6 +22,7 @@ import { useEstimationSettings, useTemplateJoints, useHardwarePackages, useLayou
 import { takeDeepLink, resolveEstimationLink } from '../lib/deepLink.js'
 import { listPriceChanges } from '../lib/staleProjectPrices.js'
 import { localDateString } from '../lib/localDate.js'
+import { withFamilyResolver } from '../lib/seriesFamily.js'
 import { typeLabel } from '../lib/typeTree.js'
 import ProjectDefaultsPanel from './estimation/ProjectDefaultsPanel.jsx'
 import AvailabilityBanner from './estimation/AvailabilityBanner.jsx'
@@ -86,7 +87,10 @@ export default function Estimation(props) {
   }, [link, listsReady]) // eslint-disable-line react-hooks/exhaustive-deps
   const projectNames = useMemo(() => Object.fromEntries((projects || []).map(p => [p.id, p.name])), [projects])
 
-  const project = (projects || []).find(p => p.id === selectedProjectId) || null
+  const rawProject = (projects || []).find(p => p.id === selectedProjectId) || null
+  // Every screen below reads the item's series through resolveItemInputs; with a series family the project carries
+  // seriesForType(typeId). A project without a family stays the same object.
+  const project = useMemo(() => withFamilyResolver(rawProject, catalog.index, catalog.seriesTypes), [rawProject, catalog.index, catalog.seriesTypes])
   const ps = usePriceStructure(project ? project.id : null)   // the ONE instance: send, price tab and compare tab share it
   const projectOpenings = useMemo(() => (openings || []).filter(o => o.project_id === selectedProjectId), [openings, selectedProjectId])
   const index = catalog.index

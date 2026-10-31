@@ -398,3 +398,25 @@ describe('fix round 1', () => {
     expect(outside).not.toMatch(/\.from\(|\.rpc\(|\.storage\b/)
   })
 })
+
+describe('series family: attachment items take the family series of their type', () => {
+  it('the loader wraps the project with the family resolver', async () => {
+    tenantModules = ['estimation']
+    fakeData = {
+      ...estimation,
+      estimation_projects: [{ ...estimation.estimation_projects[0], default_series_id: null, default_series_family_id: 'FAM' }],
+      alu_series_families: [{ id: 'FAM', provider_id: 'PR', name: 'EURO' }],
+      alu_series: [
+        { id: 'SS', provider_id: 'PR', name: 'EURO Slide', series_family_id: 'FAM' },
+        { id: 'SF', provider_id: 'PR', name: 'EURO Fixed', series_family_id: 'FAM' },
+      ],
+      alu_series_types: [{ id: 'x1', series_id: 'SS', type_id: 'slide' }, { id: 'x2', series_id: 'SF', type_id: 'fixed' }],
+    }
+    const { hasModuleAccess } = useTenant()
+    const r = await loadQuotationAttachments({ quotation, hasModuleAccess })
+    const byNo = Object.fromEntries(r.items.map(i => [i.opening_no, i.series_id]))
+    expect(byNo['W-01']).toBe('SS')   // slide template
+    expect(byNo['F-01']).toBe('SF')   // fixed template
+    expect(byNo['D-01']).toBeNull()   // the family has no door series
+  })
+})

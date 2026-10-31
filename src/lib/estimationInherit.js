@@ -5,11 +5,29 @@
 
 import { typeLabourDefault } from './typeTree.js'
 import { hardwareSetStatus } from './projectHardware.js'
+import { familySeriesForType, isSoloKey, soloSeriesId } from './seriesFamily.js'
 
 const isSet = v => v !== null && v !== undefined && v !== ''
 const first = (...vals) => { for (const v of vals) if (isSet(v)) return v; return null }
 // Numeric columns can arrive as strings from the DB; the engine only accepts finite numbers, and 0 is a real value.
 const firstNum = (...vals) => { for (const v of vals) { if (!isSet(v)) continue; const n = Number(v); if (Number.isFinite(n)) return n } return null }
+
+// The series an item uses and where it comes from (spec 2026-10-31 section 5): 1 its own; 2 the project's series family
+// for the template's type (project wrapped by seriesFamily.withFamilyResolver; its answer is final, null included);
+// 3 the project's single default series (projects from before families); 4 none.
+export function inheritedSeries(item, project, template) {
+  const it = item || {}
+  const pj = project || {}
+  if (isSet(it.series_id)) return { series_id: it.series_id, source: 'item', familyMissing: false }
+  if (typeof pj.seriesForType === 'function') {
+    const id = pj.seriesForType(template && template.type_id ? template.type_id : null)
+    return id ? { series_id: id, source: 'family', familyMissing: false } : { series_id: null, source: null, familyMissing: true }
+  }
+  if (isSet(pj.default_series_id)) return { series_id: pj.default_series_id, source: 'project', familyMissing: false }
+  return { series_id: null, source: null, familyMissing: false }
+}
+
+export const resolveSeriesId = (item, project, template) => inheritedSeries(item, project, template).series_id
 
 // packageItems: rows of the project's chosen hardware package, or null/omitted when it has none (old default applies).
 export function resolveItemInputs(item, project, template, typesById, packageItems) {
@@ -19,7 +37,7 @@ export function resolveItemInputs(item, project, template, typesById, packageIte
   const typeLabour = rate > 0 ? rate : null
   const hw = hardwareSetStatus(packageItems, typesById, template && template.type_id, pj.default_hardware_set_id)
   return {
-    series_id: first(it.series_id, pj.default_series_id),
+    series_id: inheritedSeries(it, pj, template).series_id,
     finish_id: first(it.alu_finish_id, pj.default_finish_id),
     infill_type_id: it.no_infill ? null : first(it.infill_type_id, pj.default_infill_id),
     hardware_set_id: it.no_hardware_set ? null : first(it.hardware_set_id, hw.set_id),
@@ -76,5 +94,24 @@ export function itemsAffectedByDefaultSeries(items, templatesById, newSeriesId, 
     const main = typeAvailability((templatesById || {})[item.template_id], newSeriesId, seriesTypes)
     const addon = item.addon_template_id ? typeAvailability((templatesById || {})[item.addon_template_id], newSeriesId, seriesTypes) : 'unknown'
     return main === 'not_offered' || addon === 'not_offered'
+  })
+}
+
+// Items that will inherit the family `key` (their own series_id is null) but that it cannot build: the family has no
+// series for the main template's type, or the series it gives does not make the add-on. A solo key ('series:<id>')
+// is the old single-series check. index = buildCatalogIndex(...), seriesTypes = the expanded links.
+export function itemsAffectedByDefaultFamily(items, templatesById, index, seriesTypes, key) {
+  if (!key) return []
+  if (isSoloKey(key)) return itemsAffectedByDefaultSeries(items, templatesById, soloSeriesId(key), seriesTypes)
+  const fam = ((index && index.seriesFamilies) || {})[key]
+  const providerId = fam ? fam.provider_id : null
+  return (items || []).filter(item => {
+    if (item.series_id) return false
+    const main = (templatesById || {})[item.template_id]
+    if (!main) return false
+    const seriesId = familySeriesForType(index, seriesTypes, providerId, key, main.type_id || null)
+    if (!seriesId) return true
+    const addon = item.addon_template_id ? typeAvailability((templatesById || {})[item.addon_template_id], seriesId, seriesTypes) : 'unknown'
+    return addon === 'not_offered'
   })
 }

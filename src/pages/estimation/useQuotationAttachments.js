@@ -17,6 +17,8 @@ import { supabase } from '../../lib/supabase.js'
 import { resolveItemInputs } from '../../lib/estimationInherit.js'
 import { planAttachmentPages, hardwareSchedule, colourLegend } from '../../lib/attachmentPages.js'
 import { revisionLabel } from '../../lib/quotationExport.js'
+import { withFamilyResolver } from '../../lib/seriesFamily.js'
+import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 
 const byId = rows => Object.fromEntries((rows || []).map(r => [r.id, r]))
 const uniq = arr => [...new Set((arr || []).filter(v => v != null && v !== ''))]
@@ -147,8 +149,22 @@ async function loadQuotationAttachmentsOrThrow({ supabase: sb = supabase, quotat
     sb.from('door_window_types').select('*').then(must),
     project.hardware_package_id ? sb.from('alu_hardware_package_items').select('*').eq('package_id', project.hardware_package_id).then(must) : null,
   ])
+  // A project on a series family: load that family's series and their type links, so items that inherit pick the
+  // same series as on the estimation page. No extra query for a project without a family.
+  let resolverProject = project
+  if (project.default_series_family_id) {
+    const famId = project.default_series_family_id
+    const [famRows, famSeries] = await Promise.all([
+      sb.from('alu_series_families').select('*').eq('id', famId).then(must),
+      sb.from('alu_series').select('*').eq('series_family_id', famId).then(must),
+    ])
+    const ids = (famSeries || []).map(s => s.id)
+    const famLinks = ids.length ? (must(await sb.from('alu_series_types').select('*').in('series_id', ids)) || []) : []
+    const mini = buildCatalogIndex({ seriesFamilies: famRows, series: famSeries, seriesTypes: famLinks, types })
+    resolverProject = withFamilyResolver(project, mini, Object.values(mini.seriesTypesBySeries).flat())
+  }
   const items = buildAttachmentItems({
-    openings: mapped, lines, quotationItems, project,
+    openings: mapped, lines, quotationItems, project: resolverProject,
     templatesById: byId(templates), typesById: byId(types), packageItems: project.hardware_package_id ? (pkgItems || []) : null,
   })
   if (items.length === 0) return null
