@@ -603,7 +603,7 @@ function TemplatesView({ canEdit }) {
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-      <div className="card" style={{ padding: 12, flex: '1 1 300px', maxWidth: '100%', minWidth: 0 }}>
+      <div className="card" style={{ padding: 12, flex: '1 1 340px', maxWidth: '100%', minWidth: 0 }}>
         {canEdit && <button className="btn btn-primary btn-sm" style={{ marginBottom: 10, width: '100%', minHeight: 44 }} onClick={() => { setCreating(true); setSelectedId(null) }}>+ Template ใหม่</button>}
         <TemplateCardGrid templates={templates || []} typesById={typesById} partModelByTemplate={partModels.partModelByTemplate} selectedId={selectedId}
           onPick={t => { setSelectedId(t.id); setCreating(false) }} maxHeight="75vh" emptyText="ยังไม่มี Template" />

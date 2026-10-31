@@ -10,6 +10,8 @@ import PreviewSvg from './PreviewSvg.jsx'
 import { templateThumb, typeChips, filterTemplates, templateMeta } from './templateCards.js'
 
 const THUMB_H = 76
+// more top-level types than this (the tenant's tree may have a dozen roots) → one select instead of a wall of chips
+const MAX_CHIPS = 7
 
 export function TemplateThumb({ thumb, label, height = THUMB_H }) {
   if (thumb.kind === 'part') return <img src={thumb.src} alt={label} style={{ display: 'block', width: '100%', height, objectFit: 'contain' }} />
@@ -29,7 +31,7 @@ export function TemplateThumb({ thumb, label, height = THUMB_H }) {
 }
 
 const cardStyle = on => ({
-  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 8px 10px', minHeight: 44, minWidth: 0,
+  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 8px 10px', height: 'auto', minHeight: 44, minWidth: 0,
   borderRadius: 10, cursor: 'pointer', color: 'var(--text)', textAlign: 'center', font: 'inherit',
   background: on ? 'var(--bg3)' : 'transparent', border: on ? '2px solid var(--accent)' : '1px solid var(--border)',
 })
@@ -53,7 +55,12 @@ export default function TemplateCardGrid({ templates, typesById, partModelByTemp
       {list.length > 0 && (
         <input type="search" className="input" aria-label="ค้นหาเทมเพลต" placeholder="ค้นหา เช่น กระทุ้ง, เลื่อน, 3 บาน" value={query} onChange={e => setQuery(e.target.value)} />
       )}
-      {chipList.length > 2 && (
+      {chipList.length > MAX_CHIPS && (
+        <select className="input" aria-label="กรองตามประเภท" value={root} onChange={e => setRootId(e.target.value)}>
+          {chipList.map(c => <option key={c.id || 'all'} value={c.id}>{c.label} ({c.count})</option>)}
+        </select>
+      )}
+      {chipList.length > 2 && chipList.length <= MAX_CHIPS && (
         <div role="group" aria-label="กรองตามประเภท" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {chipList.map(c => (
             <button key={c.id || 'all'} type="button" aria-pressed={root === c.id} style={chipStyle(root === c.id)} onClick={() => setRootId(c.id)}>
@@ -62,7 +69,7 @@ export default function TemplateCardGrid({ templates, typesById, partModelByTemp
           ))}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))', gap: 10, ...(maxHeight ? { maxHeight, overflowY: 'auto', paddingRight: 2 } : {}) }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(116px, 1fr))', gridAutoRows: 'max-content', gap: 10, ...(maxHeight ? { maxHeight, overflowY: 'auto', paddingRight: 2 } : {}) }}>
         {shown.map(t => {
           const on = selectedId === t.id
           const off = t.active === false
