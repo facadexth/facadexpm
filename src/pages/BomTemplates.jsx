@@ -6,7 +6,7 @@
 // See docs/superpowers/specs/2026-09-10-bom-template-engine-design.md.
 // ============================================================
 import AluminumProfiles from './AluminumProfiles.jsx'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useBomTemplates, useInfillTypes } from '../hooks/useSupabase.js'
 import { useBomTemplateComponents, useBomTemplateHardware, useBomTemplateConstraints } from '../hooks/useSupabase.js'
@@ -30,6 +30,8 @@ import JointsTab from './bomTemplates/JointsTab.jsx'
 import { useAddonTemplateState } from './bomTemplates/addon/addonTemplateGlue.js'
 import HardwarePackagesTab from './bomTemplates/HardwarePackagesTab.jsx'
 import CardTable from '../components/CardTable.jsx'
+import TemplateCardGrid from './estimation/TemplateCardGrid.jsx'
+import { useBomPartModel } from '../hooks/useBomPartModel.js'
 import {
   catalogFamilies, templateTypeOptions, typeAllowsMixed, hardwarePartOptions, relinkAfterJointRemoved, validateComponentRows, orderJointIds,
   layoutLoadText,
@@ -586,6 +588,9 @@ function TemplatesView({ canEdit }) {
   const [selectedId, setSelectedId] = useState(null)
   const [creating, setCreating] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
+  // the card pictures: part-editor templates are drawn from their part rows (read-only here, the editor still loads its own)
+  const typesById = useMemo(() => Object.fromEntries((types || []).map(t => [t.id, t])), [types])
+  const partModels = useBomPartModel(templates, types ? typesById : null)
 
   const selected = (templates || []).find(t => t.id === selectedId)
 
@@ -597,28 +602,21 @@ function TemplatesView({ canEdit }) {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
-      <div className="card" style={{ padding: 12 }}>
-        {canEdit && <button className="btn btn-primary btn-sm" style={{ marginBottom: 10, width: '100%' }} onClick={() => { setCreating(true); setSelectedId(null) }}>+ Template ใหม่</button>}
-        <div style={{ display: 'grid', gap: 4 }}>
-          {(templates || []).map(t => (
-            <button key={t.id} className={`btn btn-sm ${selectedId === t.id ? 'btn-primary' : 'btn-ghost'}`} style={{ justifyContent: 'flex-start' }}
-              onClick={() => { setSelectedId(t.id); setCreating(false) }}>
-              {t.active ? '' : '🚫 '}{t.name}
-            </button>
-          ))}
-          {!(templates || []).length && <div style={{ fontSize: 12, color: 'var(--text3)', padding: 8 }}>ยังไม่มี Template</div>}
-        </div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+      <div className="card" style={{ padding: 12, flex: '1 1 300px', maxWidth: '100%', minWidth: 0 }}>
+        {canEdit && <button className="btn btn-primary btn-sm" style={{ marginBottom: 10, width: '100%', minHeight: 44 }} onClick={() => { setCreating(true); setSelectedId(null) }}>+ Template ใหม่</button>}
+        <TemplateCardGrid templates={templates || []} typesById={typesById} partModelByTemplate={partModels.partModelByTemplate} selectedId={selectedId}
+          onPick={t => { setSelectedId(t.id); setCreating(false) }} maxHeight="75vh" emptyText="ยังไม่มี Template" />
       </div>
-      <div>
+      <div style={{ flex: '999 1 520px', minWidth: 0 }}>
         {(creating || selected) && !ready && <div style={{ color: 'var(--text3)', padding: 20 }}>กำลังโหลดแคตตาล็อก...</div>}
         {ready && creating && (
           <TemplateEditor key="new" template={null} joints={[]} catalog={catalog} types={types || []} components={[]} hardware={[]} constraints={[]} canEdit={canEdit}
-            onSaved={() => { setCreating(false); refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints(); refetchJoints() }} onDeleted={() => {}} />
+            onSaved={() => { setCreating(false); refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints(); refetchJoints(); partModels.refetch() }} onDeleted={() => {}} />
         )}
         {ready && selected && !creating && (
           <TemplateEditor key={selected.id} template={selected} joints={joints || []} catalog={catalog} types={types || []} components={components || []} hardware={hardware || []} constraints={constraints || []} canEdit={canEdit}
-            onSaved={() => { refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints(); refetchJoints() }} onDeleted={(id) => setDeleteId(id)} />
+            onSaved={() => { refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints(); refetchJoints(); partModels.refetch() }} onDeleted={(id) => setDeleteId(id)} />
         )}
         {!creating && !selected && <div style={{ color: 'var(--text3)', padding: 20 }}>เลือก Template ทางซ้าย หรือสร้างใหม่</div>}
       </div>
