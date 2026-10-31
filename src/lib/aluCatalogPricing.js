@@ -3,8 +3,9 @@
 // with the extruder's price basis as of a date, and prices hardware and hardware sets from the part
 // price history. Pure: callers load the catalog tables once (useEstimationCatalog) and pass them in.
 // Spec: 2026-10-08-aluminium-cost-catalog-design.md, Decision 7.
-import { resolveAluPrice, resolvePartPrice } from './aluPrice.js'
+import { resolveAluPrice } from './aluPrice.js'
 import { expandSeriesTypes } from './typeTree.js'
+import { resolveStockPartPrice } from './latestPurchasePrice.js'
 
 function byId(list) {
   const m = {}
@@ -35,6 +36,7 @@ export function buildCatalogIndex(rows = {}) {
     kgPrices: rows.kgPrices || [],
     piecePrices: rows.piecePrices || [],
     partPrices: rows.partPrices || [],
+    purchasePrices: rows.purchasePrices || [],
   }
 }
 
@@ -57,6 +59,8 @@ export function makeCatalogPricing({ index, seriesId, finishId, asOf }) {
   const finish = index.finishes[finishId] || null
   // Without a real YYYY-MM-DD date nothing may be priced: a missing asOf must not silently mean "today" or "any".
   const asOfOk = typeof asOf === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(asOf)
+  // a part linked to stock is priced at its latest purchase on/before asOf, else its catalogue price
+  const partPrice = partId => resolveStockPartPrice({ partId, part: index.parts[partId], asOf, purchasePrices: index.purchasePrices, partPrices: index.partPrices })
 
   return {
     kind: 'catalog',
@@ -92,7 +96,7 @@ export function makeCatalogPricing({ index, seriesId, finishId, asOf }) {
     hardwarePrice(h) {
       if (!asOfOk) return { unit_price: 0, source: 'reference', price_row_id: null, unresolved: true, reason: 'no_as_of' }
       if (h.part_id) {
-        const p = resolvePartPrice({ partId: h.part_id, asOf, partPrices: index.partPrices })
+        const p = partPrice(h.part_id)
         if (p) return { unit_price: p.net_price, source: 'part', price_row_id: p.row.id }
       }
       return { unit_price: Number(h.reference_unit_price) || 0, source: 'reference', price_row_id: null }
@@ -112,7 +116,7 @@ export function makeCatalogPricing({ index, seriesId, finishId, asOf }) {
           return { name: part ? part.name : '?', code: part ? part.code : null, quantity: Number(item.quantity), unit_price: 0, cost: 0, resolved: false, reason: 'no_as_of', price_row_id: null }
         }
         const part = index.parts[item.part_id]
-        const p = resolvePartPrice({ partId: item.part_id, asOf, partPrices: index.partPrices })
+        const p = partPrice(item.part_id)
         const quantity = Number(item.quantity)
         return {
           name: part ? part.name : '?', code: part ? part.code : null, quantity,

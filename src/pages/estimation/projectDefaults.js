@@ -11,6 +11,7 @@ import { projectSeriesIds, familyThicknesses, familyAllowsMixed, keyProviderId, 
 import { missingHardwareTypeIds } from '../../lib/projectHardware.js'
 import { unresolvedText } from '../../lib/reasonText.js'
 import { previewFrames, itemPreviewSignature } from '../../lib/itemPreviewSignature.js'
+import { priceSourceText } from '../../lib/latestPurchasePrice.js'
 
 const str = v => (v === null || v === undefined ? '' : String(v))
 const numOrNull = v => {
@@ -268,6 +269,8 @@ export function priceRowLabel(index, id) {
   if (pc) return `${Number(pc.price_per_piece).toLocaleString('en-US', { minimumFractionDigits: 2 })} บาท/เส้น (ตั้งแต่ ${pc.effective_from})`
   const pt = index.partPrices.find(r => r.id === id)
   if (pt) return `${(Number(pt.list_price) * (1 - Number(pt.discount_pct || 0) / 100)).toLocaleString('en-US', { minimumFractionDigits: 2 })} บาท (ตั้งแต่ ${pt.effective_from})`
+  const bought = (index.purchasePrices || []).find(r => r.id === id)
+  if (bought) return `${Number(bought.unit_cost).toLocaleString('en-US', { minimumFractionDigits: 2 })} บาท (${priceSourceText({ source: bought.source, doc_no: bought.doc_no, date: bought.effective_from })})`
   return 'ราคาที่ถูกลบแล้ว'
 }
 
