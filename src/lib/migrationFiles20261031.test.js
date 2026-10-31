@@ -4,8 +4,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 
-const MIGRATIONS = ['2026-10-31-01-alu-series-family']
-const REPORTS = ['2026-10-31-series-family-price-report']
+const MIGRATIONS = ['2026-10-31-01-alu-series-family', '2026-10-31-02-alu-parts-stock-link']
+const REPORTS = ['2026-10-31-series-family-price-report', '2026-10-31-hardware-stock-match-report']
 const mig = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8')
 const dry = name => readFileSync(`supabase/migrations/${name}.dryrun.sql`, 'utf8')
 const REFUSED = /\b(DELETE|DROP|TRUNCATE)\b/i
@@ -50,5 +50,17 @@ describe('2026-10-31-01 seed', () => {
   })
   it('STANDARD carries 1.0/1.2/1.5/1.8/2.0 for ALM, SMS and MN', () => {
     expect((s.match(/'STANDARD', ARRAY\[1\.0,1\.2,1\.5,1\.8,2\.0\]::numeric\[\]/g) || []).length).toBe(3)
+  })
+})
+
+describe('2026-10-31-02 functions', () => {
+  const s = mig('2026-10-31-02-alu-parts-stock-link')
+  it('every function runs as the caller (RLS applies) and only authenticated may call it', () => {
+    for (const fn of ['stock_item_purchase_prices', 'alu_add_stock_item_to_set', 'alu_add_new_part_to_set']) {
+      expect(s).toMatch(new RegExp(`FUNCTION ${fn}\\([^)]*\\)\\s*RETURNS[\\s\\S]*?SECURITY INVOKER`))
+      expect(s).toMatch(new RegExp(`REVOKE ALL ON FUNCTION ${fn}\\(`))
+      expect(s).toMatch(new RegExp(`GRANT EXECUTE ON FUNCTION ${fn}\\([^)]*\\) TO authenticated`))
+    }
+    expect(s).not.toMatch(/SECURITY DEFINER/)
   })
 })
