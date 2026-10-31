@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const FILES = ['CutModeField.jsx', 'CustomLengthSummary.jsx', 'BomProfilesTable.jsx', 'CutOptimizerPanel.jsx', 'StickerSheet.jsx', 'OffcutStockPanel.jsx', 'ProjectBomView.jsx', 'CutSheetView.jsx', 'TemplateCardGrid.jsx', 'templateCards.js']
+const FILES = ['CutModeField.jsx', 'CustomLengthSummary.jsx', 'BomProfilesTable.jsx', 'CutOptimizerPanel.jsx', 'StickerSheet.jsx', 'OffcutStockPanel.jsx', 'ProjectBomView.jsx', 'CutSheetView.jsx', 'TemplateCardGrid.jsx', 'templateCards.js', 'ProjectDefaultsPanel.jsx']
 const source = f => readFileSync(fileURLToPath(new URL(`./${f}`, import.meta.url)), 'utf8')
 
 describe('no browser dialogs in the cut-sheet screens', () => {

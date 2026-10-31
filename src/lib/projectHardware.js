@@ -28,3 +28,11 @@ export function packagesForSeries(packages, seriesId) {
     .filter(p => p.active !== false && (!p.series_id || p.series_id === seriesId))
     .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'th'))
 }
+
+// Active packages the project's ซีรีส์หลัก may use: no series, or one of seriesIds. By name.
+export function packagesForSeriesIds(packages, seriesIds) {
+  const ids = seriesIds || []
+  return (packages || [])
+    .filter(p => p.active !== false && (!p.series_id || ids.includes(p.series_id)))
+    .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'th'))
+}

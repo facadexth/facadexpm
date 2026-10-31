@@ -4,14 +4,14 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
-import { thicknessesForSeries } from '../../lib/estimationCatalogViews.js'
-import { itemsAffectedByDefaultSeries } from '../../lib/estimationInherit.js'
-import { packagesForSeries } from '../../lib/projectHardware.js'
-import { seriesLabelFull } from '../../lib/aluCatalog.js'
+import InlineError from './InlineError.jsx'
+import { itemsAffectedByDefaultFamily } from '../../lib/estimationInherit.js'
+import { packagesForSeriesIds } from '../../lib/projectHardware.js'
 import { DESCRIPTION_TOKENS, buildItemDescription } from '../../lib/descriptionFormat.js'
+import { familyChoices, familyLabel, familySeries, familyThicknesses, familyAllowsMixed, keyProviderId } from '../../lib/seriesFamily.js'
 import {
-  draftFromProject, reconcileDraft, seriesChoices, finishChoices, mixedThicknessAllowed, sashDisplayValue,
-  validateDraft, buildPatch,
+  draftFromProject, reconcileDraft, finishChoices, sashDisplayValue, validateDraft, buildPatch, draftSeriesKey, applySeriesKey,
+  patchChangesSeries,
 } from './projectDefaults.js'
 
 const Field = ({ label, hint, children }) => (
@@ -26,6 +26,7 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
   const [draft, setDraft] = useState(() => reconcileDraft(draftFromProject(project), index, seriesTypes))
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)   // { patch, affected }
+  const [saveError, setSaveError] = useState(null)
 
   // Reset only for another project or after our own successful save, never on a plain refetch (unsaved edits stay).
   const [saveTick, setSaveTick] = useState(0)
@@ -36,37 +37,45 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
   const dirty = Object.keys(patch).length > 0
   const error = validateDraft(draft)
 
-  const seriesOpts = seriesChoices(index, draft.primary_provider_id)
-  const finishOpts = finishChoices(index, draft.default_series_id, draft.primary_provider_id)
-  const thicknesses = draft.default_series_id ? thicknessesForSeries(index, draft.default_series_id) : []
+  const seriesKey = draftSeriesKey(draft)
+  const familyOpts = familyChoices(index, draft.primary_provider_id)
+  // the saved ซีรีส์หลัก stays visible even when it is no longer offered (switched off / series inactive)
+  const keyOpts = seriesKey && !familyOpts.some(o => o.value === seriesKey)
+    ? [...familyOpts, { value: seriesKey, label: `${familyLabel(index, seriesKey) || 'ที่ถูกลบแล้ว'} (ปิดใช้งาน)` }]
+    : familyOpts
+  const keyProvider = keyProviderId(index, seriesKey)
+  const finishOpts = finishChoices(index, null, keyProvider || draft.primary_provider_id)   // a key's extruder = its series' extruder
+  const thicknesses = familyThicknesses(index, seriesKey)
   const singleThickness = thicknesses.length === 1
-  const showSash = mixedThicknessAllowed(seriesTypes, draft.default_series_id)
-  const pkgOpts = [...packagesForSeries(packages, draft.default_series_id)]
+  const showSash = familyAllowsMixed(index, seriesTypes, seriesKey)
+  const pkgOpts = [...packagesForSeriesIds(packages, familySeries(index, null, seriesKey).map(s => s.id))]
   const chosenPkg = draft.hardware_package_id ? (packages || []).find(p => p.id === draft.hardware_package_id) : null
   if (chosenPkg && !pkgOpts.some(p => p.id === chosenPkg.id)) pkgOpts.push(chosenPkg)
+  const changeSeries = key => setDraft(d => reconcileDraft(applySeriesKey(d, key, index), index, seriesTypes))
 
   const sampleDesc = buildItemDescription({
     item_name: 'ประตูบานเลื่อน', type_name: 'บานเลื่อน', width_m: 1.8, height_m: 2.1,
-    series_label: draft.default_series_id && index.series[draft.default_series_id] ? seriesLabelFull(index.series[draft.default_series_id], index.providers[index.series[draft.default_series_id].provider_id]) : '',
+    series_label: familyLabel(index, seriesKey),
     finish_name: draft.default_finish_id && index.finishes[draft.default_finish_id] ? index.finishes[draft.default_finish_id].name : 'ขาว',
     thickness_mm: draft.default_thickness_mm, infill_name: 'กระจกเขียว 6 มม.', hardware_set_name: 'ชุดมาตรฐาน',
   }, draft.description_format)
 
   const write = async (p) => {
+    setSaveError(null)
     setSaving(true)
     try {
       const { error: e } = await supabase.from('estimation_projects').update(p).eq('id', project.id)
       if (e) throw e
       await onSaved()
       setSaveTick(t => t + 1)
-    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
+    } catch (e) { setSaveError('บันทึกไม่สำเร็จ: ' + e.message) }
     finally { setSaving(false); setConfirm(null) }
   }
 
   const handleSave = () => {
     if (error || !dirty) return
-    if ('default_series_id' in patch) {
-      const affected = itemsAffectedByDefaultSeries(items, templatesById, patch.default_series_id, seriesTypes)
+    if (patchChangesSeries(patch)) {
+      const affected = itemsAffectedByDefaultFamily(items, templatesById, index, seriesTypes, seriesKey)
       if (affected.length) { setConfirm({ patch, affected }); return }
     }
     write(patch)
@@ -87,26 +96,26 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
             {Object.values(index.providers).filter(p => p.active !== false).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
-        <Field label="ซีรีส์">
-          <select className="input" disabled={dis} value={draft.default_series_id} onChange={e => change('default_series_id', e.target.value)}>
+        <Field label="ซีรีส์หลัก" hint="แต่ละรายการได้ชุดที่ตรงประเภทบานเอง เปลี่ยนในรายการได้">
+          <select className="input" disabled={dis} value={seriesKey} onChange={e => changeSeries(e.target.value)}>
             <option value="">ไม่กำหนด (เลือกต่อรายการ)</option>
-            {seriesOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {keyOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="สี" hint={!draft.default_series_id && !draft.primary_provider_id ? 'เลือกซีรีส์หรือโรงรีดก่อน' : null}>
+        <Field label="สี" hint={!seriesKey && !draft.primary_provider_id ? 'เลือกซีรีส์หลักหรือโรงรีดก่อน' : null}>
           <select className="input" disabled={dis || !finishOpts.length} value={draft.default_finish_id} onChange={e => change('default_finish_id', e.target.value)}>
             <option value="">ไม่กำหนด (เลือกต่อรายการ)</option>
             {finishOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="ความหนาวงกบ (มม.)" hint={singleThickness ? 'ซีรีส์นี้มีความหนาเดียว เลือกให้อัตโนมัติ' : (!draft.default_series_id ? 'เลือกซีรีส์ก่อน' : null)}>
+        <Field label="ความหนาวงกบ (มม.)" hint={singleThickness ? 'ซีรีส์หลักนี้มีความหนาเดียว เลือกให้อัตโนมัติ' : (!seriesKey ? 'เลือกซีรีส์หลักก่อน' : 'ในรายการยังเลือกความหนาอื่นของชุดได้')}>
           <select className="input" disabled={dis || singleThickness || !thicknesses.length} value={draft.default_thickness_mm} onChange={e => change('default_thickness_mm', e.target.value)}>
             <option value="">ไม่กำหนด (เลือกต่อรายการ)</option>
             {thicknesses.map(t => <option key={t} value={String(t)}>{t}</option>)}
           </select>
         </Field>
         {showSash && (
-          <Field label="ความหนากรอบบาน (มม.)" hint="ซีรีส์นี้มีประเภทที่ใช้ความหนาวงกบกับกรอบบานไม่เท่ากันได้">
+          <Field label="ความหนากรอบบาน (มม.)" hint="ซีรีส์หลักนี้มีประเภทที่ใช้ความหนาวงกบกับกรอบบานไม่เท่ากันได้">
             <select className="input" disabled={dis} value={sashDisplayValue(draft)} onChange={e => change('default_sash_thickness_mm', e.target.value)}>
               {!sashDisplayValue(draft) && <option value="">— เลือก —</option>}
               {thicknesses.map(t => <option key={t} value={String(t)}>{t}</option>)}
@@ -156,6 +165,7 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
         <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>ตัวอย่าง: {sampleDesc || '—'}</div>
       </div>
 
+      {saveError && <InlineError onClose={() => setSaveError(null)}>{saveError}</InlineError>}
       {error && <div className="alert alert-error" style={{ fontSize: 13 }}>{error}</div>}
       {canEdit && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -166,9 +176,9 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
 
       {confirm && (
         <ConfirmDialog
-          title="เปลี่ยนซีรีส์เริ่มต้น"
+          title="เปลี่ยนซีรีส์หลัก"
           message={<div>
-            ซีรีส์ใหม่ไม่มีแบบต่อไปนี้ ({confirm.affected.length} รายการ) ยังบันทึกได้ แต่รายการเหล่านี้จะคิดราคาไม่ได้จนกว่าจะแก้:
+            ซีรีส์หลักใหม่ไม่มีชุดสำหรับแบบต่อไปนี้ ({confirm.affected.length} รายการ) ยังบันทึกได้ แต่รายการเหล่านี้จะคิดราคาไม่ได้จนกว่าจะเลือกชุดในรายการ:
             <ul style={{ margin: '6px 0 0 18px' }}>{confirm.affected.map(i => <li key={i.id}>{i.opening_no}{i.item_name ? ` · ${i.item_name}` : ''}</li>)}</ul>
           </div>}
           onConfirm={() => write(confirm.patch)} onCancel={() => setConfirm(null)} />

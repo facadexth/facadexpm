@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import { withFamilyResolver } from '../../lib/seriesFamily.js'
-import { hardwareBanners, availabilityIssues } from './projectDefaults.js'
+import { hardwareBanners, availabilityIssues, draftFromProject, reconcileDraft, buildPatch, draftSeriesKey, applySeriesKey, patchChangesSeries } from './projectDefaults.js'
+import { packagesForSeriesIds } from '../../lib/projectHardware.js'
 
 export const famIndex = buildCatalogIndex({
   providers: [{ id: 'A', name: 'บจก. อลูเม็ท (Alumet)' }, { id: 'B', name: 'SMS' }],
@@ -42,5 +43,46 @@ describe('banners with a project family', () => {
     expect(hardwareBanners({ ...base, project, pkg: { series_id: 'iOpen' } }).wrongSeries).toBe(false)
     expect(hardwareBanners({ ...base, project, pkg: { series_id: 'b1' } }).wrongSeries).toBe(true)
     expect(hardwareBanners({ ...base, project, pkg: { series_id: null } }).wrongSeries).toBe(false)
+  })
+})
+
+describe('the ซีรีส์หลัก draft', () => {
+  const legacy = { id: 'p', primary_provider_id: 'A', default_series_id: 'iSlide', default_finish_id: 'fin', profit_pct: 50 }
+  it('a legacy project reads as a solo key; picking a family swaps the columns', () => {
+    const d = draftFromProject(legacy)
+    expect(d.default_series_family_id).toBe('')
+    expect(draftSeriesKey(d)).toBe('series:iSlide')
+    const f = applySeriesKey(d, 'fI', famIndex)
+    expect([f.default_series_family_id, f.default_series_id]).toEqual(['fI', ''])
+    expect(draftSeriesKey(applySeriesKey(f, 'series:mc', famIndex))).toBe('series:mc')
+  })
+  it('saving a family writes the family and clears the single series', () => {
+    const d = reconcileDraft(applySeriesKey(draftFromProject(legacy), 'fI', famIndex), famIndex, famSeriesTypes)
+    expect(buildPatch(legacy, d)).toEqual({ default_series_family_id: 'fI', default_series_id: null })
+    expect(patchChangesSeries(buildPatch(legacy, d))).toBe(true)
+    expect(patchChangesSeries({ profit_pct: 5 })).toBe(false)
+  })
+  it('a family fills a blank main extruder', () => {
+    expect(applySeriesKey(draftFromProject({}), 'fI', famIndex).primary_provider_id).toBe('A')
+  })
+  it('switching the main extruder clears a family of another extruder (Review Focus 2)', () => {
+    const d = reconcileDraft({ ...draftFromProject({ primary_provider_id: 'A', default_series_family_id: 'fI', default_finish_id: 'fin' }), primary_provider_id: 'B' }, famIndex, famSeriesTypes)
+    expect([d.default_series_family_id, d.default_series_id, d.default_finish_id]).toEqual(['', '', ''])
+  })
+  it("frame thickness: the family's list (STANDARD 5 values) or the union of its series; colour of its extruder kept", () => {
+    const std = reconcileDraft({ ...draftFromProject({ primary_provider_id: 'A', default_finish_id: 'fin' }), default_series_family_id: 'fS', default_thickness_mm: '1.8' }, famIndex, famSeriesTypes)
+    expect(std.default_thickness_mm).toBe('1.8')
+    expect(std.default_finish_id).toBe('fin')
+    const bad = reconcileDraft({ ...draftFromProject({ primary_provider_id: 'A' }), default_series_family_id: 'fI', default_thickness_mm: '1.8' }, famIndex, famSeriesTypes)
+    expect(bad.default_thickness_mm).toBe('')    // ICONIQ EURO offers 1.2 and 2.0 only
+  })
+  it('the sash thickness exists when one series of the family allows mixed thickness', () => {
+    const d = reconcileDraft({ ...draftFromProject({ primary_provider_id: 'A' }), default_series_family_id: 'fI', default_thickness_mm: '2' }, famIndex, famSeriesTypes)
+    expect(d.default_sash_thickness_mm).toBe('2')
+  })
+  it('packages: no series or a series of the family', () => {
+    const pk = [{ id: 'a', name: 'B', series_id: null }, { id: 'b', name: 'A', series_id: 'iOpen' }, { id: 'c', name: 'C', series_id: 'b1' }, { id: 'd', name: 'D', series_id: null, active: false }]
+    expect(packagesForSeriesIds(pk, ['iOpen', 'iSlide']).map(p => p.id)).toEqual(['b', 'a'])
+    expect(packagesForSeriesIds(pk, []).map(p => p.id)).toEqual(['a'])
   })
 })

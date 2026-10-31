@@ -1,13 +1,13 @@
 // src/pages/estimation/projectDefaults.js
 // Pure helpers for the estimation project page (defaults form, banners, items table). No React, no Supabase.
-import { thicknessesForSeries, seriesForType } from '../../lib/estimationCatalogViews.js'
+import { seriesForType } from '../../lib/estimationCatalogViews.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { DEFAULT_DESCRIPTION_FORMAT } from '../../lib/descriptionFormat.js'
 import { mergeSettings } from '../../lib/estimationSettings.js'
 import { localDateString } from '../../lib/localDate.js'
 import { costOpening, partPreviewCtx } from '../../lib/openingCost.js'
 import { typeAvailability, inheritedSeries } from '../../lib/estimationInherit.js'
-import { projectSeriesIds } from '../../lib/seriesFamily.js'
+import { projectSeriesIds, familyThicknesses, familyAllowsMixed, keyProviderId, isSoloKey, soloSeriesId, soloKey } from '../../lib/seriesFamily.js'
 import { missingHardwareTypeIds } from '../../lib/projectHardware.js'
 import { unresolvedText } from '../../lib/reasonText.js'
 import { previewFrames, itemPreviewSignature } from '../../lib/itemPreviewSignature.js'
@@ -21,20 +21,39 @@ const numOrNull = v => {
 const byLabel = (a, b) => String(a.label).localeCompare(String(b.label), 'th')
 
 export const DRAFT_COLUMNS = [
-  'primary_provider_id', 'default_series_id', 'default_finish_id', 'default_thickness_mm', 'default_sash_thickness_mm',
+  'primary_provider_id', 'default_series_family_id', 'default_series_id', 'default_finish_id', 'default_thickness_mm', 'default_sash_thickness_mm',
   'default_infill_id', 'hardware_package_id', 'labour_per_sqm', 'profit_pct', 'description_format',
 ]
 
 export function draftFromProject(p) {
   const pj = p || {}
   return {
-    primary_provider_id: str(pj.primary_provider_id), default_series_id: str(pj.default_series_id), default_finish_id: str(pj.default_finish_id),
+    primary_provider_id: str(pj.primary_provider_id), default_series_family_id: str(pj.default_series_family_id),
+    default_series_id: str(pj.default_series_id), default_finish_id: str(pj.default_finish_id),
     default_thickness_mm: str(pj.default_thickness_mm), default_sash_thickness_mm: str(pj.default_sash_thickness_mm),
     default_infill_id: str(pj.default_infill_id), hardware_package_id: str(pj.hardware_package_id),
     labour_per_sqm: str(pj.labour_per_sqm), profit_pct: str(pj.profit_pct),
     description_format: Array.isArray(pj.description_format) ? [...pj.description_format] : [...DEFAULT_DESCRIPTION_FORMAT],
   }
 }
+
+// The draft's ซีรีส์หลัก as one picker value: '' | family id | 'series:<id>' (a series with no family).
+export const draftSeriesKey = d => (d && d.default_series_family_id) || (d && d.default_series_id ? soloKey(d.default_series_id) : '')
+
+// Picking a ซีรีส์หลัก: a family blanks the single series and the reverse (the new screen never writes both); a blank
+// main extruder takes the key's extruder.
+export function applySeriesKey(draft, key, index) {
+  const d = { ...draft }
+  if (!key) { d.default_series_family_id = ''; d.default_series_id = '' }
+  else if (isSoloKey(key)) { d.default_series_family_id = ''; d.default_series_id = soloSeriesId(key) }
+  else { d.default_series_family_id = key; d.default_series_id = '' }
+  const pid = keyProviderId(index, key)
+  if (pid && !d.primary_provider_id) d.primary_provider_id = pid
+  return d
+}
+
+// True when a buildPatch result changes the ซีรีส์หลัก (family or single series): the panel then lists affected items.
+export const patchChangesSeries = patch => 'default_series_family_id' in (patch || {}) || 'default_series_id' in (patch || {})
 
 // Series the owner may pick: active, and of the main extruder when one is chosen. "series · extruder" label.
 export function seriesChoices(index, primaryProviderId) {
@@ -58,19 +77,21 @@ export function mixedThicknessAllowed(seriesTypes, seriesId) {
   return !!seriesId && (seriesTypes || []).some(l => l.series_id === seriesId && l.allow_mixed_thickness === true)
 }
 
-// Brings dependent fields back in line after any change: series must belong to the main extruder, colour to the
-// series' extruder, thicknesses must be ones the series offers (a single one is selected for the owner), and the
-// sash thickness exists only where a type allows mixed thickness. Returns a new draft.
+// Brings dependent fields back in line after any change: the ซีรีส์หลัก (family or single series) must belong to the
+// main extruder, the colour to its extruder, thicknesses must be ones it offers (a single one is selected for the
+// owner), and the sash thickness exists only where a type of its series allows mixed thickness. Returns a new draft.
 export function reconcileDraft(draft, index, seriesTypes) {
   const d = { ...draft }
-  const series = d.default_series_id ? index.series[d.default_series_id] : null
-  if (d.default_series_id && (!series || (d.primary_provider_id && series.provider_id !== d.primary_provider_id))) d.default_series_id = ''
-  const finishes = finishChoices(index, d.default_series_id, d.primary_provider_id)
+  const key0 = draftSeriesKey(d)
+  const pid0 = keyProviderId(index, key0)
+  if (key0 && (!pid0 || (d.primary_provider_id && pid0 !== d.primary_provider_id))) { d.default_series_family_id = ''; d.default_series_id = '' }
+  const key = draftSeriesKey(d)
+  const finishes = finishChoices(index, d.default_series_id || null, keyProviderId(index, key) || d.primary_provider_id)
   if (d.default_finish_id && !finishes.some(f => f.value === d.default_finish_id)) d.default_finish_id = ''
-  const opts = d.default_series_id ? thicknessesForSeries(index, d.default_series_id) : []
+  const opts = familyThicknesses(index, key)
   if (opts.length === 1) d.default_thickness_mm = String(opts[0])
   else if (!opts.includes(Number(d.default_thickness_mm))) d.default_thickness_mm = ''
-  const mixed = mixedThicknessAllowed(seriesTypes, d.default_series_id)
+  const mixed = familyAllowsMixed(index, seriesTypes, key)
   if (!mixed || !opts.includes(Number(d.default_sash_thickness_mm))) d.default_sash_thickness_mm = ''
   // Ruling 21: where the sash select is shown the saved value is a real number. Only a blank is filled (from the frame);
   // an existing sash never follows later frame changes. No frame yet = stays blank (saved as NULL).
