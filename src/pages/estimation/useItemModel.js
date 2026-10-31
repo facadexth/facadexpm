@@ -14,7 +14,7 @@ import { finishChoices } from './projectDefaults.js'
 import {
   typeTreeOf, cascadeLevels, templatesForType, addonTypeOptions, liveItem, showSashField, inheritedHardware,
   partLabels, layoutCards, descriptionContext, evaluateConstraints, withCurrent, costRowFlags, itemLayoutInputs, liveAddons,
-  itemSeriesOptions, itemSeriesHint,
+  itemSeriesOptions, itemSeriesHint, hardwareSetHint,
 } from './itemForm.js'
 import { templatesUnderPath } from './templateCards.js'
 
@@ -76,7 +76,8 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
       profit: inheritedOnly.profit_pct != null ? `ใช้ ${inheritedOnly.profit_pct}% จากโปรเจกต์` : 'ไม่กำหนด',
     }
     const nameOf = (m, id) => (m[id] ? m[id].name : 'ที่ถูกลบแล้ว')
-    const hwOpts = withCurrent(optionsOf(hardwareSetChoices(index, seriesId, template && template.type_id)), form.hardware_set_id, nameOf(index.parts, form.hardware_set_id))
+    const hwChoices = hardwareSetChoices(index, seriesId, template && template.type_id)
+    const hwOpts = withCurrent(optionsOf(hwChoices), form.hardware_set_id, nameOf(index.parts, form.hardware_set_id))
     const thicknessOpts = withCurrent(thicknesses.map(t => ({ value: String(t), label: String(t) })), form.thickness_mm, form.thickness_mm)
     const sashOpts = withCurrent(thicknesses.map(t => ({ value: String(t), label: String(t) })), form.sash_thickness_mm, form.sash_thickness_mm)
     const addonOffered = addonTemplates.some(t => t.id === form.addon_template_id)
@@ -99,7 +100,7 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
       infillOpts: withCurrent(optionsOf((infillTypes || []).filter(g => g.active !== false)), form.no_infill ? '' : form.infill_type_id, nameOf(infillTypesById, form.infill_type_id), '(ปิดใช้งาน)'),
       thicknesses, thicknessOpts, sashOpts, costFlags: cost ? { main: costRowFlags(cost, cost.bom), addon: cost.addonBom ? costRowFlags(cost, cost.addonBom) : null } : null, showSash: showSashField(index, seriesId, template),
       thicknessHint: !seriesId ? 'เลือกซีรีส์ก่อน' : thicknesses.length === 1 ? `ซีรีส์นี้มีความหนาเดียว (${thicknesses[0]} มม.) เลือกให้อัตโนมัติ` : `ซีรีส์นี้มี ${thicknesses.length} ความหนา`,
-      inherit, hwOpts, hwOwnHint: series ? `ชุดที่ใช้กับ ${series.name} ขึ้นก่อน · ชุดที่ไม่ผูกซีรีส์ใช้ได้ทุกซีรีส์` : 'เลือกซีรีส์ก่อน',
+      inherit, hwOpts, hwOwnHint: hardwareSetHint(series, hwChoices.length),
       hwInherit: inheritedHardware({ packageItems, index, typeId: template && template.type_id, project: pj }),
       cards: layoutCards({ layoutTemplates, mainTypeId: template && template.type_id, seriesId, seriesTypes, addonTemplates, widthM: item.width_m, heightM: item.height_m }),
       generatedDescription,

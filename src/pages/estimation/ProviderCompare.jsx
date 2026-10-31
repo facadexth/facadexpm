@@ -9,7 +9,7 @@ import { itemsAffectedByDefaultFamily } from '../../lib/estimationInherit.js'
 import { finishChoices, draftFromProject, reconcileDraft, buildPatch, applySeriesKey } from './projectDefaults.js'
 import { familyChoices, familyLabel, projectFamilyKey } from '../../lib/seriesFamily.js'
 import InlineError from './InlineError.jsx'
-import { comparisonRows, itemsWithForeignColour } from './projectBomHelpers.js'
+import { comparisonRows, compareStatusText, itemsWithForeignColour } from './projectBomHelpers.js'
 
 export default function ProviderCompare({ project, items, base, index, seriesTypes, canEdit, onApplied }) {
   const providers = useMemo(() => Object.values(index.providers).filter(p => p.active !== false).sort((a, b) => String(a.name).localeCompare(String(b.name), 'th')), [index])
@@ -92,7 +92,7 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
                   <td className="font-mono">{row.diff ? `${row.diff.amount > 0 ? '+' : ''}${fmt(row.diff.amount)} (${row.diff.pct > 0 ? '+' : ''}${row.diff.pct.toFixed(1)}%)` : '—'}</td>
                   <td>{row.pending ? <span style={{ color: 'var(--text3)' }}>{fixed ? 'ยังไม่ได้ตั้งซีรีส์หลัก/สีของโปรเจกต์' : 'เลือกซีรีส์หลักและสี'}</span>
                     : row.complete ? <span style={{ color: 'var(--green)' }}>คิดครบ</span>
-                      : <span style={{ color: 'var(--red)' }}>คิดไม่ได้ {row.unresolvedLines} รายการ (ไม่มีหน้าตัด/ราคา){(row.failedItems || []).length > 0 && ` · คิดราคาไม่ได้: ${row.failedItems.map(f => f.opening_no || f.id).join(', ')}`}</span>}</td>
+                      : <span style={{ color: 'var(--red)' }}>{compareStatusText(row, items)}</span>}</td>
                   <td>{canEdit && row.canApply && <button type="button" className="btn btn-sm btn-ghost" onClick={() => startApply(row)}>ใช้โรงรีดนี้</button>}</td>
                 </tr>
               )

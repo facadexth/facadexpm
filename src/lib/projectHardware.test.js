@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hardwareSetStatus, missingHardwareTypeIds, packagesForSeries } from './projectHardware.js'
+import { hardwareSetStatus, missingHardwareTypeIds } from './projectHardware.js'
 
 const types = {
   slide: { id: 'slide', parent_id: null }, low: { id: 'low', parent_id: 'slide' }, top: { id: 'top', parent_id: 'slide' },
@@ -42,21 +42,5 @@ describe('missingHardwareTypeIds', () => {
     expect(missingHardwareTypeIds(null, types, ['swing'])).toEqual([])
     expect(missingHardwareTypeIds(items, types, [])).toEqual([])
     expect(missingHardwareTypeIds(items, types, null)).toEqual([])
-  })
-})
-
-describe('packagesForSeries', () => {
-  const pk = [
-    { id: 'a', name: 'B', series_id: 's1', active: true },
-    { id: 'b', name: 'A', series_id: null, active: true },
-    { id: 'c', name: 'C', series_id: 's2', active: true },
-    { id: 'd', name: 'D', series_id: 's1', active: false },
-  ]
-  it('lists active packages of that series or of any series, sorted by name', () => {
-    expect(packagesForSeries(pk, 's1').map(p => p.id)).toEqual(['b', 'a'])
-  })
-  it('with no series chosen only any-series packages are offered; null input is empty', () => {
-    expect(packagesForSeries(pk, null).map(p => p.id)).toEqual(['b'])
-    expect(packagesForSeries(null, 's1')).toEqual([])
   })
 })

@@ -22,13 +22,6 @@ export function missingHardwareTypeIds(packageItems, typesById, typeIds) {
   return out
 }
 
-// Active packages the project's series may use (a package with no series fits any), sorted by name.
-export function packagesForSeries(packages, seriesId) {
-  return (packages || [])
-    .filter(p => p.active !== false && (!p.series_id || p.series_id === seriesId))
-    .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'th'))
-}
-
 // Active packages the project's ซีรีส์หลัก may use: no series, or one of seriesIds. By name.
 export function packagesForSeriesIds(packages, seriesIds) {
   const ids = seriesIds || []

@@ -63,13 +63,16 @@ export function familySeries(index, providerId, key) {
 }
 
 // The family's series for one door/window type: the first by name with a link on typeId (seriesTypes = the expanded
-// links, so a link on a parent type covers its children), null when none has one. A solo key returns its series for
+// links, so a link on a parent type covers its children; a series linked to typeId itself beats one that only covers it
+// through a parent), null when none has one. A solo key returns its series for
 // any type (the old single-series default); no typeId (a template without a type) = the first series by name.
 export function familySeriesForType(index, seriesTypes, providerId, key, typeId) {
   const list = familySeries(index, providerId, key)
   if (!list.length) return null
   if (isSoloKey(key) || !typeId) return list[0].id
-  const hit = list.find(s => (seriesTypes || []).some(st => st.series_id === s.id && st.type_id === typeId))
+  const links = (seriesTypes || []).filter(st => st.type_id === typeId)
+  const hit = list.find(s => links.some(st => st.series_id === s.id && !st.inherited_from))
+    || list.find(s => links.some(st => st.series_id === s.id))
   return hit ? hit.id : null
 }
 

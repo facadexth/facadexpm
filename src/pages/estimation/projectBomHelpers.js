@@ -348,11 +348,31 @@ export function comparisonRows(results, baseId) {
       providerId: r.providerId, seriesId: r.seriesId, finishId: r.finishId, isBase,
       ...(r.seriesKey !== undefined ? { seriesKey: r.seriesKey } : {}),
       complete: !!r.complete, aluminium: r.complete ? r.aluminium : null,
-      diff: d, unresolvedLines: r.complete ? 0 : r.unresolvedLines,
+      diff: d, unresolvedLines: r.complete ? 0 : r.unresolvedLines, failedItems: r.failedItems || [],
       pending: !chosen || !r.finishId,
       canApply: !isBase && !!r.complete && !!chosen && !!r.finishId,
     }
   })
+}
+
+// Status text of an incomplete comparison row. Items compareProviders could not price at all carry their own reason
+// (e.g. the family has no series for the type) and are named by number; only the remaining unresolved lines are
+// put down to missing profiles/prices. items = the project's items (for each failed item's quantity).
+export function compareStatusText(row, items) {
+  const n = row.unresolvedLines
+  const failed = row.failedItems || []
+  if (!failed.length) return `คิดไม่ได้ ${n} รายการ (ไม่มีหน้าตัด/ราคา)`
+  const qtyOf = id => {
+    const it = (items || []).find(i => i.id === id)
+    return it && Number(it.quantity) > 0 ? Number(it.quantity) : 1
+  }
+  const groups = new Map()
+  for (const f of failed) {
+    if (!groups.has(f.text)) groups.set(f.text, [])
+    groups.get(f.text).push(f.opening_no || f.id)
+  }
+  const other = n - failed.reduce((s, f) => s + qtyOf(f.id), 0)
+  return `คิดไม่ได้ ${n} รายการ${[...groups].map(([text, nos]) => ` · ${text}: ${nos.join(', ')}`).join('')}${other > 0 ? ` · อีก ${other} รายการไม่มีหน้าตัด/ราคา` : ''}`
 }
 
 // Items that pin their own colour from an extruder other than providerId: they cannot be priced after the switch.

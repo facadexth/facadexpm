@@ -73,11 +73,6 @@ export function finishChoices(index, seriesId, primaryProviderId) {
     .map(f => ({ value: f.id, label: f.name })).sort(byLabel)
 }
 
-// True when at least one type of the series allows frame and sash to differ (seriesTypes = expanded links).
-export function mixedThicknessAllowed(seriesTypes, seriesId) {
-  return !!seriesId && (seriesTypes || []).some(l => l.series_id === seriesId && l.allow_mixed_thickness === true)
-}
-
 // Brings dependent fields back in line after any change: the ซีรีส์หลัก (family or single series) must belong to the
 // main extruder, the colour to its extruder, thicknesses must be ones it offers (a single one is selected for the
 // owner), and the sash thickness exists only where a type of its series allows mixed thickness. Returns a new draft.

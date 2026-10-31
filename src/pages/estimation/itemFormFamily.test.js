@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import { withFamilyResolver } from '../../lib/seriesFamily.js'
-import { reconcileItemForm, itemSeriesOptions, itemSeriesHint } from './itemForm.js'
+import { reconcileItemForm, itemSeriesOptions, itemSeriesHint, hardwareSetHint } from './itemForm.js'
 
 const index = buildCatalogIndex({
   providers: [{ id: 'A', name: 'Alumet' }],
@@ -64,5 +64,17 @@ describe('item series options use the saved family extruder (controller ruling S
   })
   it('without a family the main extruder (primary_provider_id) is kept', () => {
     expect(itemSeriesOptions({ index: idx, project: { default_series_id: 'b1', primary_provider_id: 'B' }, typeId: 'slide', seriesTypes: sts }).map(o => o.value)).toEqual(['b1'])
+  })
+})
+
+describe('hardwareSetHint', () => {
+  it('with a series: its sets first, unlinked sets for every series', () => {
+    expect(hardwareSetHint({ name: 'HL 2000 Slide' }, 3)).toBe('ชุดที่ใช้กับ HL 2000 Slide ขึ้นก่อน · ชุดที่ไม่ผูกซีรีส์ใช้ได้ทุกซีรีส์')
+  })
+  it('no series but unlinked sets are listed: never says "เลือกซีรีส์ก่อน"', () => {
+    expect(hardwareSetHint(null, 2)).toBe('ชุดที่ไม่ผูกซีรีส์ใช้ได้ทุกซีรีส์')
+  })
+  it('no series and an empty list: เลือกซีรีส์ก่อน', () => {
+    expect(hardwareSetHint(null, 0)).toBe('เลือกซีรีส์ก่อน')
   })
 })

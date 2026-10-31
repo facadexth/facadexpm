@@ -228,6 +228,13 @@ export function itemSeriesHint({ index, project, template, seriesTypes, ownSerie
   return n > 1 ? { hint: `ซีรีส์หลักนี้มี ${n} ชุด${typeName} — เลือกได้ที่นี่` } : null
 }
 
+// The note under the item's own hardware set field. The list holds the series' sets plus every set not linked to a
+// series, so "เลือกซีรีส์ก่อน" is only true while that list is empty. setCount = how many sets the list offers.
+export function hardwareSetHint(series, setCount) {
+  if (series) return `ชุดที่ใช้กับ ${series.name} ขึ้นก่อน · ชุดที่ไม่ผูกซีรีส์ใช้ได้ทุกซีรีส์`
+  return setCount > 0 ? 'ชุดที่ไม่ผูกซีรีส์ใช้ได้ทุกซีรีส์' : 'เลือกซีรีส์ก่อน'
+}
+
 // Waste is a share of the aluminium, infill a price per area: neither can be shown as a number while what it is
 // computed from is unresolved ("—", never 0.00).
 export function costRowFlags(cost, bom) {

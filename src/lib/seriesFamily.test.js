@@ -183,3 +183,33 @@ describe('buildCatalogIndex', () => {
     expect(buildCatalogIndex({}).seriesFamilies).toEqual({})
   })
 })
+
+describe('familySeriesForType: an exact link beats a parent link', () => {
+  // slide > slide2. pName links the parent (covers slide2 by inheritance), xName links slide2 itself.
+  const build = (parentName, exactName) => {
+    const ix = buildCatalogIndex({
+      providers: [{ id: 'A', name: 'Alumet' }],
+      seriesFamilies: [{ id: 'f', provider_id: 'A', name: 'FAM', active: true }],
+      series: [
+        { id: 'sp', provider_id: 'A', name: parentName, series_family_id: 'f' },
+        { id: 'sx', provider_id: 'A', name: exactName, series_family_id: 'f' },
+      ],
+      types: [{ id: 'slide', name: 'บานเลื่อน', parent_id: null }, { id: 'slide2', name: 'บานเลื่อน 2 บาน', parent_id: 'slide' }],
+      seriesTypes: [{ id: 'lp', series_id: 'sp', type_id: 'slide' }, { id: 'lx', series_id: 'sx', type_id: 'slide2' }],
+      profiles: [], seriesProfiles: [],
+    })
+    return [ix, Object.values(ix.seriesTypesBySeries).flat()]
+  }
+  it('the exact series wins when it sorts first by name', () => {
+    const [ix, st] = build('B parent', 'A exact')
+    expect(familySeriesForType(ix, st, 'A', 'f', 'slide2')).toBe('sx')
+  })
+  it('the exact series wins even when the parent-linked one sorts first by name', () => {
+    const [ix, st] = build('A parent', 'B exact')
+    expect(familySeriesForType(ix, st, 'A', 'f', 'slide2')).toBe('sx')
+  })
+  it('the parent type itself still goes to the parent-linked series', () => {
+    const [ix, st] = build('A parent', 'B exact')
+    expect(familySeriesForType(ix, st, 'A', 'f', 'slide')).toBe('sp')
+  })
+})
