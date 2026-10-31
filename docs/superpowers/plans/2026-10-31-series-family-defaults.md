@@ -43,8 +43,8 @@
 
 ## Rulings on spec gaps (made while planning; listed in the hand-back)
 
-- Four MN series are not in table v4's lists: `AWNING 3"`, `BOX-FRAME SLIDING 4" กล่อง 4" มีรางในตัว`, `T-SLOT SOLID BARS`, `ชุด ULTRA SLIM MN-7112`. They stay without a family (each its own). This keeps misc. at the 13 the table names. (v4 also prints "9" for ช่องแสง-บานสวิง but lists 8; the 8 listed are mapped.)
-- XLS ("ไฟล์ Aluminium calculation") and SMS-KC get no family rows (spec: "ชุดอื่นอยู่เดี่ยว", KC = no family). Seed = 27 families, 98 series.
+- Four MN series are not in table v4's lists: `AWNING 3"`, `BOX-FRAME SLIDING 4" กล่อง 4" มีรางในตัว`, `T-SLOT SOLID BARS`, `ชุด ULTRA SLIM MN-7112`. Controller ruling: they go into **miscellaneous (misc.)** (owner: every MN leftover = misc.), so misc. = 17 series. (v4 also prints "9" for ช่องแสง-บานสวิง but lists 8; the 8 listed are mapped.)
+- XLS ("ไฟล์ Aluminium calculation") and SMS-KC get no family rows (spec: "ชุดอื่นอยู่เดี่ยว", KC = no family). Seed = 27 families, 102 series.
 - Foreign keys use NO ACTION (not SET NULL): a family still used by a series or a project cannot be removed; the screen says "ปิดใช้งาน" instead. This also keeps the forbidden word out of the SQL.
 - A family whose row is switched off is hidden from the pickers (its series show one by one), but a project already saved on it keeps resolving it.
 - The stock-linked part price also prices hardware sets in estimation (same helper as the page), as of the project's price date. Only posted tax invoices count; PO lines count when not cancelled and in the item's base unit.
@@ -56,7 +56,7 @@
 
 | File | Responsibility | Tasks |
 |---|---|---|
-| `supabase/migrations/2026-10-31-01-alu-series-family.sql` + `.dryrun.sql` (new) | families table, two FK columns, seed 27/98, project move | 1 |
+| `supabase/migrations/2026-10-31-01-alu-series-family.sql` + `.dryrun.sql` (new) | families table, two FK columns, seed 27/102, project move | 1 |
 | `supabase/datafix/2026-10-31-series-family-price-report.sql` (new) | read-only before/after report (spec §10) | 1 |
 | `src/lib/migrationFiles20261031.test.js` (new) | guard: no refused words; dry run replays the migration | 1, 9 |
 | `src/lib/seriesFamily.js` (new) | pure family logic + `withFamilyResolver` + thickness text helpers | 2 |
@@ -84,7 +84,7 @@
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces (DB, after the owner applies it): table `alu_series_families (id uuid, tenant_id uuid, provider_id uuid, name text, thickness_options numeric[] | null, sort_order int, active boolean, created_at)`, unique `(tenant_id, provider_id, name)` and `(id, provider_id)`; column `alu_series.series_family_id uuid | null` (composite FK `(series_family_id, provider_id)` → the family, so a series can only join its own extruder's family); column `estimation_projects.default_series_family_id uuid | null`. Seed on tenant `1b9affc4-2136-4ed1-b168-a36e6624e743`: 27 families, 98 series placed. Later tasks read these as plain rows (`index.seriesFamilies[id]`, `series.series_family_id`, `project.default_series_family_id`).
+- Produces (DB, after the owner applies it): table `alu_series_families (id uuid, tenant_id uuid, provider_id uuid, name text, thickness_options numeric[] | null, sort_order int, active boolean, created_at)`, unique `(tenant_id, provider_id, name)` and `(id, provider_id)`; column `alu_series.series_family_id uuid | null` (composite FK `(series_family_id, provider_id)` → the family, so a series can only join its own extruder's family); column `estimation_projects.default_series_family_id uuid | null`. Seed on tenant `1b9affc4-2136-4ed1-b168-a36e6624e743`: 27 families, 102 series placed. Later tasks read these as plain rows (`index.seriesFamilies[id]`, `series.series_family_id`, `project.default_series_family_id`).
 
 - [ ] **Step 1: Write the failing guard test**
 
@@ -131,11 +131,11 @@ describe('2026-10-31 migration files', () => {
 
 describe('2026-10-31-01 seed', () => {
   const s = mig('2026-10-31-01-alu-series-family')
-  it('lists 27 families and 98 series, and its guard expects exactly those', () => {
+  it('lists 27 families and 102 series, and its guard expects exactly those', () => {
     expect((s.match(/^\s*\('(ALM|SP|SMS|MN)', '[^']+', (ARRAY|NULL)/gm) || []).length).toBe(27)
-    expect((s.match(/^\s*\('(ALM|SP|SMS|MN)', '[^']+', '[^']+'\)/gm) || []).length).toBe(98)
+    expect((s.match(/^\s*\('(ALM|SP|SMS|MN)', '[^']+', '[^']+'\)/gm) || []).length).toBe(102)
     expect(s).toContain('(expect 27)')
-    expect(s).toContain('(expect 98)')
+    expect(s).toContain('(expect 102)')
   })
   it('no series is listed twice', () => {
     const rows = [...s.matchAll(/^\s*\('(ALM|SP|SMS|MN)', '[^']+', '([^']+)'\)/gm)].map(m => `${m[1]}|${m[2]}`)
@@ -335,7 +335,11 @@ m(k, family_name, series_name) AS (VALUES
   ('MN', 'miscellaneous (misc.)', 'FLY SCREEN (CASEMENT) มุ้งบานเปิด'),
   ('MN', 'miscellaneous (misc.)', 'ชุดประตูบานเปิด HEAVY DUTY MN-7855'),
   ('MN', 'miscellaneous (misc.)', 'SF20 SHOPFRONT'),
-  ('MN', 'miscellaneous (misc.)', 'SW20 SWING DOOR')
+  ('MN', 'miscellaneous (misc.)', 'SW20 SWING DOOR'),
+  ('MN', 'miscellaneous (misc.)', 'AWNING 3"'),
+  ('MN', 'miscellaneous (misc.)', 'BOX-FRAME SLIDING 4" กล่อง 4" มีรางในตัว'),
+  ('MN', 'miscellaneous (misc.)', 'T-SLOT SOLID BARS'),
+  ('MN', 'miscellaneous (misc.)', 'ชุด ULTRA SLIM MN-7112')
 )
 UPDATE alu_series s
    SET series_family_id = f.id
@@ -351,8 +355,8 @@ BEGIN
   IF EXISTS (SELECT 1 FROM alu_providers WHERE id = 'eabb17a4-a111-41e5-a59e-6b6226c7880a'::uuid AND tenant_id = '1b9affc4-2136-4ed1-b168-a36e6624e743'::uuid) THEN
     SELECT count(*) INTO f FROM alu_series_families WHERE tenant_id = '1b9affc4-2136-4ed1-b168-a36e6624e743'::uuid;
     SELECT count(*) INTO n FROM alu_series WHERE tenant_id = '1b9affc4-2136-4ed1-b168-a36e6624e743'::uuid AND series_family_id IS NOT NULL;
-    IF f <> 27 OR n <> 98 THEN
-      RAISE EXCEPTION 'series family seed: % families (expect 27), % series (expect 98); was a series renamed after 2026-10-31?', f, n;
+    IF f <> 27 OR n <> 102 THEN
+      RAISE EXCEPTION 'series family seed: % families (expect 27), % series (expect 102); was a series renamed after 2026-10-31?', f, n;
     END IF;
   END IF;
 END $$;
@@ -506,7 +510,7 @@ Run: `npx vitest run` → Expected: all green (`estimationCatalogTables.test.js`
 cd /Users/plfx/code/FacadeXPM/facadex-app/.claude/worktrees/series-family
 git add supabase/migrations/2026-10-31-01-alu-series-family.sql supabase/migrations/2026-10-31-01-alu-series-family.dryrun.sql supabase/datafix/2026-10-31-series-family-price-report.sql src/lib/migrationFiles20261031.test.js
 git commit -F - <<'MSG'
-feat(db): series families (ซีรีส์หลัก) table, seed 27/98, project move + dry run
+feat(db): series families (ซีรีส์หลัก) table, seed 27/102, project move + dry run
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01SKarDAHEncS9RZ6zCSPXc1
