@@ -31,7 +31,7 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
       typesById: base.typesById, infillTypesById: base.infillTypesById, index, settings: base.settings, candidates, asOf: project.price_as_of, seriesTypes,
     })
     return comparisonRows(results, primaryId)
-  }, [providers, picks, project, items, base, index, primaryId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [providers, picks, project, items, base, index, primaryId, seriesTypes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setPick = (pid, patch) => setPicks(s => ({ ...s, [pid]: { ...(s[pid] || { seriesKey: '', finishId: '' }), ...patch } }))
 
@@ -51,7 +51,11 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
       if (error) throw error
       await onApplied()
       setConfirm(null)
-    } catch (e) { setSaveError('บันทึกไม่สำเร็จ: ' + e.message) } finally { setBusy(false) }
+    } catch (e) {
+      // the dialog is a full-screen overlay: close it so the card's error is seen
+      setConfirm(null)
+      setSaveError('บันทึกไม่สำเร็จ: ' + e.message)
+    } finally { setBusy(false) }
   }
 
   return (
@@ -97,7 +101,7 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
         </table>
       </div>
       {confirm && (
-        <ConfirmDialog title={`ใช้โรงรีด ${confirm.name}`} confirmDisabled={busy} onCancel={() => setConfirm(null)} onConfirm={apply}
+        <ConfirmDialog title={`ใช้โรงรีด ${confirm.name}`} confirmDisabled={busy} onCancel={() => { setConfirm(null); setSaveError(null) }} onConfirm={apply}
           message={<div>
             จะตั้งโรงรีดหลัก ซีรีส์หลัก และสีเริ่มต้นของโปรเจกต์ตามแถวนี้{confirm.clearsThickness ? ' (ความหนาเริ่มต้นที่ซีรีส์หลักใหม่ไม่มีจะถูกล้าง ต้องเลือกใหม่)' : ''}
             <div>ความหนาวงกบ/ความหนากรอบบานที่บันทึกไว้เป็นค่าเริ่มต้น อาจถูกล้างถ้าไม่มีในซีรีส์หลักใหม่</div>
