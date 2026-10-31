@@ -15,7 +15,9 @@ export default function AvailabilityBanner({ issues, hardware, typeNames }) {
             {issues.map((x, i) => (
               <li key={i}>
                 {x.item.opening_no}{x.item.item_name ? ` · ${x.item.item_name}` : ''}: {x.which === 'addon' ? 'ชุดต่อเติม ' : ''}{x.template.name}
-                {' — '}{x.offeredBy.length ? `มีในซีรีส์ ${x.offeredBy.join(', ')}` : 'ยังไม่มีซีรีส์ไหนทำแบบนี้'}
+                {' — '}{x.familyMissing
+                  ? `ซีรีส์หลัก ${x.familyName} ไม่มีชุดสำหรับประเภทนี้ — เลือกชุดในรายการ`
+                  : (x.offeredBy.length ? `มีในซีรีส์ ${x.offeredBy.join(', ')}` : 'ยังไม่มีซีรีส์ไหนทำแบบนี้')}
               </li>
             ))}
           </ul>

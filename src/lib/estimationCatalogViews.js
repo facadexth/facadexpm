@@ -34,6 +34,17 @@ export const hardwareSetsForSeries = (index, seriesId, typeId) => partsForSeries
 export const hardwareForSeries = (index, seriesId, typeId) => partsForSeries(index, seriesId, typeId, 'hardware')
 export const accessoriesForSeries = (index, seriesId, typeId) => partsForSeries(index, seriesId, typeId, 'accessory')
 
+// The item form's hardware sets (spec section 12): the sets linked to the item's series (and type) first, then the
+// sets linked to no series at all (usable with any series). Each group by name; inactive sets are left out.
+export function hardwareSetChoices(index, seriesId, typeId) {
+  const linked = seriesId ? hardwareSetsForSeries(index, seriesId, typeId) : []
+  const anyLink = new Set(Object.values(index.seriesPartsBySeries || {}).flat().map(l => l.part_id))
+  const free = Object.values(index.parts || {})
+    .filter(p => p.kind === 'hardware_set' && p.active !== false && !anyLink.has(p.id))
+    .sort(byName)
+  return [...linked, ...free.filter(p => !linked.some(x => x.id === p.id))]
+}
+
 export function typesForSeries(index, seriesId) {
   return (index.seriesTypesBySeries[seriesId] || [])
     .map(st => index.types[st.type_id])

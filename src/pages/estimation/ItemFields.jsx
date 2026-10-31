@@ -63,9 +63,9 @@ export default function ItemFields({ form, m, update, dis }) {
       <ItemLayoutInputs li={m.layoutInputs} form={form} update={update} dis={dis} />
 
       <div style={grid(180)}>
-        <Field label="ซีรีส์">
+        <Field label="ซีรีส์" hint={m.seriesHint && m.seriesHint.hint} warn={m.seriesHint && m.seriesHint.warn}>
           <select className="input" disabled={dis} value={form.series_id} onChange={e => update({ series_id: e.target.value })}>
-            <option value="">ใช้ค่าโปรเจกต์ · {m.inherit.series || 'ไม่กำหนด'}</option>
+            <option value="">ตามโปรเจกต์ ({m.inherit.series || 'ไม่กำหนด'})</option>
             <Options list={m.seriesOpts} />
           </select>
         </Field>

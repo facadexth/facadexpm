@@ -13,6 +13,8 @@ import { coerceParams, inputsOf, LAYOUTS } from '../../lib/layoutRegistry.js'
 import { modelForItem } from '../../lib/openingCost.js'
 import { visibleInputs, clampedParts } from '../bomTemplates/partEditorView.js'
 import { validateAddons, addonDims } from '../../lib/addonModel.js'
+import { resolveSeriesId } from '../../lib/estimationInherit.js'
+import { seriesChoices } from './projectDefaults.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null))
 const pos = v => { const n = num(v); return n !== null && n > 0 }
@@ -176,7 +178,7 @@ export function reconcileItemForm(prev, next, { index, project, template, isNew 
   const f = { ...next }
   const p = prev || {}
   const pj = project || {}
-  const seriesId = f.series_id || pj.default_series_id || null
+  const seriesId = f.series_id || resolveSeriesId(null, pj, template) || null
   const opts = seriesId ? thicknessesForSeries(index, seriesId) : []
   const has = v => v !== '' && v !== null && v !== undefined && opts.includes(Number(v))
   const seriesChanged = (p.series_id || '') !== (f.series_id || '')
@@ -195,6 +197,35 @@ export function reconcileItemForm(prev, next, { index, project, template, isNew 
 export function withCurrent(options, value, label, note = '(ไม่มีในซีรีส์นี้)') {
   if (value === '' || value === null || value === undefined || options.some(o => String(o.value) === String(value))) return options
   return [...options, { value: String(value), label: `${label || value} ${note}`, missing: true }]
+}
+
+// The item's series options: with a project family, the family's series that make this type come first, then every
+// other series of the main extruder (same labels as seriesChoices). A saved family always resolves inside its own
+// extruder, so with a family that extruder is listed, whatever primary_provider_id says; without one, the main extruder.
+export function itemSeriesOptions({ index, project, typeId, seriesTypes }) {
+  const pj = project || {}
+  const fam = Array.isArray(pj.familySeriesIds) ? pj.familySeriesIds : []
+  const famRow = pj.default_series_family_id ? ((index && index.seriesFamilies) || {})[pj.default_series_family_id] : null
+  const all = seriesChoices(index, (famRow && famRow.provider_id) || pj.primary_provider_id)
+  const fits = id => !typeId || (seriesTypes || []).some(st => st.series_id === id && st.type_id === typeId)
+  const first = fam.filter(id => fits(id)).map(id => all.find(o => o.value === id)).filter(Boolean)
+  return [...first, ...all.filter(o => !first.includes(o))]
+}
+
+// The note under the item's series field (spec section 7): a warning when the project family has no series for this
+// type (and the item has none of its own), a hint when the family has several for it. null otherwise.
+export function itemSeriesHint({ index, project, template, seriesTypes, ownSeriesId }) {
+  const pj = project || {}
+  if (typeof pj.seriesForType !== 'function') return null
+  const typeId = template && template.type_id
+  if (!typeId) return null
+  if (!ownSeriesId && !pj.seriesForType(typeId)) {
+    const fam = pj.familyName ? `ซีรีส์หลัก ${pj.familyName}` : 'ซีรีส์หลักของโปรเจกต์'
+    return { warn: `${fam} ไม่มีชุดสำหรับประเภทนี้ — เลือกชุดในรายการ` }
+  }
+  const n = (pj.familySeriesIds || []).filter(id => (seriesTypes || []).some(st => st.series_id === id && st.type_id === typeId)).length
+  const typeName = index.types[typeId] ? index.types[typeId].name : 'ประเภทนี้'
+  return n > 1 ? { hint: `ซีรีส์หลักนี้มี ${n} ชุด${typeName} — เลือกได้ที่นี่` } : null
 }
 
 // Waste is a share of the aluminium, infill a price per area: neither can be shown as a number while what it is

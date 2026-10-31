@@ -6,7 +6,8 @@ import { DEFAULT_DESCRIPTION_FORMAT } from '../../lib/descriptionFormat.js'
 import { mergeSettings } from '../../lib/estimationSettings.js'
 import { localDateString } from '../../lib/localDate.js'
 import { costOpening, partPreviewCtx } from '../../lib/openingCost.js'
-import { typeAvailability } from '../../lib/estimationInherit.js'
+import { typeAvailability, inheritedSeries } from '../../lib/estimationInherit.js'
+import { projectSeriesIds } from '../../lib/seriesFamily.js'
 import { missingHardwareTypeIds } from '../../lib/projectHardware.js'
 import { unresolvedText } from '../../lib/reasonText.js'
 import { previewFrames, itemPreviewSignature } from '../../lib/itemPreviewSignature.js'
@@ -148,7 +149,9 @@ export function hardwareBanners({ project, pkg, packageItems, items, templatesBy
   const missingTypeIds = packageItems ? missingHardwareTypeIds(packageItems, typesById, typeIds) : []
   // A template with no type cannot match a package row, so its items price without a hardware set.
   const typelessTemplateItems = packageItems ? typelessCount : 0
-  const wrongSeries = !!(pkg && pkg.series_id && project && project.default_series_id && pkg.series_id !== project.default_series_id)
+  // a package tied to a series outside the project's family / single series (a package with no series fits any)
+  const ids = projectSeriesIds(project)
+  const wrongSeries = !!(pkg && pkg.series_id && ids.length && !ids.includes(pkg.series_id))
   return { missingTypeIds, wrongSeries, typelessTemplateItems }
 }
 
@@ -156,7 +159,13 @@ export function hardwareBanners({ project, pkg, packageItems, items, templatesBy
 export function availabilityIssues({ items, project, templatesById, index, seriesTypes }) {
   const out = []
   for (const item of items || []) {
-    const seriesId = item.series_id || (project && project.default_series_id) || null
+    const main = item.template_id ? (templatesById || {})[item.template_id] : null
+    const inh = inheritedSeries(item, project, main)
+    if (inh.familyMissing) {
+      if (main) out.push({ item, which: 'main', template: main, familyMissing: true, familyName: (project && project.familyName) || '', offeredBy: [] })
+      continue
+    }
+    const seriesId = inh.series_id
     if (!seriesId) continue
     for (const [which, tid] of [['main', item.template_id], ['addon', item.addon_template_id]]) {
       const t = tid ? (templatesById || {})[tid] : null

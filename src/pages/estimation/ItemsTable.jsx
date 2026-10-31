@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { supabase, fmt } from '../../lib/supabase.js'
 import { typeLabel } from '../../lib/typeTree.js'
 import { seriesLabelShort } from '../../lib/aluCatalog.js'
+import { resolveSeriesId } from '../../lib/estimationInherit.js'
 import CardTable from '../../components/CardTable.jsx'
 import { itemStatus, unresolvedSummary, parseQuantity } from './projectDefaults.js'
 
@@ -44,7 +45,7 @@ export default function ItemsTable({ items, costs, previewSigs, project, index, 
               const status = itemStatus(o, cost, (previewSigs || {})[o.id])
               const priced = cost && status !== 'unresolved' && Number.isFinite(cost.total)
               const tpl = templatesById[o.template_id]
-              const seriesId = o.series_id || project.default_series_id
+              const seriesId = resolveSeriesId(o, project, tpl)
               const series = seriesId ? index.series[seriesId] : null
               const reasons = cost ? unresolvedSummary(cost.unresolved) : 'ไม่พบแบบ (Template) ของรายการนี้'
               const qty = Number(o.quantity) || 1
