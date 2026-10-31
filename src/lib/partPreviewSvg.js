@@ -36,6 +36,7 @@ const FILL = {
 const STYLES = ['double', 'lengths', 'solid', 'cad']
 const MARGIN = 12      // left / top
 const DIM_ROOM = 30    // right / bottom: the dimension line (16 px out) + its ticks
+const BARE_PAD = 4     // bare (thumbnail) drawing: the pad on every side
 const n2 = n => Math.round(n * 100) / 100
 const metres = mm => `${(mm / 1000).toFixed(2)} ม.`
 
@@ -93,16 +94,18 @@ export function cutLengthsByPiece({ model, buttOf, widthOf, widthMm, heightMm, e
  * @param {{ model, widthMm, heightMm, view?: 'out'|'in', buttOf?, widthOf?, style?: 'double'|'solid', lengthsByPiece? }} args
  * lengthsByPiece ('lengths' style, every kind but sliding_2): { [key]: number[] } or (key, piece) => mm — the cut length
  * printed on each piece (cutLengthsByPiece); without it the style prints no lengths.
+ * bare (opt-in, card thumbnails): no dimension lines, no overall size text and no room kept for them; add-ons are not
+ * drawn. The default (bare false) output is unchanged byte for byte.
  * @returns {string|null} null when there is nothing to draw (no drawable model or no size).
  */
 // eslint-disable-next-line no-unused-vars
-export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, widthOf, style = 'double', lengthsByPiece = null, addons = null, overrides = null } = {}) {
+export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, widthOf, style = 'double', lengthsByPiece = null, addons = null, overrides = null, bare = false } = {}) {
   const W = Number(widthMm), H = Number(heightMm)
   if (!(W > 0) || !(H > 0)) return null
   const ov = overviewSpecs({ model, widthMm: W, heightMm: H, view: view === 'in' ? 'in' : 'out', widthOf })
   if (!ov.pieces.length) return null
-  const ao = addonGeometry(ov.box, addons, W, H, view === 'in' ? 'in' : 'out')
-  if (ov.box.units === 'mm') return mmSvg(ov, STYLES.includes(style) ? style : 'double', lengthLookup(lengthsByPiece), ao)
+  const ao = bare ? null : addonGeometry(ov.box, addons, W, H, view === 'in' ? 'in' : 'out')
+  if (ov.box.units === 'mm') return mmSvg(ov, STYLES.includes(style) ? style : 'double', lengthLookup(lengthsByPiece), ao, bare)
   const fills = FILL[style] || FILL.double
   const b = ov.box
 
@@ -134,6 +137,10 @@ export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, 
     parts.push(`<text x="${n2(vx + vw / 2)}" y="${n2(vy + vh - 6)}" font-size="11" fill="${DIM}" text-anchor="middle">${overallText(ao)}</text>`)
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${n2(vw)}" height="${n2(vh)}" viewBox="${n2(vx)} ${n2(vy)} ${n2(vw)} ${n2(vh)}">${parts.join('')}</svg>`
   }
+  if (bare) {
+    const vx = n2(b.frameX - BARE_PAD), vy = n2(b.frameY - BARE_PAD), vw = n2(b.frameW + 2 * BARE_PAD), vh = n2(b.frameH + 2 * BARE_PAD)
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${vw}" height="${vh}" viewBox="${vx} ${vy} ${vw} ${vh}">${parts.join('')}</svg>`
+  }
   for (const d of ov.dims) parts.push(dimSvg(d, metres(d.value)))
 
   const vx = n2(b.frameX - MARGIN), vy = n2(b.frameY - MARGIN)
@@ -157,13 +164,22 @@ export function lengthLookup(lengths) {
 
 // Every other layout kind: the millimetre overview, drawn back to front (glass, pieces, symbols, hardware, dimensions).
 // ao: addonGeometry(...) or null (no add-ons: the frozen output).
-function mmSvg(ov, style, lengthOf, ao = null) {
+function mmSvg(ov, style, lengthOf, ao = null, bare = false) {
   const b = ov.box, sw = b.sw
   const parts = []
   for (const g of ov.glass) parts.push(glassSvg(g, style, sw))
   for (const p of ov.pieces) parts.push(pieceSvg(p, style, sw, p.role === 'main' ? lengthOf(p.key, p.piece) : null))
   for (const s of ov.symbols) parts.push(symbolSvg(s, sw))
   for (const k of ov.hardwareMarks) parts.push(markSvg(k, sw))
+  if (bare) {
+    // the frame plus every piece (a hanging-door rail sticks out), a thin pad, no dimension room
+    const xs = [b.frameX, b.frameX + b.frameW, ...ov.pieces.flatMap(p => [p.x, p.x + p.w])]
+    const ys = [b.frameY, b.frameY + b.frameH, ...ov.pieces.flatMap(p => [p.y, p.y + p.h])]
+    const pad = Math.max(b.frameW, b.frameH) * 0.03
+    const v = { x: Math.min(...xs) - pad, y: Math.min(...ys) - pad, w: Math.max(...xs) - Math.min(...xs) + 2 * pad, h: Math.max(...ys) - Math.min(...ys) + 2 * pad }
+    const k = Math.min(420 / v.w, 300 / v.h)
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${n2(v.w * k)}" height="${n2(v.h * k)}" viewBox="${n2(v.x)} ${n2(v.y)} ${n2(v.w)} ${n2(v.h)}">${parts.join('')}</svg>`
+  }
   if (ao) {
     const frames = ov.pieces.filter(p => p.role === 'main' && FRAME_PART.has(p.part)).map(p => Math.min(p.w, p.h)).filter(v => v > 0)
     parts.push(addonSvg(ao, { t: frames.length ? Math.min(...frames) : null, sw: 1.3, ns: ' vector-effect="non-scaling-stroke"', style, fills: style === 'solid' ? FILL.solid : FILL.double, mm: true, outline: 2 }))

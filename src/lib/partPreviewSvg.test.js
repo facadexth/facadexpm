@@ -341,3 +341,36 @@ describe('partSvgString with inline add-ons', () => {
     }
   })
 })
+
+describe('partSvgString bare (card thumbnails)', () => {
+  const vb = s => s.match(/viewBox="([-\d. ]+)"/)[1].split(' ').map(Number)
+  it('sliding_2: no dimension lines or text, a tight viewBox, safe, and the default output untouched', () => {
+    const full = partSvgString({ model, widthMm: 1500, heightMm: 1200 })
+    const bare = partSvgString({ model, widthMm: 1500, heightMm: 1200, bare: true })
+    expect(safeSvgDataUri(bare)).not.toBeNull()
+    expect(bare).not.toContain('ม.</text>')
+    expect(bare).not.toContain('<line')
+    expect(rects(bare)).toEqual(rects(full))
+    const [, , fw, fh] = vb(full), [, , bw, bh] = vb(bare)
+    expect(bw).toBeLessThan(fw)
+    expect(bh).toBeLessThan(fh)
+    expect(partSvgString({ model, widthMm: 1500, heightMm: 1200, bare: false })).toBe(full)
+  })
+  it('bare ignores add-ons (no overall size line)', () => {
+    const addons = [{ mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1500, thick_mm: 400 }]
+    const bare = partSvgString({ model, widthMm: 1500, heightMm: 1200, bare: true, addons })
+    expect(bare).toBe(partSvgString({ model, widthMm: 1500, heightMm: 1200, bare: true }))
+    expect(bare).not.toContain('รวม')
+  })
+  it('every other layout kind: no dimension text, smaller viewBox than the default, safe', () => {
+    for (const kind of Object.keys(SIZE8).filter(k => k !== 'sliding_2')) {
+      const [W, H] = SIZE8[kind]
+      const full = partSvgString({ model: m8(kind), widthMm: W, heightMm: H })
+      const bare = partSvgString({ model: m8(kind), widthMm: W, heightMm: H, bare: true })
+      expect(bare, kind).toBeTruthy()
+      expect(safeSvgDataUri(bare), kind).not.toBeNull()
+      expect(bare, kind).not.toMatch(/ม\.<\/text>|NaN|undefined/)
+      expect(vb(bare)[2] * vb(bare)[3], kind).toBeLessThan(vb(full)[2] * vb(full)[3])
+    }
+  })
+})
