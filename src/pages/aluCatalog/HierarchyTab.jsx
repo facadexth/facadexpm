@@ -6,7 +6,8 @@ import { useCatalogTable } from '../../hooks/useAluCatalog.js'
 import CatalogCrud, { ActiveBadge, CrudForm } from '../../components/CatalogCrud.jsx'
 import LinkEditor from '../../components/LinkEditor.jsx'
 import { Modal } from '../../components/Modal.jsx'
-import { emptyForm, buildPayload, missingRequired, friendlyDbError } from '../../lib/catalogForm.js'
+import { emptyForm, buildPayload, missingRequired, friendlyDbError, optionList } from '../../lib/catalogForm.js'
+import { parseThicknessOptions, formatThicknessOptions } from '../../lib/seriesFamily.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { typeFields, typeErrorText } from './TypesTab.jsx'
 import { typePickerOptions } from '../../lib/catalogTypeForm.js'
@@ -21,17 +22,35 @@ const PROVIDER_FIELDS = [
   { key: 'active', label: 'ใช้งานอยู่', type: 'checkbox', default: true },
 ]
 
-const SERIES_FIELDS = [
+// families = the selected extruder's ซีรีส์หลัก rows. A series joins at most one family of its own extruder.
+export const seriesFields = families => [
   { key: 'name', label: 'ชื่อซีรีส์', type: 'text', required: true, placeholder: 'เช่น ซีรีส์ 40' },
+  { key: 'series_family_id', label: 'ซีรีส์หลัก', type: 'select', emptyLabel: 'ไม่มี (เป็นซีรีส์หลักของตัวเอง)',
+    options: (form, row) => optionList(families, f => f.name, row ? row.series_family_id : null),
+    hint: 'โปรเจกต์ที่เลือกซีรีส์หลักนี้ จะได้ชุดนี้กับรายการที่เป็นประเภทที่ชุดนี้ทำ' },
   { key: 'is_base', label: 'ซีรีส์พื้นฐานของโรงรีด (ใช้แสดงเท่านั้น)', type: 'checkbox', default: false },
   { key: 'active', label: 'ใช้งานอยู่', type: 'checkbox', default: true },
 ]
+
+export const FAMILY_FIELDS = [
+  { key: 'name', label: 'ชื่อซีรีส์หลัก', type: 'text', required: true, placeholder: 'เช่น ICONIQ EURO' },
+  { key: 'thickness_options', label: 'ความหนาที่ให้เลือกในค่าเริ่มต้นโปรเจกต์ (มม.)', type: 'text',
+    render: ({ value, set }) => (
+      <input className="input" value={Array.isArray(value) ? formatThicknessOptions(value) : (value ?? '')}
+        onChange={e => set(e.target.value)} placeholder="เช่น 1.0, 1.2, 1.5, 1.8, 2.0" />
+    ),
+    serialize: v => parseThicknessOptions(v).value,
+    hint: 'เว้นว่าง = ใช้ทุกความหนาของชุดในกลุ่ม · ในรายการยังเลือกความหนาอื่นของชุดได้' },
+  { key: 'active', label: 'ใช้งานอยู่', type: 'checkbox', default: true },
+]
+export const familyThicknessError = form => parseThicknessOptions(form.thickness_options).error
 
 export default function HierarchyTab({ canEdit }) {
   const providers = useCatalogTable('alu_providers')
   const series = useCatalogTable('alu_series')
   const types = useCatalogTable('door_window_types')
   const seriesTypes = useCatalogTable('alu_series_types', 'id')
+  const families = useCatalogTable('alu_series_families')
   const [providerId, setProviderId] = useState('')
   const [seriesId, setSeriesId] = useState('')
   const [addingType, setAddingType] = useState(false)
@@ -40,8 +59,10 @@ export default function HierarchyTab({ canEdit }) {
   const providerById = Object.fromEntries((providers.data || []).map(p => [p.id, p]))
   const seriesOfProvider = (series.data || []).filter(s => s.provider_id === providerId)
   const pickedSeries = seriesOfProvider.find(s => s.id === seriesId)
+  const familiesOfProvider = (families.data || []).filter(f => f.provider_id === providerId)
+  const familyById = Object.fromEntries((families.data || []).map(f => [f.id, f]))
 
-  const error = providers.error || series.error || types.error || seriesTypes.error
+  const error = providers.error || series.error || types.error || seriesTypes.error || families.error
   if (error) return <div style={{ color: 'var(--red)' }}>โหลดข้อมูลไม่สำเร็จ: {error}</div>
 
   const pickBtn = (selected, onClick) => (
@@ -101,12 +122,13 @@ export default function HierarchyTab({ canEdit }) {
         {providerId && providerById[providerId] ? (
           <>
             <CatalogCrud
-              title={`📚 ซีรีส์ของ ${providerById[providerId].name}`} table="alu_series" fields={SERIES_FIELDS} rows={seriesOfProvider}
+              title={`📚 ซีรีส์ของ ${providerById[providerId].name}`} table="alu_series" fields={seriesFields(familiesOfProvider)} rows={seriesOfProvider}
               scope={{ provider_id: providerId }} onChanged={series.refetch} canEdit={canEdit}
               deleteWarning="ลบแล้วจะลบการผูกประเภท หน้าตัด อุปกรณ์ และราคาต่อกก.ที่ทับเฉพาะซีรีส์นี้ทั้งหมดด้วย (ย้อนกลับไม่ได้) ถ้าแค่เลิกใช้ ให้ปิด “ใช้งานอยู่” แทน"
               addLabel="+ เพิ่มซีรีส์" emptyText="โรงรีดนี้ยังไม่มีซีรีส์"
               columns={[
                 { key: 'name', label: 'ซีรีส์', render: r => <strong>{seriesLabelFull(r, providerById[r.provider_id])}</strong> },
+                { key: 'series_family_id', label: 'ซีรีส์หลัก', render: r => familyById[r.series_family_id]?.name || '—' },
                 { key: 'is_base', label: 'พื้นฐาน', render: r => (r.is_base ? '✓' : '') },
                 { key: 'active', label: 'สถานะ', render: r => <ActiveBadge active={r.active} /> },
               ]}
@@ -114,6 +136,23 @@ export default function HierarchyTab({ canEdit }) {
             />
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: -12 }}>
               ชื่อซีรีส์คือชื่อกลุ่มสินค้าของโรงรีด (เช่น ซีรีส์ 40) ไม่ใช่ชื่อหน้าตัด ชื่อหน้าตัดและ family อยู่ในแท็บหน้าตัด · ป้าย "พื้นฐาน" ใช้ทำเครื่องหมายซีรีส์หลักของโรงรีด ใช้แสดงเท่านั้น ยังไม่กระทบการคิดราคา
+            </div>
+            <CatalogCrud
+              title={`🧩 ซีรีส์หลักของ ${providerById[providerId].name}`} table="alu_series_families" fields={FAMILY_FIELDS}
+              rows={familiesOfProvider} scope={{ provider_id: providerId }} onChanged={families.refetch} canEdit={canEdit}
+              validate={familyThicknessError}
+              deleteWarning="ลบไม่ได้ถ้ายังมีซีรีส์อยู่ในกลุ่ม หรือมีโปรเจกต์ใช้เป็นค่าเริ่มต้น ให้ปิด “ใช้งานอยู่” แทน"
+              duplicateMessage="โรงรีดนี้มีซีรีส์หลักชื่อนี้อยู่แล้ว"
+              addLabel="+ เพิ่มซีรีส์หลัก" emptyText="ยังไม่มีซีรีส์หลัก (แต่ละซีรีส์เป็นซีรีส์หลักของตัวเอง)"
+              columns={[
+                { key: 'name', label: 'ซีรีส์หลัก', render: r => <strong>{r.name}</strong> },
+                { key: 'thickness_options', label: 'ความหนาที่ให้เลือก', render: r => formatThicknessOptions(r.thickness_options) || 'ทุกความหนาของชุด' },
+                { key: 'count', label: 'จำนวนชุด', render: r => seriesOfProvider.filter(s => s.series_family_id === r.id).length },
+                { key: 'active', label: 'สถานะ', render: r => <ActiveBadge active={r.active} /> },
+              ]}
+            />
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: -12 }}>
+              ซีรีส์หลักคือกลุ่มของชุดที่ขายด้วยกัน (เช่น ICONIQ EURO = บานติดตาย บานเปิด บานเลื่อน) · ค่าเริ่มต้นโปรเจกต์เลือกแค่ซีรีส์หลัก แต่ละรายการได้ชุดที่ตรงประเภทเอง · ใส่ซีรีส์เข้ากลุ่มที่ปุ่ม "แก้ไข" ของซีรีส์
             </div>
           </>
         ) : (
