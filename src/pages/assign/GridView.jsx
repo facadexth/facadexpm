@@ -4,17 +4,21 @@
 // cells stretch to fill their column so no dead space on the right.
 // ============================================================
 import { fmt } from '../../lib/supabase.js'
+import LandscapeView from '../../components/LandscapeView.jsx'
 import AssignCell from './AssignCell.jsx'
+import { useIsPhone } from '../../hooks/useIsPhone.js'
 import { DOW_TH, SITE_TYPES } from './constants.js'
+import { workerDayRate } from './otMath.js'
 
-export default function GridView({ days, workers, cellLookup, otLookup, holidayDates, onEditHalf, cellH = 32, variant = 'week' }) {
-  return (
+export default function GridView({ days, workers, cellLookup, otLookup, holidayDates, onEditHalf, cellH = 32, variant = 'week', showMoney = true }) {
+  const isPhone = useIsPhone()
+  const grid = (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', tableLayout: 'fixed' }}>
+        <table data-phone="assign-grid" data-variant={variant} style={{ width: '100%', tableLayout: 'fixed' }}>
           <thead>
             <tr>
-              <th style={{ width: 150, position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 10 }}>ช่าง</th>
+              <th data-phone="assign-worker" style={{ width: 150, position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 10 }}>ช่าง</th>
               {days.map(d => {
                 const holidayName = holidayDates?.get(d.iso)
                 return (
@@ -48,16 +52,16 @@ export default function GridView({ days, workers, cellLookup, otLookup, holidayD
               days.forEach(d => { otTotal += otLookup?.[w.id]?.[d.iso]?.ot_hours || 0 })
               return (
                 <tr key={w.id}>
-                  <td style={{ position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <td data-phone="assign-worker" style={{ position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{w.nickname || w.name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(Math.round((w.monthly_salary || 0) / 30))} บ/วัน</div>
+                    {showMoney && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(Math.round(workerDayRate(w)))} บ/วัน</div>}
                   </td>
                   {days.map(d => (
                     <td key={d.iso} style={{ padding: 2, textAlign: 'center' }}>
                       <AssignCell
                         cell={row[d.iso] || {}}
                         ot={otLookup?.[w.id]?.[d.iso] || null}
-                        w="100%" h={cellH} variant={variant}
+                        w="100%" h={cellH} variant={variant} isPhone={isPhone}
                         onEdit={(shift) => onEditHalf(w, d.iso, shift)}
                       />
                     </td>
@@ -79,4 +83,5 @@ export default function GridView({ days, workers, cellLookup, otLookup, holidayD
       </div>
     </div>
   )
+  return variant === 'week' ? <LandscapeView title="จัดคนงาน · สัปดาห์">{grid}</LandscapeView> : grid
 }

@@ -11,4 +11,4 @@ class EB extends React.Component {
   render() { return this.state.e ? <div id="crash">CRASH {String(this.state.e)}</div> : this.props.children }
 }
 let root
-window.__render = () => { const el = document.getElementById('root'); if (root) root.unmount(); root = createRoot(el); root.render(<EB><Page /></EB>) }
+window.__render = () => { const el = document.getElementById('root'); if (root) root.unmount(); root = createRoot(el); root.render(<EB><Page navState={window.__navState || {}} navigateTo={(t, s) => { (window.__nav = window.__nav || []).push([t, s]) }} /></EB>) }

@@ -80,14 +80,14 @@ Deno.serve(async (req) => {
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   })
-  const { data: isAdminOrOwner, error: adminCheckError } = await userClient.rpc('is_admin_or_owner')
+  const { data: isAdminOrOwner, error: adminCheckError } = await userClient.rpc('is_site_staff')
   if (adminCheckError || !isAdminOrOwner) return json({ error: 'Unauthorized' }, 403)
 
   // RLS-scoped read via the caller's own JWT -- admin_full_access already
   // restricts this to the caller's own tenant, same guarantee the is_admin_or_owner
   // check above gives for the write path.
   const { data: req_, error: reqError } = await userClient.from('leave_requests')
-    .select('tenant_id, worker_id, leave_type, date_from, date_to, shift, workers(line_user_id, annual_leave_days, annual_sick_leave_days)')
+    .select('tenant_id, worker_id, leave_type, date_from, date_to, shift')
     .eq('id', leaveRequestId).maybeSingle()
   if (reqError || !req_) return json({ error: reqError?.message ?? 'not_found' }, 404)
 
@@ -99,7 +99,16 @@ Deno.serve(async (req) => {
 
   if (!(await isPushEnabled(admin, req_.tenant_id as string, 'line_push_leave_result'))) return json({ ok: true, skipped: 'push_disabled' })
 
-  const workerRow = req_.workers as unknown as { line_user_id: string | null; annual_leave_days: number | null; annual_sick_leave_days: number | null } | null
+  // The worker is read with the service client: a PM's JWT cannot embed
+  // workers(line_user_id, ...) (PM has no direct workers read), so the embed
+  // came back null and the worker never got the LINE message. The RLS-scoped
+  // leave read above already proved the caller can see this request; the
+  // worker lookup stays pinned to that request's worker and tenant.
+  const { data: workerRow } = await admin.from('workers')
+    .select('line_user_id, annual_leave_days, annual_sick_leave_days')
+    .eq('id', req_.worker_id as string)
+    .eq('tenant_id', req_.tenant_id as string)
+    .maybeSingle()
   const lineUserId = workerRow?.line_user_id
   if (!lineUserId) return json({ ok: true, skipped: 'no_line_user_id' })
 

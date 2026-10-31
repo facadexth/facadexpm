@@ -10,6 +10,7 @@ import { useTenant } from './hooks/useTenant.js'
 import { usePlatformAdmin } from './hooks/useSupabase.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
 import { canViewPage } from './lib/permissions.js'
+import { roleMeetsTab, canSeeMoney, navGroupLabel } from './lib/roles.js'
 import { getEffectiveTheme, toggleTheme } from './lib/theme.js'
 import { manualUrlFor } from './lib/manualLinks.js'
 import ChangePassword from './components/ChangePassword.jsx'
@@ -20,10 +21,15 @@ import UpgradeModal from './components/UpgradeModal.jsx'
 import ManualModal from './components/ManualModal.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
 import NotificationBell from './components/NotificationBell.jsx'
+import PhoneDrawer from './components/PhoneDrawer.jsx'
+import { useIsPhone } from './hooks/useIsPhone.js'
 import { usePendingCounts } from './hooks/usePendingCounts.js'
-import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge } from './lib/pendingItems.js'
+import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge, resolvePendingTab, parsePushHash } from './lib/pendingItems.js'
+import { redirectTab } from './lib/settingsSections.js'
 import Login      from './pages/Login.jsx'
 import { parseDeepLink, saveDeepLink } from './lib/deepLink.js'
+import ResetPassword from './components/ResetPassword.jsx'
+import { isRecoveryUrl } from './lib/passwordReset.js'
 import Dashboard   from './pages/Dashboard.jsx'
 
 const Sites             = lazy(() => import('./pages/Sites.jsx'))
@@ -49,12 +55,14 @@ const SalesReport  = lazy(() => import('./pages/SalesReport.jsx'))
 const Invoices     = lazy(() => import('./pages/Invoices.jsx'))
 const CatalogItems = lazy(() => import('./pages/CatalogItems.jsx'))
 const Cheques       = lazy(() => import('./pages/Cheques.jsx'))
+const Repairs       = lazy(() => import('./pages/Repairs.jsx'))
 const BomTemplates = lazy(() => import('./pages/BomTemplates.jsx'))
 const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
 const AluCatalog   = lazy(() => import('./pages/AluCatalog.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
+const DocumentTemplatesAdmin = lazy(() => import('./pages/DocumentTemplatesAdmin.jsx'))
 const LineAdminChat = lazy(() => import('./pages/LineAdminChat.jsx'))
-const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter.jsx'))
+const StartingGuide = lazy(() => import('./pages/StartingGuide.jsx'))
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
@@ -63,6 +71,8 @@ const TABS = [
     { id: 'assign',             label: '📋 จ่ายงานช่าง',    minRole: 'WORKER', module: 'payroll' },
     { id: 'labor_contractors',  label: '🔧 ผู้รับเหมาค่าแรง', minRole: 'ADMIN', module: 'labor_subcontractors' },
   ] },
+  // งานซ่อม: one board of every repair ticket across all sites; customers report through the tenant's LINE OA.
+  { id: 'repairs',         label: '🔧 งานซ่อม',       minRole: 'ADMIN', module: 'line_bot' },
   { label: '💰 รายรับ', children: [
     { id: 'income',        label: '📊 ภาพรวม',           minRole: 'ADMIN', module: null },
     { id: 'sales_report',  label: '📊 รายงานการขาย',    minRole: 'ADMIN', module: 'quotations' },
@@ -71,7 +81,7 @@ const TABS = [
     { id: 'deposits',      label: '💰 มัดจำ',            minRole: 'ADMIN', module: 'client_deposits' },
     { id: 'retention',     label: '🔒 เงินประกันผลงาน',  minRole: 'ADMIN', module: null },
   ] },
-  { label: '💸 รายจ่าย', children: [
+  { label: '💸 รายจ่าย', pmLabel: '🧾 จัดซื้อ', children: [
     { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
     { id: 'supplier_credit_notes', label: '↩️ ใบลดหนี้ซัพพลายเออร์', minRole: 'ADMIN', module: 'purchase_orders', permKey: 'purchase_orders' },
@@ -79,6 +89,7 @@ const TABS = [
     { id: 'cheques',        label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
   ] },
   { id: 'inventory',       label: '📦 คลังสินค้า',   minRole: 'ADMIN', module: 'purchase_orders' },
+  { id: 'hr',              label: '👷 บุคคล',        minRole: 'WORKER', module: 'payroll' },
   { label: '🧮 ประเมินราคา', children: [
     { id: 'estimation',    label: '📐 ประเมินราคา (BOM)', minRole: 'ADMIN', module: 'estimation' },
     { id: 'bom_templates', label: '🧩 BOM Templates',     minRole: 'ADMIN', module: 'estimation' },
@@ -91,16 +102,16 @@ const TABS = [
     // is reachable by everyone; the OWNER-only content stays gated inside
     // the page, not at this tab-routing level.
     { id: 'settings',        label: 'ทั่วไป',          minRole: 'WORKER', module: null },
-    { id: 'hr',              label: '👷 บุคคล',        minRole: 'WORKER', module: 'payroll' },
-    { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
+    { id: 'starting_guide',  label: '🚀 เริ่มต้นใช้งาน', minRole: 'OWNER', module: null },
+    { id: 'categories',     label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
     { id: 'clients',         label: '🏢 ลูกค้า',      minRole: 'ADMIN', module: null },
     { id: 'suppliers',       label: '🏭 ผู้จำหน่าย',     minRole: 'ADMIN', module: null },
     { id: 'catalog_items',   label: '📦 รายการสินค้า', minRole: 'ADMIN', module: 'quotations' },
     { id: 'user_management', label: '👤 ผู้ใช้งาน',    minRole: 'OWNER', module: null },
-    { id: 'communication_center', label: '💬 การสื่อสาร', minRole: 'OWNER', module: 'line_bot' },
   ] },
   { id: 'tenant_management', label: '🏢 ผู้ดูแลระบบ', minRole: 'WORKER', module: null, platformAdminOnly: true },
   { id: 'line_admin_chat', label: '💬 แชทแอดมิน', minRole: 'WORKER', module: null, platformAdminOnly: true },
+  { id: 'document_templates', label: '🎨 แบบเอกสาร', minRole: 'WORKER', module: null, platformAdminOnly: true },
 ]
 
 // TABS entries are either a plain tab ({id, label, minRole, module}) or a
@@ -108,6 +119,8 @@ const TABS = [
 // flattens both shapes into one list of plain tabs, so lookups by id don't
 // need to know which shape produced them.
 // Hidden routes: reachable only via navigateTo(), never shown in the nav
+// Breadcrumb text for those routes on the phone shell (they are not in visibleTabs)
+const HIDDEN_TAB_LABELS = { site_detail: '🏗️ รายละเอียดไซท์งาน', starting_guide: '📖 คู่มือเริ่มต้น' }
 // bar (not in TABS), but still need a real gate here or renderPage's
 // ALL_TAB_ENTRIES.find(...) ?? ALL_TAB_ENTRIES[0] fallback would silently
 // grant them Dashboard's (WORKER-level) gate instead of their own.
@@ -119,8 +132,31 @@ const HIDDEN_TAB_ENTRIES = [
   // that registry, since it's not meant to be separately configurable in
   // Settings, only to inherit its parent page's setting.
   { id: 'site_detail', minRole: 'ADMIN', module: null, permKey: 'sites' },
+  // Communication Center (2026-10-18): no longer in the ⚙️ ตั้งค่า dropdown -- the page
+  // lives in Settings › 💬 การสื่อสารและแจ้งเตือน. The id stays a gated route with the
+  // tab's old gate so canSeeTab('communication_center') still decides owner-vs-admin
+  // for the bell/push (pendingItems.js); navigating to it is redirected (redirectTab).
+  { id: 'communication_center', minRole: 'OWNER', module: 'line_bot' },
 ]
 const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t]).concat(HIDDEN_TAB_ENTRIES)
+
+// Header + tab bar stay pinned together at the top, so a page's main table
+// can scroll up until it touches the tab bar. Publishes the pinned height as
+// --chrome-h (index.css sizes .table-wrap from it).
+function StickyChrome({ children }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const set = () => document.documentElement.style.setProperty('--chrome-h', el.offsetHeight + 'px')
+    set()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(set)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return <div ref={ref} style={{ position: 'sticky', top: 0, zIndex: 100 }}>{children}</div>
+}
 
 // Hover-triggered dropdown for a TABS group entry (e.g. "ไซท์งาน"). Portaled
 // to document.body instead of position:absolute inside <nav>, because the
@@ -246,8 +282,13 @@ function PageLoadingFallback() {
   )
 }
 
+// The password-recovery email link opens the app with `#...&type=recovery`. Read it at import time: the Supabase client
+// consumes (and removes) the hash right after start-up, possibly before the auth listener below is registered.
+const OPENED_FROM_RECOVERY_LINK = typeof window !== 'undefined' && isRecoveryUrl(window.location.hash)
+
 export default function App() {
   const [session,  setSession]  = useState(undefined) // undefined = loading
+  const [recovering, setRecovering] = useState(OPENED_FROM_RECOVERY_LINK) // showing the 'ตั้งรหัสผ่านใหม่' screen
   const { counts: pendingCounts, refetch: refetchPending } = usePendingCounts(!!session)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [navState, setNavState] = useState({})
@@ -282,7 +323,7 @@ export default function App() {
   // itself rendered). Same gap let a platformAdminOnly tab's minRole:
   // 'WORKER' float trivially past any logged-in user.
   const passesGates = (tab) =>
-    isAtLeast(tab.minRole) &&
+    roleMeetsTab(role, tab) &&
     hasModuleAccess(tab.module) &&
     (!role || canViewPage(role, tab.permKey ?? tab.id)) &&
     (!tab.platformAdminOnly || isPlatformAdmin)
@@ -291,12 +332,18 @@ export default function App() {
   // "ไม่ตอนนี้" button downgrades to Free. Re-shown from TrialBanner too.
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showManual, setShowManual] = useState(false)
+  // Phone shell (mobile-view spec §3): drawer menu + breadcrumb replace the header strip and nav ONLY at <= 900px.
+  const isPhone = useIsPhone()
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const trialJustEnded = !!tenant && !isTrialActive && tenant.plan !== 'active'
   useEffect(() => { if (trialJustEnded) setShowUpgradeModal(true) }, [trialJustEnded])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((e, s) => {
+      if (e === 'PASSWORD_RECOVERY') setRecovering(true)
+      setSession(s)
+    })
     return () => subscription.unsubscribe()
   }, [])
 
@@ -313,14 +360,26 @@ export default function App() {
   // fresh intent distinct from "the page just reloaded on its own."
   // Tapping a Web Push notification: an open app gets a message from the service worker,
   // a closed one is launched at /#tab=<id>. Both go through the access check below.
+  // The tap is only recorded here; it is acted on once role/tenant/platform-admin gates have
+  // loaded (effect below), so the page can be chosen per user (e.g. an issue report opens the
+  // Communication Center for the owner, the Sites page for an admin) and arrive pre-filtered.
   // Sticker QR codes add params (#tab=estimation&project=..&item=.. / &offcut=..): parseDeepLink keeps only known
-  // keys and safe values, and they wait in sessionStorage for the tab's page. This runs on first mount, before the
-  // login screen too (hooks run before the !session return below); the password login stays on this page, so
-  // activeTab survives it (the parked params also survive a reload).
+  // keys and safe values, and they wait in sessionStorage for the tab's page (they survive the login screen and a
+  // reload); the tab itself goes through the same pushIntent access check.
+  const [pushIntent, setPushIntent] = useState(null)
   useEffect(() => {
-    const link = parseDeepLink(window.location.hash)
-    if (link) { setActiveTab(link.tab); saveDeepLink(link); history.replaceState(null, '', window.location.pathname) }
-    const onMsg = (e) => { if (e.data?.type === 'chang-open-tab' && typeof e.data.tab === 'string') setActiveTab(e.data.tab) }
+    const hash = window.location.hash
+    let parsed = parsePushHash(hash)
+    if (!parsed) {
+      const link = parseDeepLink(hash)
+      if (link) { saveDeepLink(link); parsed = { tab: link.tab, pending: null } }
+    }
+    if (parsed) { setPushIntent(parsed); history.replaceState(null, '', window.location.pathname) }
+    const onMsg = (e) => {
+      if (e.data?.type === 'chang-open-tab' && typeof e.data.tab === 'string') {
+        setPushIntent({ tab: e.data.tab, pending: typeof e.data.pending === 'string' ? e.data.pending : null })
+      }
+    }
     navigator.serviceWorker?.addEventListener('message', onMsg)
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg)
   }, [])
@@ -329,7 +388,9 @@ export default function App() {
     const pending = sessionStorage.getItem('pendingTab')
     if (pending) {
       sessionStorage.removeItem('pendingTab')
-      setActiveTab(pending)
+      const to = redirectTab(pending)
+      setNavState(to.state)
+      setActiveTab(to.tab)
     }
   }, [])
 
@@ -353,18 +414,31 @@ export default function App() {
     if (roleLoading || tenantLoading || platformAdminLoading || !session) return
     const current = ALL_TAB_ENTRIES.find(t => t.id === activeTab)
     if (current && !passesGates(current)) {
-      setActiveTab(isAtLeast('ADMIN') ? 'dashboard' : 'assign')
+      setActiveTab(canSeeMoney(role) ? 'dashboard' : (role === 'PM' ? 'sites' : 'assign'))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleLoading, tenantLoading, platformAdminLoading, session, activeTab, isAtLeast, hasModuleAccess, role, isPlatformAdmin])
+
+  const canSeeTab = (tabId) => { const entry = ALL_TAB_ENTRIES.find(t => t.id === tabId); return !!entry && passesGates(entry) }
+
+  // Act on a recorded notification tap once the gates can answer canSeeTab.
+  useEffect(() => {
+    if (!pushIntent || roleLoading || tenantLoading || platformAdminLoading || !session || !role) return
+    const tab = resolvePendingTab(pushIntent.pending, canSeeTab, pushIntent.tab)
+    setPushIntent(null)
+    navigateTo(tab, pushIntent.pending ? { pending: pushIntent.pending } : {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushIntent, roleLoading, tenantLoading, platformAdminLoading, session, role])
 
   const navigateTo = (tab, state = {}) => {
     // Explicit navigation is fresh user intent -- safe to let a future
     // chunk-load failure trigger its own automatic reload again, unlike
     // the pendingTab restore effect above (which must NOT clear this).
     sessionStorage.removeItem('chunk-reload-attempted')
-    setNavState(state)
-    setActiveTab(tab)
+    // Retired tabs (communication_center) open their new home instead.
+    const to = redirectTab(tab, state)
+    setNavState(to.state)
+    setActiveTab(to.tab)
   }
 
   // gate is looked up from the SAME ALL_TAB_ENTRIES the nav filters
@@ -374,9 +448,9 @@ export default function App() {
   // enforced for that tab (module entitlement, per-role permission
   // override, platformAdminOnly).
   const renderPage = () => {
-    const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
+    const props = { navigateTo, navState, pendingCounts, canSeeTab, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
     const entry = ALL_TAB_ENTRIES.find(t => t.id === activeTab) ?? ALL_TAB_ENTRIES[0]
-    const gate = { minRole: entry.minRole, module: entry.module, pageKey: entry.permKey ?? entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading }
+    const gate = { tabId: entry.id, minRole: entry.minRole, module: entry.module, pageKey: entry.permKey ?? entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading }
 
     const page = (() => {
       switch (activeTab) {
@@ -385,6 +459,7 @@ export default function App() {
         case 'hr':         return <HR        {...props} />
         case 'sites':      return <Sites      {...props} />
         case 'site_detail': return <SiteDetail {...props} />
+        case 'repairs':    return <Repairs    {...props} />
         case 'expenses':   return <Expenses   {...props} />
         case 'purchase_orders': return <PurchaseOrders {...props} />
         case 'supplier_credit_notes': return <SupplierCreditNotes {...props} />
@@ -403,10 +478,13 @@ export default function App() {
         case 'invoices':      return <Invoices     {...props} />
         case 'catalog_items': return <CatalogItems {...props} />
         case 'user_management': return <UserManagement {...props} />
-        case 'communication_center': return <CommunicationCenter {...props} />
+        // Never reached through navigateTo (redirected there); kept so a stray setActiveTab still lands on the page.
+        case 'communication_center': return <Settings {...props} navState={redirectTab('communication_center', navState).state} />
         case 'settings':   return <Settings   {...props} />
+        case 'starting_guide': return <StartingGuide {...props} />
         case 'tenant_management': return <TenantManagement {...props} />
         case 'line_admin_chat': return <LineAdminChat {...props} />
+        case 'document_templates': return <DocumentTemplatesAdmin {...props} />
         case 'estimation':    return <Estimation    {...props} />
         case 'bom_templates': return <BomTemplates   {...props} />
         case 'alu_catalog':   return <AluCatalog    {...props} />
@@ -424,17 +502,25 @@ export default function App() {
     </div>
   )
 
+  // Opened from a password-recovery email: ask for the new password before showing the app
+  if (session && recovering) return <ResetPassword onDone={() => setRecovering(false)} />
+
   // Not logged in
   if (!session) return <><UpdatePrompt /><Login /></>
 
   const visibleTabs = TABS
-    .map(tab => tab.children ? { ...tab, children: tab.children.filter(passesGates) } : tab)
+    .map(tab => tab.children ? { ...tab, label: navGroupLabel(role, tab), children: tab.children.filter(passesGates) } : tab)
     .filter(tab => tab.children ? tab.children.length > 0 : passesGates(tab))
 
   // Things waiting for action, limited to pages this user can actually open.
-  const canSeeTab = (tabId) => { const entry = ALL_TAB_ENTRIES.find(t => t.id === tabId); return !!entry && passesGates(entry) }
   const pendingItems = visiblePendingItems(pendingCounts, canSeeTab)
-  const pendingByTab = badgeByTab(pendingItems)
+  // Badges follow the redirect (communication_center counts show on ⚙️ ตั้งค่า › ทั่วไป).
+  const pendingByTab = badgeByTab(pendingItems.map(i => ({ ...i, tab: redirectTab(i.tab).tab })))
+  // Phone only: where the user is (for the breadcrumb) and the one nav handler the drawer calls.
+  const activeEntry = isPhone
+    ? visibleTabs.flatMap(t => t.children ? t.children.map(c => ({ group: t.label, first: t.children[0], tab: c })) : [{ group: null, tab: t }]).find(e => e.tab.id === activeTab)
+    : null
+  const phoneNavTo = tab => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(tab.id) }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -442,11 +528,19 @@ export default function App() {
       <TrialBanner tenant={tenant} isTrialActive={isTrialActive} trialDaysRemaining={trialDaysRemaining}
         onChoosePackage={() => setShowUpgradeModal(true)} />
       {/* ── Header ── */}
+      <StickyChrome>
+      {isPhone ? (
+        <header className="phone-header">
+          <button type="button" className="phone-iconbtn" aria-label="เมนู" onClick={() => setDrawerOpen(true)}>☰</button>
+          {tenant?.logo_url ? <img src={tenant.logo_url} alt="" className="phone-logo" /> : null}
+          <span className="phone-title">{tenant?.company_name || 'CHANG'}</span>
+          <NotificationBell items={pendingItems} onRefresh={refetchPending} onOpenItem={item => navigateTo(item.tab, { pending: item.key, pendingCount: item.count })} />
+        </header>
+      ) : (
       <header style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
         padding: '0 24px', minHeight: 56, display: 'flex',
         alignItems: 'center', justifyContent: 'space-between',
-        position: 'sticky', top: 0, zIndex: 100,
         flexWrap: 'wrap', gap: 8, rowGap: 4,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
@@ -466,7 +560,7 @@ export default function App() {
           <span className="header-date" style={{ color: 'var(--text3)', fontSize: 12, whiteSpace: 'nowrap' }}>
             {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
           </span>
-          <NotificationBell items={pendingItems} onRefresh={refetchPending} onOpenItem={item => navigateTo(item.tab)} />
+          <NotificationBell items={pendingItems} onRefresh={refetchPending} onOpenItem={item => navigateTo(item.tab, { pending: item.key, pendingCount: item.count })} />
           <button
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 12 }}
@@ -492,8 +586,21 @@ export default function App() {
           </button>
         </div>
       </header>
+      )}
 
       {/* ── Tab Bar ── */}
+      {isPhone ? (
+        <div className="phone-crumb">
+          {activeEntry?.group
+            ? <>
+                {/* tap the group = its first page (e.g. จ่ายงานช่าง → ไซท์งาน › ภาพรวม) */}
+                {activeEntry.first && activeEntry.first.id !== activeEntry.tab.id
+                  ? <button type="button" className="phone-crumb-group" onClick={() => phoneNavTo(activeEntry.first)}>{activeEntry.group}</button>
+                  : activeEntry.group} › <b>{activeEntry.tab.label}</b>
+              </>
+            : <b>{activeEntry?.tab.label || HIDDEN_TAB_LABELS[activeTab] || ''}</b>}
+        </div>
+      ) : (
       <nav style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
         padding: '0 20px', display: 'flex', gap: 2, overflowX: 'auto'
@@ -522,6 +629,17 @@ export default function App() {
           </button>
         ))}
       </nav>
+      )}
+      </StickyChrome>
+      {isPhone && (
+        <PhoneDrawer
+          open={drawerOpen} onClose={() => setDrawerOpen(false)}
+          tabs={visibleTabs} activeTab={activeTab} byTab={pendingByTab} badgeForGroup={tab => badgeForTab(tab, pendingByTab)}
+          onNavigate={phoneNavTo} onManual={() => setShowManual(true)}
+          onTheme={() => setTheme(toggleTheme())} theme={theme} onLogout={() => supabase.auth.signOut()}
+          email={session.user.email} role={role} companyName={tenant?.company_name || ''}
+        />
+      )}
 
       {/* ── Page Content ── */}
       <main className="app-main" style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>

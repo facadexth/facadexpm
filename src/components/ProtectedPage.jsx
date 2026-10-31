@@ -20,6 +20,7 @@
 // ============================================================
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canViewPage } from '../lib/permissions.js'
+import { roleMeetsTab } from '../lib/roles.js'
 
 function Denied({ text }) {
   return (
@@ -33,8 +34,8 @@ function Denied({ text }) {
   )
 }
 
-export function ProtectedPage({ minRole, module, pageKey, platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading, children }) {
-  const { loading, isAtLeast, role } = useUserRole()
+export function ProtectedPage({ tabId, minRole, module, pageKey, platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading, children }) {
+  const { loading, role } = useUserRole()
 
   // tenantLoading/platformAdminLoading matter here, not just the role
   // hook's own loading: hasModuleAccess/isPlatformAdmin default to
@@ -50,7 +51,7 @@ export function ProtectedPage({ minRole, module, pageKey, platformAdminOnly, has
     )
   }
 
-  if (!isAtLeast(minRole)) {
+  if (!roleMeetsTab(role, { id: tabId, minRole })) {
     return <Denied text={`ต้องการสิทธิ์ระดับ ${minRole} ขึ้นไป`} />
   }
 

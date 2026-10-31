@@ -9,16 +9,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses, useSitePlans, useAppSetting } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
-import { ConfirmDialog } from '../../components/Modal.jsx'
-import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, computeFocusRange, computeAxisTicks, dateAtPercent, phaseOverlapsRange, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
+import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
+import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, computeFocusRange, computeAxisTicks, dateAtPercent, phaseOverlapsRange, STATUS_COLOR, expandRangeForTransactions } from './ganttTimeline.js'
+import { PHASE_TEMPLATE_KEY, PHASE_TEMPLATES_EXTRA_KEY, parsePhaseTemplate, parseExtraTemplates, templateToPhaseRows, compareWeightsWithTemplate } from './phaseTemplate.js'
 import { groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
 import { summarizeTasks } from './phaseTasksCalc.js'
+import { siteProgress } from './progressCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
+import LandscapeView from '../../components/LandscapeView.jsx'
+import { useUserRole } from '../../hooks/useUserRole.js'
+import { canSeeMoney, canManagePlan } from '../../lib/roles.js'
+import PlanVersionsDialog, { PlanBar } from './PlanVersionsDialog.jsx'
+import { useProgressSchemaReady } from '../../lib/progressSchema.js'
+import { withVoColumns, savePhaseVoValues } from './phaseVo.js'
+import { resolvePlanChoice, planRangesByRef, planDelayTag, planPctSeries, planPctAt } from './planLayer.js'
 
 const ROW_H = 34
 const EDIT_H = 320
+// extra height of the phase form's VO block: the checkbox line, plus a line of inputs once ticked
+const VO_EDIT_H = 30
+const VO_EDIT_H_TICKED = 84
 const LABEL_W = 170
 const GAP = 8
 const EDIT_BTN_W = 28
@@ -72,13 +84,16 @@ const formatShortDateRange = (startStr, endStr) => {
     : `${format(s, 'd MMM', { locale: th })}-${format(e, 'd MMM', { locale: th })}`
 }
 
-export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged, onOpenKanban }) {
+export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged, onOpenKanban, planChoice: planChoiceProp, onPlanChoiceChange }) {
   const { data: allPhases, refetch: refetchPhases } = useSitePhases()
   const { data: allTasks, refetch: refetchTasks } = usePhaseTasks()
   const { data: allSubtasks, refetch: refetchSubtasks } = useSubtasks()
   const singleSiteId = sites.length === 1 ? sites[0].id : NIL_SITE_ID
   const { data: incomesForRange } = useIncomes({ siteId: singleSiteId })
   const { data: expensesForRange } = useExpenses({ siteId: singleSiteId })
+  // PLAN versions: single-site view only (the portfolio passes no site id -> nothing fetched)
+  const planSiteId = sites.length === 1 ? sites[0].id : null
+  const sitePlans = useSitePlans(planSiteId)
 
   // แก้ไข/เพิ่ม/ลบขั้นตอนแบบ inline (ใช้เฉพาะมุมมองไซท์เดียว) -- hooks ต้อง
   // อยู่บนสุดเสมอ ไม่ผูกกับ branch ไหน
@@ -87,6 +102,22 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null) // { kind: 'phase'|'subtask', id }
   const [applyingTemplate, setApplyingTemplate] = useState(false)
+  const [planDialogOpen, setPlanDialogOpen] = useState(false)
+  // Company phase template (Settings › แม่แบบเฟสงาน). A role that cannot read
+  // app_settings gets the built-in template through parsePhaseTemplate(null).
+  const { data: templateRaw } = useAppSetting(PHASE_TEMPLATE_KEY, '')
+  const phaseTemplate = useMemo(() => parsePhaseTemplate(templateRaw), [templateRaw])
+  // Extra templates (FacadeX "งานอลูมิเนียม"): when any exist, the empty state lets the user pick.
+  const { data: extraRaw } = useAppSetting(PHASE_TEMPLATES_EXTRA_KEY, '')
+  const extraTemplates = useMemo(() => parseExtraTemplates(extraRaw), [extraRaw])
+  const [templatePick, setTemplatePick] = useState('std')
+  const [weightsDialogOpen, setWeightsDialogOpen] = useState(false)
+  const [applyingWeights, setApplyingWeights] = useState(false)
+  // PLAN layer on the single-site Gantt: 'latest' (default), 'off', or a site_plans id.
+  // SiteDetail owns it (shared with the S-curve); without the props it is local state.
+  const [planChoiceLocal, setPlanChoiceLocal] = useState('latest')
+  const planChoice = planChoiceProp ?? planChoiceLocal
+  const setPlanChoice = onPlanChoiceChange ?? setPlanChoiceLocal
 
   // id ของ phase/subtask ที่กางลูกอยู่ (Set รวม id ทั้งสองตารางในที่เดียว
   // เพราะไม่มีทางชนกัน -- ดู subtaskCalc.js's groupSubtasksByParent)
@@ -185,15 +216,53 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   // ใช้เป็นค่า "วันเริ่ม/วันจบงาน" ที่แสดงในหน้าภาพรวมไซท์ และวันครบกำหนด
   // เงินประกันผลงานคำนวณต่อจาก end_date นี้ ไม่ต้องแก้ไขเองแยกที่หน้าอื่น
   // อีกต่อไป -- เขียนเฉพาะตอนค่าจริงต่างจากที่คำนวณได้ เพื่อไม่ยิง UPDATE ซ้ำ
+  // PM ไม่มีสิทธิ์ UPDATE sites (RLS ให้ผล 0 แถว) และ range ของ PM ไม่รวม
+  // รายรับ/รายจ่าย จึงไม่ sync ให้ PM เลย -- เฉพาะ OWNER/ADMIN
+  const { role } = useUserRole()
+  const progressSchemaReady = useProgressSchemaReady()
+  const syncSiteDates = canSeeMoney(role)
+
+  // BOQ mode (single site): the site has a saved "% ต่อเฟส" split, so phase
+  // weights are derived by the database -- the weight field is then read-only.
+  // Fails soft to false before migration 2026-10-20-15 is live.
+  const [boqMode, setBoqMode] = useState(false)
+  const boqModeSiteId = sites.length === 1 && progressSchemaReady ? sites[0].id : null
   useEffect(() => {
-    if (sites.length !== 1 || !canEdit || !range) return
+    if (!boqModeSiteId) { setBoqMode(false); return undefined }
+    let cancelled = false
+    supabase.rpc('site_in_boq_mode', { p_site: boqModeSiteId })
+      .then(({ data, error }) => { if (!cancelled) setBoqMode(!error && data === true) }, () => { if (!cancelled) setBoqMode(false) })
+    return () => { cancelled = true }
+  }, [boqModeSiteId])
+  useEffect(() => {
+    if (sites.length !== 1 || !canEdit || !syncSiteDates || !range) return
     const site = sites[0]
     const newStart = range.start.toISOString().slice(0, 10)
     const newEnd = range.end.toISOString().slice(0, 10)
     if (site.start_date === newStart && site.end_date === newEnd) return
     supabase.from('sites').update({ start_date: newStart, end_date: newEnd }).eq('id', site.id)
       .then(({ error }) => { if (error) console.error('sync site start/end date failed:', error.message) })
-  }, [sites, canEdit, range])
+  }, [sites, canEdit, syncSiteDates, range])
+
+  // มูลค่า VO (phase_vo_values) อ่านได้เฉพาะ OWNER/ADMIN -- ดึงเฉพาะมุมมอง
+  // ไซท์เดียวที่มีขั้นตอน VO และ role เห็นเงินได้ เพื่อคำนวณ "% รวม VO";
+  // อ่านไม่ได้/ผิดพลาด -> null แล้ว KPI แสดงแค่ % ตามสัญญา (PM ไม่ดึงเลย)
+  const voPhaseIdsKey = sites.length === 1 && canSeeMoney(role)
+    ? (phasesBySite[sites[0].id] || []).filter((p) => p.is_vo).map((p) => p.id).join(',')
+    : ''
+  const [voValues, setVoValues] = useState(null)
+  const [voReloadTick, setVoReloadTick] = useState(0) // bumped after the phase form saves a VO value
+  useEffect(() => {
+    if (!voPhaseIdsKey) { setVoValues(null); return }
+    let cancelled = false
+    supabase.from('phase_vo_values').select('phase_id, vo_value').in('phase_id', voPhaseIdsKey.split(','))
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { console.error('load VO values failed:', error.message); setVoValues(null); return }
+        setVoValues(Object.fromEntries((data || []).map((r) => [r.phase_id, Number(r.vo_value) || 0])))
+      })
+    return () => { cancelled = true }
+  }, [voPhaseIdsKey, voReloadTick])
 
   // ทุกจุดเขียนในไฟล์นี้อาจแตะ site_phases, phase_subtasks และ (ตอนย้าย
   // "Kanban เก่า") phase_tasks พร้อมกัน -- useQuery แต่ละตัวเป็น state
@@ -210,6 +279,10 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     setDraft({
       ...node,
       depends_on_id: kind === 'phase' ? (node.depends_on_phase_id || '') : (node.depends_on_subtask_id || ''),
+      // VO value (money): from phase_vo_values, loaded above only for canSeeMoney roles
+      vo_value: kind === 'phase' && voValues && voValues[node.id] != null ? String(voValues[node.id]) : '',
+      // false when the values could not be loaded: an empty field then must not delete a stored value
+      voValueKnown: voValues != null || !node.is_vo,
     })
   }
   const startAdd = (parentKind, parentId, sortOrder) => {
@@ -242,21 +315,34 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       }
     }
 
+    // no PLAN yet: a new phase/subtask starts not_started whatever status was picked (DB gate)
+    const noPlan = progressSchemaReady && !sitePlans.loading && !sitePlans.error && sitePlans.plans.length === 0
+    const newStatus = parsed.isNew && noPlan ? 'not_started' : draft.status
+
     setSaving(true)
     try {
       if (!isSubtask) {
         // ── Phase (site_phases) -- เหมือนเดิมทุกประการ ──
-        const payload = {
+        // VO: is_vo/vo_ref on site_phases, weight 0; the value goes to phase_vo_values (phaseVo.js)
+        const payload = withVoColumns({
           name: draft.name.trim(), start_date: draft.start_date || null, end_date: draft.end_date || null,
-          status: draft.status, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
+          status: newStatus, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
           depends_on_phase_id: draft.depends_on_id || null, sort_order: draft.sort_order,
-        }
+        }, draft, progressSchemaReady)
+        let phaseId = parsed.id
         if (parsed.isNew) {
-          const { error } = await supabase.from('site_phases').insert({ site_id: site.id, ...payload })
+          const { data, error } = await supabase.from('site_phases').insert({ site_id: site.id, ...payload }).select('id').single()
           if (error) throw error
+          phaseId = data.id
         } else {
           const { error } = await supabase.from('site_phases').update(payload).eq('id', parsed.id)
           if (error) throw error
+        }
+        const voValueBlank = String(draft.vo_value ?? '').trim() === ''
+        const skipVo = parsed.isNew ? !draft.is_vo : (draft.is_vo && voValueBlank && !draft.voValueKnown)
+        if (progressSchemaReady && canSeeMoney(role) && !skipVo) {
+          await savePhaseVoValues([{ phaseId, isVo: !!draft.is_vo, value: draft.vo_value }])
+          setVoReloadTick((n) => n + 1)
         }
       } else {
         // ── Subtask (phase_subtasks) ──
@@ -265,7 +351,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
         const parentPhaseId = parentKind === 'phase' ? parentId : byNodeId[parentId].phase_id
         const payload = {
           name: draft.name.trim(), start_date: draft.start_date || null, end_date: draft.end_date || null,
-          status: draft.status, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
+          status: newStatus, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
           depends_on_subtask_id: draft.depends_on_id || null, sort_order: draft.sort_order,
         }
         if (parsed.isNew) {
@@ -329,7 +415,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const applyTemplate = async (site) => {
     setApplyingTemplate(true)
     try {
-      const rows = PHASE_TEMPLATE.map((t) => ({ site_id: site.id, ...t }))
+      const picked = extraTemplates.find((t) => t.key === templatePick)
+      const rows = templateToPhaseRows(picked ? picked.rows : phaseTemplate).map((t) => ({ site_id: site.id, ...t }))
       const { error } = await supabase.from('site_phases').insert(rows)
       if (error) throw error
       await afterWrite()
@@ -337,6 +424,25 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       alert('เพิ่มเทมเพลตไม่สำเร็จ: ' + e.message)
     } finally {
       setApplyingTemplate(false)
+    }
+  }
+
+  // "ใช้น้ำหนักจากแม่แบบ" (non-BOQ-mode sites): write the template weight onto every
+  // contract phase with the same name; other phases keep theirs.
+  const applyTemplateWeights = async (updates) => {
+    setApplyingWeights(true)
+    try {
+      for (const u of updates) {
+        const { error } = await supabase.from('site_phases').update({ billing_weight_pct: u.billing_weight_pct }).eq('id', u.id)
+        if (error) throw error
+      }
+      setWeightsDialogOpen(false)
+    } catch (e) {
+      alert('ใช้น้ำหนักจากแม่แบบไม่สำเร็จ: ' + e.message)
+    } finally {
+      // some phases may already be written when a later one fails: always show the real state
+      await afterWrite()
+      setApplyingWeights(false)
     }
   }
 
@@ -385,10 +491,21 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       return (
         <div className="card" style={{ padding: 32, textAlign: 'center' }}>
           <div style={{ color: 'var(--text3)', marginBottom: 14 }}>ไซท์นี้ยังไม่มีขั้นตอนงาน</div>
+          {canEdit && extraTemplates.length > 0 && (
+            <div role="radiogroup" aria-label="เลือกเทมเพลต" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 8, maxWidth: 560, margin: '0 auto 14px', textAlign: 'left' }}>
+              {[{ key: 'std', label: 'มาตรฐาน', rows: phaseTemplate }, ...extraTemplates].map((t) => (
+                <button key={t.key} type="button" role="radio" aria-checked={templatePick === t.key} onClick={() => setTemplatePick(t.key)}
+                  style={{ font: 'inherit', textAlign: 'left', cursor: 'pointer', padding: 10, borderRadius: 10, color: 'var(--text)', background: templatePick === t.key ? 'var(--bg3, transparent)' : 'transparent', border: `2px solid ${templatePick === t.key ? 'var(--accent, #c2410c)' : 'var(--border)'}` }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>{t.label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>{t.rows.map((r) => `${r.name} ${r.weight}%`).join(' · ')}</div>
+                </button>
+              ))}
+            </div>
+          )}
           {canEdit && (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
               <button type="button" className="btn btn-primary btn-sm" disabled={applyingTemplate} onClick={() => applyTemplate(site)}>
-                {applyingTemplate ? '⏳ กำลังเพิ่ม...' : '+ เริ่มใช้ Gantt (เทมเพลตขั้นตอนงาน)'}
+                {applyingTemplate ? '⏳ กำลังเพิ่ม...' : `+ เริ่มใช้ Gantt (${extraTemplates.length ? (extraTemplates.find((t) => t.key === templatePick)?.label ?? 'มาตรฐาน') : 'เทมเพลตขั้นตอนงาน'})`}
               </button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอนเอง</button>
             </div>
@@ -417,10 +534,35 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     // four elements now share this exact track geometry so they can't drift
     // apart again.
     const trackLeft = LABEL_W + GAP
-    const trackRight = 0
+    // + and ✎ get their own slot right of the track (they used to float over the
+    // track's right edge and covered bars that end near it). The slot stays while
+    // a row is being edited so the geometry never shifts.
+    const btnSlot = canEdit ? EDIT_BTN_W * 2 + 6 : 0
+    const trackRight = btnSlot ? btnSlot + GAP : 0
     const doneCount = phases.filter((p) => nodeStatsById[p.id].displayStatus === 'done').length
     const inProgressCount = phases.filter((p) => nodeStatsById[p.id].displayStatus === 'in_progress').length
-    const overallPct = phases.length ? Math.round((doneCount / phases.length) * 100) : 0
+    // % ตามสัญญา (ถ่วงน้ำหนัก, progressCalc.js = สูตรเดียวกับ SQL) + % รวม VO
+    // เฉพาะ role ที่เห็นเงินได้ (PM: แถวจาก pm_sites ไม่มี contract_value ->
+    // ส่ง undefined -> totalPct null เสมอ)
+    const progress = siteProgress({
+      phases,
+      subtasks: subtasksBySite[site.id] || [],
+      tasks: (allTasks || []).filter((t) => t.site_id === site.id),
+      contractValue: canSeeMoney(role) ? site.contract_value : undefined,
+      voValues,
+    })
+    const overallPct = Math.round(progress.contractPct)
+    // PLAN layer (schema ready only): the chosen version's ghost bars, delay tags and
+    // "ตาม PLAN vN วันนี้ควรได้ X%" -- X is that version's planned % series at today
+    const planOptions = progressSchemaReady ? [...sitePlans.plans].sort((a, b) => a.version - b.version) : []
+    const selectedPlan = progressSchemaReady ? resolvePlanChoice(sitePlans.plans, planChoice) : null
+    const selectedPlanId = selectedPlan ? selectedPlan.id : null
+    const planItems = selectedPlan ? sitePlans.items[selectedPlan.id] || [] : []
+    const planRanges = selectedPlan ? planRangesByRef(planItems) : null
+    const planTodayPct = selectedPlan ? Math.round(planPctAt(planPctSeries(planItems), TODAY_ISO)) : null
+    const planGap = selectedPlan ? overallPct - planTodayPct : null
+    const TAG_COLOR = { late: 'var(--red)', early: 'var(--green)', on: 'var(--text2)', missing: 'var(--text3)' }
+    const voPhaseCount = phases.filter((p) => p.is_vo).length
     // Same reasoning as SCurveChart's todayInRange guard: only draw "today"
     // when it actually falls inside this site's own timeline, otherwise a
     // clamped line at 0%/100% would falsely read as "today = start/end".
@@ -433,33 +575,73 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     const rowTops = visibleRows.map(({ node, isPhase }) => {
       const top = cursor
       const isEditingThis = node.isNew || (!!editingId && editingId === `${isPhase ? 'phase' : 'subtask'}:${node.id}`)
-      cursor += isEditingThis ? ROW_H + EDIT_H : ROW_H
+      const voExtra = isEditingThis && isPhase && progressSchemaReady ? (draft?.is_vo ? VO_EDIT_H_TICKED : VO_EDIT_H) : 0
+      cursor += isEditingThis ? ROW_H + EDIT_H + voExtra : ROW_H
       return top
     })
     const bodyHeight = Math.max(cursor, ROW_H)
 
     return (
       <>
+        <PlanBar plans={sitePlans.plans} loading={sitePlans.loading} loadError={sitePlans.error}
+          canManage={canManagePlan(role)} onOpen={() => setPlanDialogOpen(true)} />
+        {planDialogOpen && (
+          <PlanVersionsDialog siteId={site.id} phases={phases} plans={sitePlans.plans}
+            canSave={canManagePlan(role)} onClose={() => setPlanDialogOpen(false)} onSaved={sitePlans.reload} />
+        )}
         <div className="kpi-grid kpi-grid-4">
           <div className="kpi-card green">
             <div className="kpi-label">ความคืบหน้ารวม</div>
             <div className="kpi-value">{overallPct}%</div>
+            {voPhaseCount > 0 && (
+              <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 2 }}>
+                ตามสัญญา{progress.totalPct != null ? ` · รวม VO ${Math.round(progress.totalPct)}%` : ` · VO ${voPhaseCount} รายการ`}
+              </div>
+            )}
             <div className="progress" style={{ marginTop: 8 }}><div className="progress-bar" style={{ width: `${overallPct}%` }} /></div>
+            {selectedPlan && (
+              <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 6 }}>
+                ตาม PLAN v{selectedPlan.version} วันนี้ควรได้ {planTodayPct}%
+                {' · '}
+                <span style={{ fontWeight: 600, color: planGap < 0 ? 'var(--red)' : planGap > 0 ? 'var(--green)' : 'var(--text2)' }}>
+                  {planGap < 0 ? `ช้ากว่าแผน ${-planGap}%` : planGap > 0 ? `เร็วกว่าแผน ${planGap}%` : 'ตรงแผน'}
+                </span>
+              </div>
+            )}
           </div>
           <div className="kpi-card"><div className="kpi-label">เฟสทั้งหมด</div><div className="kpi-value">{phases.length}</div></div>
           <div className="kpi-card yellow"><div className="kpi-label">กำลังทำอยู่</div><div className="kpi-value" style={{ color: 'var(--yellow)' }}>{inProgressCount}</div></div>
           <div className="kpi-card green"><div className="kpi-label">เสร็จแล้ว</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{doneCount}</div></div>
         </div>
 
-        <div className="card" style={{ padding: 16 }}>
+        <LandscapeView title={`Gantt · ${sites[0]?.site_number || sites[0]?.name || ''}`}>
+        <div className="card" style={{ padding: 16 }} data-phone="gantt-card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div className="card-title">ไทม์ไลน์เฟสงาน</div>
+            {planOptions.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', marginRight: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11.5, color: 'var(--text3)' }}>PLAN:</span>
+                <button type="button" className={`btn btn-sm ${selectedPlan ? 'btn-ghost' : 'btn-primary'}`}
+                  aria-pressed={!selectedPlan} onClick={() => setPlanChoice('off')}>ปิด</button>
+                {planOptions.map((p) => (
+                  <button key={p.id} type="button" className={`btn btn-sm ${selectedPlanId === p.id ? 'btn-primary' : 'btn-ghost'}`}
+                    aria-pressed={selectedPlanId === p.id} onClick={() => setPlanChoice(p.id)}>v{p.version}</button>
+                ))}
+              </div>
+            )}
+            {canEdit && !editingId && role === 'OWNER' && !boqMode && phases.length > 0 && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginRight: 6 }} onClick={() => setWeightsDialogOpen(true)}>ใช้น้ำหนักจากแม่แบบ</button>
+            )}
             {canEdit && !editingId && (
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอน</button>
             )}
           </div>
+          {weightsDialogOpen && (
+            <TemplateWeightsDialog phases={phases} template={phaseTemplate} busy={applyingWeights}
+              onClose={() => { if (!applyingWeights) setWeightsDialogOpen(false) }} onConfirm={applyTemplateWeights} />
+          )}
           {viewRange && (
-            <div style={{ position: 'relative', height: 40, marginLeft: trackLeft, marginRight: trackRight }}>
+            <div data-phone="gantt-ticks" style={{ position: 'relative', height: 40, marginLeft: trackLeft, marginRight: trackRight }}>
               {monthTicks.filter((t) => t.x <= 90).map((t, i) => (
                 <div key={`m${i}`} style={{ position: 'absolute', top: 0, left: `${t.x}%`, fontSize: 11, fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap', paddingLeft: 3, borderLeft: t.pinned ? 'none' : '1px solid var(--border)', lineHeight: '16px' }}>
                   {format(toLocalDay(t.date), 'MMM yy', { locale: th })}
@@ -478,6 +660,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             </div>
           )}
           <div
+            data-phone="gantt-wide"
             style={{ position: 'relative', height: bodyHeight }}
             onMouseMove={(e) => {
               if (!viewRange) return
@@ -581,12 +764,43 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                             <div style={{ marginTop: 2, fontSize: 12, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}>
                               คำนวณอัตโนมัติจากขั้นตอนย่อย ({ns.displayWeight}%)
                             </div>
+                          ) : parsed.kind === 'phase' && boqMode ? (
+                            <div data-testid="weight-boq-mode" style={{ marginTop: 2, fontSize: 12, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}
+                              title="น้ำหนักเฟสคิดจาก BOQ แก้ที่แท็บ BOQ › แบ่ง % ต่อเฟส">
+                              {draft.is_vo ? 0 : (Number(draft.billing_weight_pct) || 0)}% · คิดจาก BOQ
+                            </div>
                           ) : (
                             <input type="number" min="0" max="100" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
-                              value={draft.billing_weight_pct} onChange={(e) => setDraft((d) => ({ ...d, billing_weight_pct: e.target.value }))} />
+                              value={parsed.kind === 'phase' && draft.is_vo ? 0 : draft.billing_weight_pct} disabled={parsed.kind === 'phase' && !!draft.is_vo}
+                              title={parsed.kind === 'phase' && draft.is_vo ? 'งาน VO ไม่นับ % เบิกเงินตามสัญญา' : undefined}
+                              onChange={(e) => setDraft((d) => ({ ...d, billing_weight_pct: e.target.value }))} />
                           )}
                         </label>
                       </div>
+                      {parsed.kind === 'phase' && progressSchemaReady && (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text2)', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={!!draft.is_vo} onChange={(e) => setDraft((d) => ({ ...d, is_vo: e.target.checked }))} />
+                            งานเพิ่ม (VO) — ไม่นับ % เบิกเงินตามสัญญา
+                          </label>
+                          {draft.is_vo && (
+                            <div style={{ display: 'grid', gridTemplateColumns: canSeeMoney(role) ? '1fr 1fr' : '1fr', gap: 8 }}>
+                              <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+                                เลขที่ VO
+                                <input className="input input-sm" style={{ width: '100%', marginTop: 2 }} placeholder="เช่น VO-01"
+                                  value={draft.vo_ref || ''} onChange={(e) => setDraft((d) => ({ ...d, vo_ref: e.target.value }))} />
+                              </label>
+                              {canSeeMoney(role) && (
+                                <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+                                  มูลค่า VO (บาท)
+                                  <input type="number" min="0" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
+                                    value={draft.vo_value ?? ''} onChange={(e) => setDraft((d) => ({ ...d, vo_value: e.target.value }))} />
+                                </label>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <label style={{ fontSize: 11, color: 'var(--text3)' }}>
                         ขึ้นอยู่กับขั้นตอน
                         <select className="select" style={{ width: '100%', marginTop: 2 }}
@@ -617,19 +831,36 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
 
               const displayStatus = ns ? ns.displayStatus : node.status
               const label = displayStatus === 'done' ? '✓'
-                : displayStatus === 'in_progress' ? (ns && ns.stats.total > 0 ? `${ns.stats.pct}%` : 'กำลังทำ')
+                : displayStatus === 'in_progress' ? (ns && ns.stats.total > 0 ? `${Math.round(ns.stats.pct)}%` : 'กำลังทำ')
                 : ''
               const titleSuffix = ns && ns.stats.total > 0 ? ` (${ns.stats.done}/${ns.stats.total} ${ns.stats.source === 'subtasks' ? 'ขั้นตอนย่อยเสร็จ' : 'งานย่อยเสร็จ'})` : ''
               const dateRangeStr = hasChildren
                 ? (nodeRange && formatShortDateRange(nodeRange.start, nodeRange.end))
                 : formatShortDateRange(node.start_date, node.end_date)
+              // PLAN layer: grey ghost bar at the chosen version's dates + delay tag
+              // (current end minus planned end; parents use derived spans on both sides).
+              // Issue phases are never in a PLAN, so they get neither.
+              const issueRow = isPhase ? !!node.is_issue_phase : !!byNodeId[node.phase_id]?.is_issue_phase
+              const inPlan = !!planRanges && !issueRow && Object.prototype.hasOwnProperty.call(planRanges, node.id)
+              const planRange = inPlan ? planRanges[node.id] : null
+              const ghostStyle = planRange ? barStyle({ start_date: planRange.start, end_date: planRange.end }, viewRange) : null
+              const planTag = !planRanges || issueRow ? null
+                : !inPlan ? { text: 'ไม่มีใน PLAN', tone: 'missing' }
+                : planDelayTag(hasChildren ? nodeRange?.end : node.end_date, planRange?.end)
+              // the tag sits just after the bar, else just before it, else inside its right end
+              const barLeft = style ? parseFloat(style.left) : 0
+              const barRight = style ? barLeft + parseFloat(style.width) : 0
+              const tagPos = !style ? { left: 4 }
+                : barRight <= 80 ? { left: `calc(${barRight}% + 4px)` }
+                : barLeft >= 20 ? { right: `calc(${100 - barLeft}% + 4px)` }
+                : { right: `calc(${100 - barRight}% + 4px)` }
               const rangeForTitle = hasChildren
                 ? (nodeRange ? `${nodeRange.start} → ${nodeRange.end} (รวมขั้นตอนย่อย)` : 'ยังไม่มีวันที่ในขั้นตอนย่อย')
                 : `${node.start_date} → ${node.end_date}`
 
               return (
                 <div key={node.id} style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_H, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: depth * 16 }} title={node.name}>
+                  <div data-phone="gantt-name" style={{ width: LABEL_W, flexShrink: 0, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: depth * 16 }} title={node.name}>
                     {node.name}
                     {dateRangeStr && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 400, color: 'var(--text3)' }}>{dateRangeStr}</span>}
                   </div>
@@ -663,31 +894,35 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                         {hasChildren ? (expandedIds.has(node.id) ? '▾ ' : '▸ ') : ''}{label}
                       </div>
                     )}
-                    {/* Floats over the track's right edge instead of taking
-                        a flex slot next to it -- so the track's own width
-                        always matches trackLeft/trackRight (no per-row
-                        canEdit-dependent shrinkage the header/grid/arrows
-                        would have to separately account for). ✎ edit and +
-                        add-subtask buttons both apply to every row (phase or
-                        subtask) now -- + sits to the left of ✎ so they never
-                        overlap. */}
-                    {canEdit && !editingId && (
-                      <button type="button" className="btn btn-sm btn-ghost"
-                        style={{
-                          position: 'absolute', top: '50%', right: 2, transform: 'translateY(-50%)',
-                          width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85,
-                        }}
-                        onClick={(e) => { e.stopPropagation(); startEdit(isPhase ? 'phase' : 'subtask', node) }}>✎</button>
+                    {ghostStyle && (
+                      <div data-testid="plan-ghost" title={`PLAN v${selectedPlan.version}: ${planRange.start} → ${planRange.end}`}
+                        style={{ position: 'absolute', bottom: -5, height: 3, left: ghostStyle.left, width: ghostStyle.width, background: 'var(--text3)', opacity: 0.55, borderRadius: 2, pointerEvents: 'none' }} />
                     )}
-                    {canEdit && !editingId && (
-                      <button type="button" className="btn btn-sm btn-ghost"
-                        style={{ position: 'absolute', top: '50%', right: EDIT_BTN_W + 6, transform: 'translateY(-50%)', width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85 }}
-                        title="เพิ่มขั้นตอนย่อยใต้นี้"
-                        onClick={(e) => { e.stopPropagation(); startAdd(isPhase ? 'phase' : 'subtask', node.id, ((subtasksByParent[node.id] || []).length) + 1) }}>
-                        +
-                      </button>
+                    {planTag && (
+                      <span data-testid="plan-tag"
+                        style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', ...tagPos, fontSize: 10, fontWeight: 600, lineHeight: '14px', padding: '0 5px', borderRadius: 4, whiteSpace: 'nowrap', pointerEvents: 'none', background: 'var(--bg2)', border: '1px solid var(--border)', color: TAG_COLOR[planTag.tone] }}>
+                        {planTag.text}
+                      </span>
                     )}
                   </div>
+                  {btnSlot > 0 && (
+                    <div style={{ width: btnSlot, flexShrink: 0, display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      {!editingId && (
+                        <button type="button" className="btn btn-sm btn-ghost"
+                          style={{ width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85 }}
+                          title="เพิ่มขั้นตอนย่อยใต้นี้"
+                          onClick={(e) => { e.stopPropagation(); startAdd(isPhase ? 'phase' : 'subtask', node.id, ((subtasksByParent[node.id] || []).length) + 1) }}>
+                          +
+                        </button>
+                      )}
+                      {!editingId && (
+                        <button type="button" className="btn btn-sm btn-ghost"
+                          style={{ width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85 }}
+                          title="แก้ไขขั้นตอนนี้"
+                          onClick={(e) => { e.stopPropagation(); startEdit(isPhase ? 'phase' : 'subtask', node) }}>✎</button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -721,7 +956,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               </svg>
             )}
             {todayX != null && !editingId && (
-              <div style={{ position: 'absolute', top: 0, left: LABEL_W, right: 0, bottom: 0, pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', top: 0, left: trackLeft, right: trackRight, bottom: 0, pointerEvents: 'none' }}>
                 <div style={{ position: 'absolute', top: -16, left: `${todayX}%`, transform: 'translateX(-50%)', fontSize: 9.5, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
                   วันนี้
                 </div>
@@ -733,8 +968,12 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             <span><span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', marginRight: 5, background: 'var(--green)' }} />เสร็จแล้ว</span>
             <span><span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', marginRight: 5, background: 'var(--yellow)' }} />กำลังทำ</span>
             <span><span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', marginRight: 5, background: 'var(--text3)' }} />ยังไม่เริ่ม</span>
+            {selectedPlan && (
+              <span><span style={{ width: 14, height: 3, borderRadius: 2, display: 'inline-block', marginRight: 5, verticalAlign: 'middle', background: 'var(--text3)', opacity: 0.55 }} />PLAN v{selectedPlan.version}</span>
+            )}
           </div>
         </div>
+        </LandscapeView>
 
         {confirmDeleteId && (
           <ConfirmDialog
@@ -896,5 +1135,44 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       </div>
       </div>
     </>
+  )
+}
+
+// "ใช้น้ำหนักจากแม่แบบกับไซท์นี้?" -- current vs template weight per contract phase,
+// matched by name (phaseTemplate.js compareWeightsWithTemplate). Confirm writes the
+// matched, changed phases only.
+function TemplateWeightsDialog({ phases, template, busy, onClose, onConfirm }) {
+  const cmp = compareWeightsWithTemplate(phases, template)
+  const cell = { textAlign: 'right', fontSize: 13 }
+  return (
+    <Modal title="ใช้น้ำหนักจากแม่แบบกับไซท์นี้?" onClose={onClose} maxWidth={520}>
+      <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', gap: 6 }} data-testid="template-weights-table">
+          <span style={{ fontWeight: 700, color: 'var(--text3)', fontSize: 12 }}>เฟส (จับคู่ตามชื่อ)</span>
+          <span style={{ ...cell, fontWeight: 700, color: 'var(--text3)', fontSize: 12 }}>ตอนนี้</span>
+          <span style={{ ...cell, fontWeight: 700, color: 'var(--text3)', fontSize: 12 }}>แม่แบบ</span>
+          {cmp.rows.map((r) => (
+            <div key={r.phaseId} style={{ display: 'contents' }} data-testid={`tpl-cmp-${r.phaseId}`}>
+              <span style={{ fontSize: 13, color: r.template == null ? 'var(--text3)' : 'var(--text)' }}>{r.name}</span>
+              <span style={cell}>{r.current}</span>
+              <span style={{ ...cell, fontWeight: r.changed ? 700 : 400, color: r.template == null ? 'var(--text3)' : 'var(--text)' }}>{r.template == null ? '—' : r.template}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+          เฟสที่ชื่อไม่ตรงแม่แบบ ไม่เปลี่ยน · เฟส VO ไม่นับ
+          {cmp.updates.length > 0 && Math.abs(cmp.totalAfter - 100) > 0.001 && (
+            <span style={{ color: 'var(--amber, #8a6100)' }}> · หลังใช้แล้วรวมได้ {cmp.totalAfter}% (ไม่ใช่ 100)</span>
+          )}
+          {cmp.updates.length === 0 && <span> · ไม่มีเฟสที่ต้องเปลี่ยน</span>}
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" disabled={busy} onClick={onClose}>ยกเลิก</button>
+        <button type="button" className="btn btn-primary" disabled={busy || cmp.updates.length === 0} onClick={() => onConfirm(cmp.updates)}>
+          {busy ? '⏳ กำลังบันทึก...' : 'ใช้น้ำหนักนี้'}
+        </button>
+      </div>
+    </Modal>
   )
 }

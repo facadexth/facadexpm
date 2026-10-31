@@ -10,6 +10,10 @@ describe('poTaxInvoiceBadge', () => {
   it('received flagged PO without an invoice is awaiting stock', () => {
     expect(poTaxInvoiceBadge({ id: 'p2', status: 'received', stock_from_invoice: true }, links)).toEqual({ kind: 'awaiting', text: 'รอใบกำกับ (สต็อกยังไม่เข้า)' })
   })
+  it('delivery-mode PO never shows the PO-level awaiting badge (the per-lot badge covers it)', () => {
+    expect(poTaxInvoiceBadge({ id: 'p2', status: 'received', stock_from_invoice: true, tax_invoice_mode: 'delivery' }, links)).toEqual({ kind: null, text: '' })
+    expect(poTaxInvoiceBadge({ id: 'p2', status: 'received', stock_from_invoice: true, tax_invoice_mode: 'po' }, links).kind).toBe('awaiting')
+  })
   it('no links map (feature not ready) -> no badge', () => {
     expect(poTaxInvoiceBadge({ id: 'p1', status: 'received', stock_from_invoice: true }, null)).toEqual({ kind: null, text: '' })
   })
@@ -45,5 +49,12 @@ describe('poTaxInvoiceErrorText', () => {
     expect(poTaxInvoiceErrorText({ message: 'po_stock_flag_locked' })).toMatch(/สต็อกเข้าจากใบกำกับ/)
     expect(poTaxInvoiceErrorText({ message: 'something else' })).toBe(null)
     expect(poTaxInvoiceErrorText(null)).toBe(null)
+  })
+})
+
+describe("poTaxInvoiceBadge and delivery POs", () => {
+  it("the PO-level awaiting badge never shows for a delivery PO (lots carry their own status)", () => {
+    expect(poTaxInvoiceBadge({ id: "P", status: "received", stock_from_invoice: true, tax_invoice_mode: "delivery" }, new Map())).toEqual({ kind: null, text: "" })
+    expect(poTaxInvoiceBadge({ id: "P", status: "received", stock_from_invoice: true }, new Map()).kind).toBe("awaiting")
   })
 })

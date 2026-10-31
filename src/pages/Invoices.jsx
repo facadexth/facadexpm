@@ -12,10 +12,12 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useDocumentSigner, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint, useInvoiceDepositChoiceReady, useSiteReservedDeposit } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
+import { computeInvoiceNet, solveRawForNet, availableDeposit } from '../lib/invoiceNet.js'
+import InvoiceTotalsCard, { useDepositChoiceState } from '../components/InvoiceTotalsCard.jsx'
 import { thaiBahtText } from '../lib/thaiBahtText.js'
 import { sanitizeStorageFileName } from '../lib/storageKey.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -24,13 +26,19 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE } from '../lib/invoiceCalc.js'
-import { calcQuotationTotals } from '../lib/quotationCalc.js'
+import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE, effectiveInvoiceTaxOffset, invoiceBillingTotal } from '../lib/invoiceCalc.js'
+import { calcQuotationTotals, discountMultiplier } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import CardTable from '../components/CardTable.jsx'
+import { isCountUnit, checkLine, doneQty } from '../lib/progressBilling.js'
+import { useProgressBillingData } from '../hooks/useProgressBillingData.js'
+import ProgressBillingEditor, { buildProgressInvoiceRows } from './invoices/ProgressBillingEditor.jsx'
+import { useDeliveryReportStatuses, DeliveryReportBadge, DeliveryReportLauncher } from './invoices/delivery/InvoiceDeliveryReport.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -38,6 +46,7 @@ const siteOpts = (sites) => (sites || []).map(s => ({
 
 const INV_STATUSES = ['unpaid', 'paid', 'void']
 const INV_STATUS_LABELS = { unpaid: '🕓 ยังไม่ชำระ', paid: '✅ ชำระแล้ว', void: '✕ ยกเลิก' }
+const BILLING_MODE_LABELS = { easy: 'ง่าย', advanced: 'ละเอียด', progress: 'ตามความคืบหน้า' }
 
 // One entry per quotation_item: { quotationItemId, description, unit,
 // unitPrice, totalQty, units: [{ id, unitIndex, unitQty, cumulativePct,
@@ -51,7 +60,7 @@ function buildLineState(quotationItems, unitsByQuotationItem, priceMultiplier) {
     }))
     return {
       quotationItemId: qi.id, description: qi.description, unit: qi.unit,
-      unitPrice: round2(qi.unit_price * priceMultiplier), totalQty: qi.quantity, checked: true, units,
+      unitPrice: round2(qi.unit_price * priceMultiplier), baseUnitPrice: qi.unit_price, totalQty: qi.quantity, checked: true, units,
       // Carries the source quotation item's material/labor split forward
       // (scaled by the same discount multiplier as unitPrice) so a split
       // quotation's invoices -- and the receipt/tax-invoice printed from
@@ -70,19 +79,49 @@ function buildLineState(quotationItems, unitsByQuotationItem, priceMultiplier) {
 // full undiscounted amount regardless of any discount the client agreed to.
 // Reuses calcQuotationTotals (not reimplemented) so this stays exactly in
 // sync with how the quotation's own printed total is computed.
-function discountMultiplier(quotation) {
-  const items = quotation.quotation_items || []
-  const rawTotal = items.reduce((s, it) => s + (it.line_total || 0), 0)
-  if (rawTotal <= 0) return 1
-  const totals = calcQuotationTotals(items, {
-    hasVat: false, // hasVat:false makes `subtotal` equal the discounted raw total exactly, before any VAT math -- that's the ratio we need
-    discountAmount: quotation.discount_amount,
-    discountPct: quotation.discount_pct,
+
+// Easy-mode check of one line against the site's BOQ + cards (spec rule 6: no %, value = qty x
+// unit price). Unit comes from the line's BOQ (fallback: quotation item unit). Without a BOQ row
+// only the whole-number rule applies. Easy mode has no phase picker, so:
+//  - billedPct is 100 (the line bills whole units)
+//  - phaseWeightPct = Σ split pct of the phases whose cards show done > 0
+//  - cardDoneQty = the smallest done qty among those phases (units delivered in every one of them)
+//  - only fraction_count_unit / qty_is_pct_of_boq / price_mismatch are shown here
+export function easyLineCheck({ line, qty, boq, splits, cards, priceMultiplier }) {
+  const unit = boq?.unit ?? line.unit
+  let w = 0
+  let card = null
+  if (boq) {
+    for (const s of splits || []) {
+      const d = doneQty(cards, boq.id, s.phase_id)
+      if (d == null || d <= 0) continue
+      w += Number(s.pct) || 0
+      card = card == null ? d : Math.min(card, d)
+    }
+  }
+  const r = checkLine({
+    unit, qty, unitPrice: line.unitPrice,
+    boqQty: boq ? boq.planned_qty : null,
+    boqUnitPrice: line.baseUnitPrice ?? null, priceMultiplier,
+    billedPct: 100, phaseWeightPct: w, cardDoneQty: card,
   })
-  return totals.subtotal / rawTotal
+  // easy mode bills whole units with no %, so weight/card checks are not its concern
+  const EASY_REASONS = ['fraction_count_unit', 'qty_is_pct_of_boq', 'price_mismatch']
+  const reasons = r.reasons.filter(x => EASY_REASONS.includes(x))
+  if (!boq) {
+    const own = reasons.filter(x => x === 'fraction_count_unit')
+    return { level: own.length ? (line.byAmount ? 'warn' : 'block') : 'ok', reasons: own, hasBoq: false, unit }
+  }
+  const level = reasons.includes('fraction_count_unit') && !line.byAmount ? 'block' : reasons.length ? 'warn' : 'ok'
+  const titles = {
+    fraction_count_unit: `ต้องเป็นจำนวนเต็ม (หน่วย ${unit})`,
+    price_mismatch: 'ราคาต่อหน่วยไม่ตรงกับ BOQ',
+    qty_is_pct_of_boq: `ปริมาณเท่ากับ ${boq.planned_qty} × ${w}% อาจใช้ % ของปริมาณ`,
+  }
+  return { level, reasons, hasBoq: true, unit, title: reasons.length ? reasons.map(x => titles[x]).join(' · ') : 'ตรงกับ BOQ และการ์ด' }
 }
 
-function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
+function InvoiceItemsEditor({ lines, onChange, mode, onModeChange, checks, showProgress, progressEditor }) {
   // Raw in-progress text for the two number inputs below, keyed by line
   // (qty) and by `lineId:unitIndex` (per-unit %). Both inputs otherwise
   // display a value re-derived from the unit ledger on every render, which
@@ -111,13 +150,13 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
   const toggleChecked = (qiId, checked) => {
     clearDrafts()
     setLine(qiId, l => ({
-      ...l, checked, units: checked ? waterfall(l.units, openQty(l.units)) : l.units,
+      ...l, checked, byAmount: false, units: checked ? waterfall(l.units, openQty(l.units)) : l.units,
     }))
   }
   const setQty = (qiId, qty) => setLine(qiId, l => {
     const max = openQty(l.units)
     const clamped = Math.max(0, Math.min(max, qty))
-    return { ...l, units: waterfall(l.units, clamped) }
+    return { ...l, byAmount: false, units: waterfall(l.units, clamped) }
   })
   // กรอกจำนวนเงิน (บาท) ที่ต้องการเรียกเก็บสำหรับรายการนี้โดยตรง แทนที่จะต้อง
   // แปลงเป็นจำนวนหน่วยเอง -- ตัวเลือกนี้อยู่แยกจาก "กรอกยอดที่ต้องการเรียกเก็บ"
@@ -128,7 +167,8 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
     const max = openQty(l.units)
     const qty = l.unitPrice > 0 ? amount / l.unitPrice : 0
     const clamped = Math.max(0, Math.min(max, qty))
-    return { ...l, units: waterfall(l.units, clamped) }
+    // a baht amount may land on a fraction of a set: allowed, shown as ⚠️ only
+    return { ...l, byAmount: true, units: waterfall(l.units, clamped) }
   })
   const setUnitTarget = (qiId, unitIndex, target) => setLine(qiId, l => ({
     ...l,
@@ -155,7 +195,16 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         <button type="button" className={`btn btn-sm ${mode === 'easy' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onModeChange('easy')}>โหมดง่าย</button>
         <button type="button" className={`btn btn-sm ${mode === 'advanced' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onModeChange('advanced')}>โหมดละเอียด</button>
+        {showProgress && (
+          <button type="button" className={`btn btn-sm ${mode === 'progress' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onModeChange('progress')}>ตามความคืบหน้า</button>
+        )}
       </div>
+      {mode === 'progress' ? progressEditor : (<>
+      {mode === 'advanced' && !lines.some(l => isCountable(l.totalQty) && l.units.length > 1) && (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
+          โหมดละเอียดแยก % รายชิ้นให้เฉพาะรายการที่มีจำนวน 2–20 ชิ้น (จำนวนเต็ม) ใบนี้ไม่มีรายการแบบนั้น หน้าจอจึงเหมือนโหมดง่าย
+        </div>
+      )}
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13, fontWeight: 600 }}>
         <input type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} />
         เลือกทั้งหมด
@@ -169,6 +218,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
           const lineAmount = drawAmount(l.units, l.unitPrice)
           const showAdvanced = mode === 'advanced' && isCountable(l.totalQty) && l.units.length > 1
           const isMixed = l.units.length > 1 && l.units.some(u => u.cumulativePct !== l.units[0].cumulativePct)
+          const chk = mode === 'easy' ? checks?.[l.quotationItemId] : null
 
           if (fullyBilled) {
             return (
@@ -184,8 +234,8 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
           }
 
           return (
-            <div key={l.quotationItemId} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 100px', gap: 8, alignItems: 'center' }}>
+            <div key={l.quotationItemId} data-line={l.quotationItemId} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: chk?.hasBoq ? '28px 1fr 90px 100px 20px' : '28px 1fr 90px 100px', gap: 8, alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: 'var(--text3)' }}>{no + 1}</span>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{l.description}</div>
@@ -214,7 +264,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                     })} />
                 )}
                 {showAdvanced ? (
-                  <span className="font-mono" style={{ fontWeight: 700, textAlign: 'right' }}>{fmt(lineAmount)}</span>
+                  <span className="font-mono" style={{ fontWeight: 700, textAlign: 'right', color: mode === 'easy' && drawQty(l.units) > 1e-9 ? 'var(--accent)' : undefined }}>{fmt(round2(lineAmount))}</span>
                 ) : (
                   <input type="number" min="0" max={remaining * l.unitPrice} step="any"
                     className="input input-sm font-mono" title="กรอกจำนวนเงินที่ต้องการเรียกเก็บสำหรับรายการนี้"
@@ -233,7 +283,15 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                       return next
                     })} />
                 )}
+                {chk?.hasBoq && (
+                  <span title={chk.title} style={{ textAlign: 'center' }}>{chk.level === 'block' ? '⛔' : chk.level === 'warn' ? '⚠️' : '✅'}</span>
+                )}
               </div>
+              {chk?.level === 'block' && chk.reasons.includes('fraction_count_unit') && (
+                <div style={{ marginLeft: 36, marginTop: 4, fontSize: 12, color: 'var(--danger, #c0392b)' }}>
+                  <span>{`ต้องเป็นจำนวนเต็ม (หน่วย ${chk.unit})`}</span> <span>— เก็บบางส่วนใช้โหมดละเอียด</span>
+                </div>
+              )}
               {!showAdvanced && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, marginLeft: 36, fontSize: 11, color: 'var(--text3)' }}>
                   <input type="checkbox" checked={l.checked} onChange={e => toggleChecked(l.quotationItemId, e.target.checked)} />
@@ -287,11 +345,12 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
       <div style={{ marginTop: 12, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
         รวมงวดนี้: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(subtotal)}</span> บาท
       </div>
+      </>)}
     </div>
   )
 }
 
-function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
+export function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const { hasModuleAccess } = useTenant()
   const items = quotation.quotation_items || []
   const { data: unitsByQuotationItem, loading: unitsLoading, error: unitsError } = useQuotationItemUnits(quotation.id, items)
@@ -302,6 +361,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const { data: depositTaxOffset } = useQuotationDepositTaxOffset(quotation.id, quotation.has_vat, quotation.price_includes_vat)
   const [lines, setLines] = useState(null)
   const [mode, setMode] = useState('easy')
+  const [progressValue, setProgressValue] = useState({ phaseIds: [], rows: {} })
   const [saving, setSaving] = useState(false)
   // วันออกเอกสาร -- separate from วันที่รับเงิน, which only gets set later
   // when the invoice is actually marked paid (see MarkPaidModal).
@@ -313,8 +373,24 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   // ตามสัดส่วนมูลค่าที่เหลือของแต่ละรายการ -- กรอกครั้งเดียว เห็นผลเป็นจำนวน/
   // บาทจริงในแต่ละแถวเหมือนเดิม ไม่ต้องยุ่งกับ % เลย
   const [targetNet, setTargetNet] = useState('')
-  const [includeWht, setIncludeWht] = useState(true)
-  const [whtPct, setWhtPct] = useState(site?.default_tax_withheld_pct ?? 3)
+
+  // หักมัดจำสำหรับใบนี้ -- เลือกตอนสร้างใบ (ไม่หัก / % ของยอดก่อน VAT / มูลค่าเป็นบาท) ผูกกับใบนี้ใบเดียว
+  // กล่องนี้โผล่เมื่อ migration 2026-10-09-07 ลงแล้ว + โมดูลมัดจำเปิดอยู่ + ไซต์ยังมีมัดจำคงเหลือ
+  // ไม่งั้นใช้พฤติกรรมเดิม (คำนวณตอนกดยืนยันชำระ)
+  const depositChoiceReady = useInvoiceDepositChoiceReady()
+  const depositModule = hasModuleAccess('client_deposits')
+  const { data: depositBalance } = useSiteDepositBalance(depositModule && depositChoiceReady ? quotation.site_id : null)
+  const depositRemaining = depositBalance?.remaining_balance || 0
+  // มัดจำที่ใบอื่นที่ยังไม่ชำระ "จอง" ไว้แล้ว (ตัวคงเหลือของไซท์ลดตอนกดชำระเท่านั้น) -- หักซ้ำไม่ได้
+  const { data: reservedData } = useSiteReservedDeposit(depositModule && depositChoiceReady ? quotation.site_id : null)
+  const reserved = reservedData || { total: 0, invoices: [] }
+  const depositFree = availableDeposit(depositRemaining, reserved.total)
+  // รอข้อมูลที่จองไว้โหลดก่อน ไม่งั้นจะเห็นมัดจำเต็มชั่วขณะแล้วบันทึกเกินได้
+  const showDepositBox = depositModule && depositChoiceReady && depositRemaining > 0 && !!reservedData
+  const siteDepositPct = Number(site?.default_deposit_pct) || 0
+  const depositChoice = useDepositChoiceState(siteDepositPct)
+  const [showTargetCard, setShowTargetCard] = useState(false)
+  const { data: pbData } = useProgressBillingData(quotation.site_id, quotation.id)
 
   useEffect(() => {
     if (unitsByQuotationItem && !lines) {
@@ -349,63 +425,82 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
     )
   }
 
-  const billedLines = lines.filter(l => drawQty(l.units) > 1e-9)
+  const priceMult = discountMultiplier(quotation)
+  const hasBoq = Object.keys(pbData?.boqByQuotationItem || {}).length > 0
+  const isProgress = mode === 'progress' && hasBoq
+  const progress = isProgress ? buildProgressInvoiceRows(lines, pbData, progressValue, priceMult) : null
+  // One shape for saving and totals, whatever the mode: { line, units, description, unit, unitPrice,
+  // unitPriceMaterial, unitPriceLabor, drawQty, lineTotal, phases }. Progress rows advance the
+  // quotation_item_units waterfall by their value (lineTotal / full unit price) so every mode stays
+  // consistent in value.
+  const saveLines = isProgress
+    ? progress.items.map(it => {
+      const l = lines.find(x => x.quotationItemId === it.quotationItemId)
+      return { ...it, line: l, units: waterfall(l.units, l.unitPrice > 0 ? it.lineTotal / l.unitPrice : 0) }
+    })
+    : lines.filter(l => drawQty(l.units) > 1e-9).map(l => ({
+      line: l, units: l.units, quotationItemId: l.quotationItemId, description: l.description, unit: l.unit,
+      unitPrice: l.unitPrice, unitPriceMaterial: l.unitPriceMaterial, unitPriceLabor: l.unitPriceLabor,
+      drawQty: drawQty(l.units), lineTotal: round2(drawAmount(l.units, l.unitPrice)), phases: [],
+    }))
+  const billedLines = isProgress ? [] : lines.filter(l => drawQty(l.units) > 1e-9)
+  // Easy-mode checks per billed line; ⛔ (fraction of a count unit) blocks saving
+  const easyChecks = {}
+  if (mode === 'easy') {
+    for (const l of billedLines) {
+      const boq = pbData?.boqByQuotationItem?.[l.quotationItemId] || null
+      easyChecks[l.quotationItemId] = easyLineCheck({
+        line: l, qty: round2(drawQty(l.units)), boq,
+        splits: boq ? pbData.splitsByBoq?.[boq.id] : null, cards: pbData?.cards, priceMultiplier: priceMult,
+      })
+    }
+  }
+  const easyBlocked = Object.values(easyChecks).some(c => c.level === 'block')
   // round2 here for the same reason handleSave rounds before persisting
   // (Fix 7): the header subtotal must equal the SUM of the line_totals
   // actually stored, or a printed invoice's line items visibly fail to add
   // up to its own total by a satang.
-  const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
-  const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat, depositTaxOffset: depositTaxOffset || 0 })
+  const invoiceItemsForTotals = saveLines.map(s => ({ line_total: s.lineTotal }))
+  // ทุกตัวเลขของการ์ดสรุปและช่อง "กรอกยอดที่ต้องการเรียกเก็บ" มาจากสูตรเดียวกัน (lib/invoiceNet.js)
+  const rawDrawn = invoiceItemsForTotals.reduce((s, it) => s + it.line_total, 0)
+  // หัก ณ ที่จ่ายใช้ค่าของไซท์เสมอ (ไม่มีช่องกรอกเอง) 0 = ไม่หัก
+  const effectiveWhtPct = Number(site?.default_tax_withheld_pct) || 0
+  const netParams = {
+    hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat,
+    whtPct: effectiveWhtPct, retentionPct: Number(site?.default_retention_pct) || 0,
+    availableOffset: depositTaxOffset || 0,
+    deposit: { enabled: showDepositBox, mode: depositChoice.mode, text: depositChoice.text, balance: depositFree },
+  }
+  const calc = computeInvoiceNet({ ...netParams, raw: rawDrawn })
+  const totals = { subtotal: calc.subtotal, vat: calc.vat, total: calc.total }
+  const deposit = calc.dep
   const isSplit = quotation.pricing_mode === 'split'
   const materialLabor = isSplit
-    ? sumMaterialLabor(billedLines.map(l => ({ draw_qty: drawQty(l.units), unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor })))
+    ? sumMaterialLabor(saveLines.map(s => ({ draw_qty: s.drawQty, unit_price_material: s.unitPriceMaterial, unit_price_labor: s.unitPriceLabor })))
     : null
-  // ยอดสุทธิจริงที่จะได้รับ ณ ตอนนี้ (หลัง VAT ถ้ามี แล้วหักภาษี ณ ที่จ่ายถ้าติ๊กไว้)
-  // -- โชว์ไว้ให้เห็นผลจริงหลังกดเติมอัตโนมัติ หรือหลังปรับมือเองต่อ
-  //
-  // หัก ณ ที่จ่ายคิดจากมูลค่างานก่อน VAT (subtotal) เสมอ ไม่ใช่จากยอดรวมหลัง VAT
-  // -- ตามหลักจริง (WHT คิดจากค่าจ้าง/ค่าบริการ ไม่รวม VAT) ดังนั้น
-  // net = total (รวม VAT ถ้ามี) - subtotal*wht% ตัวอย่างที่ user ใช้เอง:
-  // VAT 7% หัก ณ ที่จ่าย 3% -> net = subtotal*(1.07-0.03) = subtotal*1.04
-  // (เทียบเท่ากับ 100000/1.04 ที่ user คำนวณด้วยเครื่องคิดเลขเอง)
-  const effectiveWhtPct = includeWht ? (parseFloat(whtPct) || 0) : 0
-  const achievedNet = round2(totals.total - totals.subtotal * effectiveWhtPct / 100)
+  // ยอดที่จะได้รับจริง ณ ตอนนี้ (หลัง VAT, หัก ณ ที่จ่าย, ประกันผลงาน และมัดจำที่เลือกไว้) -- โชว์ให้เห็นผลหลังเติมอัตโนมัติ
+  const achievedNet = calc.net
 
-  // กรอกยอดสุทธิที่ต้องการ -> คำนวณย้อนกลับเป็นยอดที่ต้องกด โดยกลับสมการ
-  // achievedNet ด้านบนตามความสัมพันธ์ระหว่าง drawn amount (target) กับ
-  // subtotal/total ในแต่ละกรณีของ calcInvoiceTotals:
-  //   ไม่มี VAT:        target = subtotal = total  -> net = target(1-wht)
-  //   VAT รวมในราคา:    target = total             -> net = target(1 - wht/(1+VAT_RATE))
-  //   VAT แยกจากราคา:   target = subtotal          -> net = target(1+VAT_RATE-wht)
-  // แล้วกระจายเท่าๆ กันตามสัดส่วนมูลค่าที่เหลือของแต่ละรายการ
-  // (ครอบที่ 100% ของยอดที่เหลือทั้งหมด ไม่มีทางเกิน)
+  // กรอกยอดที่ต้องการ -> คำนวณย้อนกลับเป็นยอดที่ต้องกด (ค้นหาแบบแบ่งครึ่งบนสูตรเดียวกับการ์ดสรุป จึงรวมมัดจำและ
+  // ฐานภาษีที่ตัดไว้ด้วย) แล้วกระจายเท่าๆ กันตามสัดส่วนมูลค่าที่เหลือของแต่ละรายการ (ครอบที่ 100% ของยอดที่เหลือ)
   const applyTargetFill = () => {
     const net = parseFloat(targetNet)
     if (!net || net <= 0) return
-    const whtFraction = effectiveWhtPct / 100
-    let target
-    if (!quotation.has_vat) {
-      target = net / (1 - whtFraction)
-    } else if (quotation.price_includes_vat) {
-      target = net / (1 - whtFraction / (1 + VAT_RATE))
-    } else {
-      target = net / (1 + VAT_RATE - whtFraction)
-    }
-
     const totalOpenValue = lines.reduce((s, l) => s + openQty(l.units) * l.unitPrice, 0)
     if (totalOpenValue <= 0) return
+    const target = solveRawForNet(net, netParams, totalOpenValue)
     const pct = Math.min(1, target / totalOpenValue)
 
     setMode('easy')
     setLines(lines.map(l => {
       const remaining = openQty(l.units)
       if (remaining <= 0) return l
-      return { ...l, checked: false, units: waterfall(l.units, remaining * pct) }
+      return { ...l, checked: false, byAmount: true, units: waterfall(l.units, remaining * pct) }
     }))
   }
 
   const handleSave = async () => {
-    if (!billedLines.length) { alert('กรุณาเลือกอย่างน้อย 1 รายการ'); return }
+    if (!saveLines.length) { alert('กรุณาเลือกอย่างน้อย 1 รายการ'); return }
     setSaving(true)
     // Captured so the catch below can name the orphan: the invoices row is
     // written before its items/draws, so a mid-loop failure leaves a real,
@@ -416,6 +511,8 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         quotation_id: quotation.id, site_id: quotation.site_id, date,
         has_vat: quotation.has_vat, price_includes_vat: quotation.price_includes_vat,
         subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
+        // one invoice = one mode, set here and never updated
+        billing_mode: isProgress ? 'progress' : mode === 'advanced' ? 'advanced' : 'easy',
         // สืบมาจากใบเสนอราคาต้นทาง (หมวด VAT ตรงกันอยู่แล้วเพราะ has_vat มาจาก
         // quotation เดียวกัน) เปลี่ยนได้ทีหลังจากตัว InvoiceDocumentModal เอง
         bank_account_id: quotation.bank_account_id || null,
@@ -423,6 +520,8 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         // ค่านี้เสมอตอนกดยืนยันชำระ แทนที่จะไปอ่าน sites.default_tax_withheld_pct
         // สดๆ ตอนนั้น ซึ่งอาจเปลี่ยนไปแล้วนับจากตอนสร้างใบนี้
         wht_pct: effectiveWhtPct,
+        // เลือกตอนสร้างใบ (0 = ตั้งใจไม่หัก) -- ไม่ส่งคอลัมน์นี้ถ้า migration ยังไม่ลง/ไม่มีมัดจำคงเหลือ
+        ...(deposit ? { deposit_deduction_amount: deposit.amount, deposit_deduction_pct: deposit.pct } : {}),
       }).select().single()
       if (invError) throw invError
       createdInvoiceNumber = invoice.invoice_number
@@ -432,22 +531,26 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
       // glued item_description row (below) needs sort_order to keep
       // counting up across both, not restart per item.
       let nextSortOrder = 0
-      for (const l of billedLines) {
-        const lineDrawQty = drawQty(l.units)
-        // Waterfall-derived floats, unlike a user-typed decimal, are not
-        // guaranteed to land on a clean 2-decimal value -- round before
-        // persisting so the stored line/draw amounts can't drift from the
-        // invoice's own already-rounded subtotal.
-        const lineAmount = round2(drawAmount(l.units, l.unitPrice))
+      for (const sl of saveLines) {
+        const l = sl.line
+        // lineTotal is already round2'd (waterfall-derived floats are not
+        // guaranteed to land on a clean 2-decimal value) so the stored
+        // line/draw amounts can't drift from the invoice's own subtotal.
         const { data: invoiceItem, error: itemError } = await supabase.from('invoice_items').insert({
-          invoice_id: invoice.id, quotation_item_id: l.quotationItemId,
-          description: l.description, unit: l.unit, unit_price: l.unitPrice,
-          unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor,
-          draw_qty: lineDrawQty, line_total: lineAmount, sort_order: nextSortOrder++,
+          invoice_id: invoice.id, quotation_item_id: sl.quotationItemId,
+          description: sl.description, unit: sl.unit, unit_price: sl.unitPrice,
+          unit_price_material: sl.unitPriceMaterial, unit_price_labor: sl.unitPriceLabor,
+          draw_qty: sl.drawQty, line_total: sl.lineTotal, sort_order: nextSortOrder++,
         }).select().single()
         if (itemError) throw itemError
 
-        for (const u of l.units) {
+        if (sl.phases.length) {
+          const { error: phError } = await supabase.from('invoice_item_phases')
+            .insert(sl.phases.map(ph => ({ ...ph, invoice_item_id: invoiceItem.id })))
+          if (phError) throw phError
+        }
+
+        for (const u of sl.units) {
           if (u.target === u.cumulativePct) continue
           const drawAmt = round2((u.target - u.cumulativePct) / 100 * u.unitQty * l.unitPrice)
           const { error: drawError } = await supabase.from('invoice_item_draws').insert({
@@ -512,57 +615,27 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <input type="date" className="input" style={{ maxWidth: 200 }} value={date} onChange={e => setDate(e.target.value)} />
         </div>
 
-        <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
-        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
-          {isSplit && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าของ</span><span className="font-mono">{fmt(materialLabor.material)}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าแรง</span><span className="font-mono">{fmt(materialLabor.labor)}</span></div>
-            </>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
-          {quotation.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
-          {quotation.has_vat && depositTaxOffset > 0 && (
-            <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
-              📐 หัก VAT เฉพาะส่วนที่ยังไม่เคยเสียภาษีจากใบมัดจำก่อนหน้า — คิด VAT จาก {fmt(Math.max(0, totals.subtotal - depositTaxOffset))} บาทเท่านั้น (ไม่ใช่ {fmt(totals.subtotal)} เต็มยอด) เพื่อไม่ให้ซ้ำซ้อนกับ VAT ที่เก็บไปแล้วตอนรับมัดจำ {fmt(depositTaxOffset)} บาท
-            </div>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
-              <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
-              หัก ณ ที่จ่ายสำหรับใบนี้
-            </label>
-            {includeWht && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input type="number" min="0" max="100" step="any" className="input input-sm" style={{ width: 60 }}
-                  value={whtPct} onChange={e => setWhtPct(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
-              </div>
-            )}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-            การตั้งค่านี้ผูกกับใบแจ้งหนี้นี้ใบเดียว — ตอนกดยืนยันชำระ ระบบจะหัก ณ ที่จ่ายตามนี้เสมอ ไม่ว่า % เริ่มต้นของไซท์จะเปลี่ยนไปภายหลังหรือไม่
-          </div>
-        </div>
-
-        {/* Policy description, not a live number -- the actual amount
-            depends on the deposit balance remaining AT payment time (could
-            shift between now and then), so showing a computed figure here
-            would just go stale. State the RULE instead: % of this
-            invoice's own subtotal, capped at whatever's left in the
-            deposit. handleMarkPaid computes the real amount the same way
-            (calcDepositDeduction) when this invoice is actually marked
-            paid. */}
-        {hasModuleAccess('client_deposits') && site?.default_deposit_pct > 0 && (
-          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
-            📐 ตอนกดยืนยันชำระใบแจ้งหนี้นี้ ระบบจะหักเงินมัดจำอัตโนมัติ {site.default_deposit_pct}% ของยอดก่อน VAT ของใบนี้ —
-            หรือหักเท่าที่มัดจำคงเหลืออยู่ ถ้าน้อยกว่านั้น
-          </div>
-        )}
+        <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} checks={easyChecks}
+          showProgress={hasBoq}
+          progressEditor={<ProgressBillingEditor lines={lines} data={pbData} priceMultiplier={priceMult} value={progressValue} onChange={setProgressValue} />} />
+        <InvoiceTotalsCard
+          calc={calc} hasVat={quotation.has_vat} isSplit={isSplit} materialLabor={materialLabor}
+          showDeposit={showDepositBox} choice={depositChoice} siteDepositPct={siteDepositPct}
+          remaining={depositRemaining} reservedTotal={reserved.total} reservedInvoices={reserved.invoices}
+          free={depositFree} availableOffset={depositTaxOffset || 0}
+          whtPct={effectiveWhtPct}
+          legacyDepositPct={!showDepositBox && depositModule ? siteDepositPct : 0}
+        />
 
         <div className="card card-body" style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-          <label className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามที่ตั้งไว้ด้านบน)</label>
+          <button type="button" onClick={() => setShowTargetCard(v => !v)} aria-expanded={showTargetCard} aria-controls="inv-target-card"
+            style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+            <span className="label" style={{ marginBottom: 0 }}>{showDepositBox
+              ? 'กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT หัก ณ ที่จ่ายตามค่าของไซท์ และหักมัดจำตามที่ตั้งไว้ด้านบน)'
+              : 'กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามค่าของไซท์)'}</span>
+            <span style={{ fontSize: 12, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{showTargetCard ? '▴ ซ่อน' : '▾ แสดง'}</span>
+          </button>
+          <div id="inv-target-card" hidden={!showTargetCard} style={{ display: showTargetCard ? 'grid' : 'none', gap: 8 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="number" min="0" step="any" className="input input-sm" style={{ width: 160 }}
@@ -575,11 +648,13 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>
             ยอดสุทธิที่จะได้จริงจากรายการที่เลือกอยู่ตอนนี้: <strong style={{ color: 'var(--accent)' }}>{fmt(achievedNet)}</strong> บาท
           </div>
+          </div>
         </div>
+
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
-        <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>
+        <button type="button" className="btn btn-primary" disabled={saving || easyBlocked || (isProgress && (progress.blocked || !saveLines.length))} onClick={handleSave}>
           {saving ? '⏳...' : '✅ สร้างใบแจ้งหนี้'}
         </button>
       </div>
@@ -751,9 +826,10 @@ function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddr
 // paymentTerms/notes/bankAccount, and there are two independently-labeled
 // signatures (signatures[0]/[1] + mySignature/recipientSignature) instead
 // of a fixed "ผู้เสนอราคา"/"ผู้ยอมรับ (ลูกค้า)" pair.
-function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct = 0, withholdingTaxAmount = 0, isWithholdingEstimate, depositDeductionPct = 0, depositDeductionAmount = 0, isDepositEstimate, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
+export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct = 0, withholdingTaxAmount = 0, isWithholdingEstimate, depositDeductionPct = 0, depositDeductionAmount = 0, isDepositEstimate, depositBeforeVat = false, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey, signerEmail }) {
+  const signer = useDocumentSigner(signerEmail)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
   const style = resolveDocumentStyle(tenant?.document_style)
   const headerProps = { tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, style }
   // Marker convention matches quotation_items: presence of a non-null
@@ -769,14 +845,25 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
   // billable line of its own (unit_price/draw_qty/line_total all 0, see
   // handleSave), so it prints as one indented, full-width text row instead
   // of repeating "0" across the qty/price/total columns.
+  // Running number per billable line (item_description rows are glued to the
+  // item above and unnumbered), keyed by object identity because renderRow is
+  // called with a page-local index -- same approach as QuotationPaper.
+  const itemNumbers = useMemo(() => {
+    const map = new Map()
+    let n = 0
+    ;(items || []).forEach(it => { if (it.item_type !== 'item_description') map.set(it, ++n) })
+    return map
+  }, [items])
   const renderRow = (it, i) => it.item_type === 'item_description' ? (
     <tr key={it.id || i}>
-      <td colSpan={isSplit ? 5 : 4} style={{ padding: '0 8px 9px 20px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line', fontSize: '0.92em', color: '#6a6f85' }}>{it.description}</td>
+      <td colSpan={isSplit ? 7 : 6} style={{ padding: '0 8px 9px 20px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line', fontSize: '0.92em', color: '#6a6f85' }}>{it.description}</td>
     </tr>
   ) : (
     <tr key={it.id || i}>
+      <td style={{ textAlign: 'center', padding: '9px 4px', borderBottom: '1px solid #eee', color: '#6a6f85' }}>{itemNumbers.get(it)}</td>
       <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line' }}>{it.description}</td>
-      <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')} {it.unit || ''}</td>
+      <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')}</td>
+      <td style={{ textAlign: 'center', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.unit || ''}</td>
       {isSplit ? (
         <>
           <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price_material)}</td>
@@ -796,26 +883,32 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
   // renderTableHeader/renderRow's column order+count exactly.
   const renderColGroup = () => isSplit ? (
     <colgroup>
-      <col style={{ width: '42%' }} />
-      <col style={{ width: '13%' }} />
-      <col style={{ width: '13%' }} />
-      <col style={{ width: '13%' }} />
-      <col style={{ width: '19%' }} />
+      <col style={{ width: '5%' }} />
+      <col style={{ width: '29%' }} />
+      <col style={{ width: '10%' }} />
+      <col style={{ width: '8%' }} />
+      <col style={{ width: '15%' }} />
+      <col style={{ width: '15%' }} />
+      <col style={{ width: '18%' }} />
     </colgroup>
   ) : (
     <colgroup>
-      <col style={{ width: '46%' }} />
-      <col style={{ width: '17%' }} />
-      <col style={{ width: '18%' }} />
+      <col style={{ width: '5%' }} />
+      <col style={{ width: '35%' }} />
+      <col style={{ width: '11%' }} />
+      <col style={{ width: '9%' }} />
       <col style={{ width: '19%' }} />
+      <col style={{ width: '21%' }} />
     </colgroup>
   )
 
   const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
   const renderTableHeader = () => (
     <tr>
+      <th style={{ ...thStyle, textAlign: 'center', width: 30 }}>ที่</th>
       <th style={{ ...thStyle, textAlign: 'left' }}>รายการ</th>
       <th style={thStyle}>จำนวน</th>
+      <th style={{ ...thStyle, textAlign: 'center' }}>หน่วย</th>
       {isSplit ? (
         <>
           <th style={thStyle}>ค่าของ/หน่วย</th>
@@ -828,8 +921,10 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
     </tr>
   )
 
-  const netAmount = totalsAmount - withholdingTaxAmount - depositDeductionAmount
-  const hasDeductions = withholdingTaxAmount > 0 || depositDeductionAmount > 0
+  // depositBeforeVat: the deposit is already inside totalsAmount (shown above the VAT line), so it is not deducted again below
+  const deductedBelow = depositBeforeVat ? 0 : depositDeductionAmount
+  const netAmount = totalsAmount - withholdingTaxAmount - deductedBelow
+  const hasDeductions = withholdingTaxAmount > 0 || deductedBelow > 0
 
   // สรุป box (totals) + caller-supplied notesBlock + signature grid --
   // rendered ONLY on the true last page, but also handed to
@@ -863,7 +958,14 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าแรง</span><span>{fmt(materialLabor.labor)} บาท</span></div>
                 </>
               )}
-              {subtotal != null && (
+              {subtotal != null && depositBeforeVat && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมงวดนี้ (ก่อน VAT)</span><span>{fmt(subtotal)} บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>หักเงินมัดจำ{depositDeductionPct ? ` (${depositDeductionPct}%)` : ''}</span><span>({fmt(depositDeductionAmount)}) บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontWeight: 600 }}><span style={{ color: '#6a6f85' }}>รวมเบิก หลังหักมัดจำ</span><span>{fmt(subtotal - depositDeductionAmount)} บาท</span></div>
+                </>
+              )}
+              {subtotal != null && !depositBeforeVat && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>มูลค่าที่คำนวณภาษี 7%</span><span>{fmt(subtotal)} บาท</span></div>
               )}
               {hasVat && vat != null && (
@@ -888,7 +990,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
                     <span>({fmt(withholdingTaxAmount)})</span>
                   </div>
                 )}
-                {depositDeductionAmount > 0 && (
+                {deductedBelow > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#c0392b' }}>
                     <span>หักเงินมัดจำ ({depositDeductionPct}%){isDepositEstimate ? ' (ประมาณการ)' : ''}</span>
                     <span>({fmt(depositDeductionAmount)})</span>
@@ -908,7 +1010,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
         {/* footerBoxOffset stays a real margin here (not fighting a
             flex-grow sibling for it -- see the block comment above for
             why the spacer moved to the top of this whole group instead). */}
-        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, textAlign: 'center', fontSize: 11.5 }}>
+        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, textAlign: 'center', fontSize: 11.5 }}>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
@@ -917,6 +1019,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
             {myWorkerName && (
               <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
             )}
+            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>วันที่ ........../........../..........</div>
           </div>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -928,10 +1031,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
                 {recipientSignature.signerName} · เซ็นเมื่อ {new Date(recipientSignature.signedAt).toLocaleDateString('th-TH')}
               </div>
             )}
-          </div>
-          <div>
-            <div style={{ height: 40, border: '1px dashed #ccc', borderRadius: 6 }} />
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8, marginTop: 8 }}>ตราประทับ</div>
+            {!recipientSignature && <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>วันที่ ........../........../..........</div>}
           </div>
         </div>
       </div>
@@ -1109,6 +1209,11 @@ function computeDepositDeduction(invoice, depositBalance) {
     return { amount: income.deposit_deduction, pct, isEstimate: false }
   }
   if (invoice.status === 'void') return { amount: 0, pct: 0, isEstimate: false }
+  // เลือกไว้ตอนสร้างใบ (migration 2026-10-09-07) -- เป็นยอดที่ตั้งใจ ไม่ใช่ประมาณการ (0 = ตั้งใจไม่หัก)
+  if (invoice.deposit_deduction_amount != null) {
+    const chosen = Number(invoice.deposit_deduction_amount) || 0
+    return { amount: chosen, pct: invoice.subtotal > 0 ? round2(chosen / invoice.subtotal * 100) : 0, isEstimate: false }
+  }
   const defaultPct = invoice.sites?.default_deposit_pct || 0
   if (defaultPct > 0 && depositBalance?.remaining_balance > 0) {
     const amount = calcDepositDeduction(invoice.subtotal, defaultPct, depositBalance.remaining_balance)
@@ -1136,9 +1241,12 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const client = invoice.quotations?.clients
   const { hasModuleAccess } = useTenant()
   const { data: depositTaxOffset } = useQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
-  const wht = computeWithholding(invoice, depositTaxOffset || 0)
+  const wht = computeWithholding(invoice, effectiveInvoiceTaxOffset(invoice, depositTaxOffset))
   const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
   const deposit = computeDepositDeduction(invoice, depositBalance)
+  // ใบที่เลือกยอดหักมัดจำตอนสร้าง: เอกสารแสดงหักมัดจำก่อน VAT ใช้ยอดที่เลือกไว้ ณ วันออกใบ (VAT คิดจากยอดนี้ไปแล้ว)
+  const chosenDeposit = !invoice.is_deposit && invoice.deposit_deduction_amount != null ? Number(invoice.deposit_deduction_amount) || 0 : 0
+  const depositBeforeVat = chosenDeposit > 0
   const { data: receipt } = useDocumentReceipt('invoice', invoice.id)
   const [signatureUrl, setSignatureUrl] = useState(null)
   const [titleVariant, setTitleVariant] = useState('invoice')
@@ -1188,6 +1296,11 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   return (
     <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
+        {BILLING_MODE_LABELS[invoice.billing_mode] && (
+          <div style={{ marginBottom: 8 }}>
+            <span className="badge" style={{ fontSize: 11 }}>โหมด: {BILLING_MODE_LABELS[invoice.billing_mode]}</span>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           {INVOICE_TITLE_OPTIONS.map(o => (
             <button key={o.value} type="button" className={`btn btn-sm ${titleVariant === o.value ? 'btn-primary' : 'btn-ghost'}`}
@@ -1217,7 +1330,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
         <div style={{ overflow: 'auto', margin: '0 -24px' }}>
           <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
             <DocumentPaper
-              elementId={elementId} tenant={tenant} title={docTitle} tag={printTag}
+              elementId={elementId} tenant={tenant} title={docTitle} tag={printTag} signerEmail={invoice.created_by ?? null}
               infoFields={[
                 { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
                 { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
@@ -1225,10 +1338,13 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
                 { label: 'โครงการ', value: invoice.sites?.name || '—' },
               ]}
               clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
-              items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
+              items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoiceBillingTotal(invoice)}
               subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
               withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-              depositDeductionPct={deposit.pct} depositDeductionAmount={deposit.amount} isDepositEstimate={deposit.isEstimate}
+              depositDeductionPct={depositBeforeVat ? round2(chosenDeposit / (invoice.subtotal || 1) * 100) : deposit.pct}
+              depositDeductionAmount={depositBeforeVat ? chosenDeposit : deposit.amount}
+              isDepositEstimate={depositBeforeVat ? false : deposit.isEstimate}
+              depositBeforeVat={depositBeforeVat}
               notesBlock={bankAccount && (
                 <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
                   <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
@@ -1293,9 +1409,12 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const client = invoice.quotations?.clients
   const { hasModuleAccess } = useTenant()
   const { data: depositTaxOffset } = useQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
-  const wht = computeWithholding(invoice, depositTaxOffset || 0)
+  const wht = computeWithholding(invoice, effectiveInvoiceTaxOffset(invoice, depositTaxOffset))
   const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
   const deposit = computeDepositDeduction(invoice, depositBalance)
+  // เหมือนใบแจ้งหนี้: ใบที่เลือกยอดหักมัดจำไว้ตอนสร้าง แสดงหักมัดจำก่อน VAT (receipt.amount = invoice.total ก่อนหักมัดจำ)
+  const chosenDeposit = !invoice.is_deposit && invoice.deposit_deduction_amount != null ? Number(invoice.deposit_deduction_amount) || 0 : 0
+  const depositBeforeVat = chosenDeposit > 0
   const [titleVariant, setTitleVariant] = useState('receipt')
   const variant = RECEIPT_TITLE_OPTIONS.find(o => o.value === titleVariant)
 
@@ -1332,7 +1451,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
         <div style={{ overflow: 'auto', margin: '0 -24px' }}>
           <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
             <DocumentPaper
-              elementId={elementId} tenant={tenant} title={variant.title} tag={printTag}
+              elementId={elementId} tenant={tenant} title={variant.title} tag={printTag} signerEmail={receipt.created_by ?? null}
               infoFields={[
                 { label: variant.numberLabel, value: receipt[variant.numberField] },
                 { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
@@ -1340,10 +1459,13 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
                 { label: 'โครงการ', value: invoice.sites?.name || '—' },
               ]}
               clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
-              items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
+              items={items} totalsLabel="รวมรับชำระ" totalsAmount={depositBeforeVat ? invoiceBillingTotal(invoice) : receipt.amount}
               subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
               withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-              depositDeductionPct={deposit.pct} depositDeductionAmount={deposit.amount} isDepositEstimate={deposit.isEstimate}
+              depositDeductionPct={depositBeforeVat ? round2(chosenDeposit / (invoice.subtotal || 1) * 100) : deposit.pct}
+              depositDeductionAmount={depositBeforeVat ? chosenDeposit : deposit.amount}
+              isDepositEstimate={depositBeforeVat ? false : deposit.isEstimate}
+              depositBeforeVat={depositBeforeVat}
               notesBlock={null}
               signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
               onPageCountChange={setPageCount}
@@ -1523,7 +1645,8 @@ const PAGE_HEIGHT_MM = 270
 function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
   const elementId = `work-photos-doc-${invoice.id}`
   const client = invoice.quotations?.clients
-  const mySignature = useMySignatureUrl()
+  const signer = useDocumentSigner(invoice.created_by ?? null)
+  const mySignature = signer?.url ? { url: signer.url } : null
   const pages = []
   for (let i = 0; i < photos.length; i += PHOTOS_PER_PAGE) pages.push(photos.slice(i, i + PHOTOS_PER_PAGE))
   if (!pages.length) pages.push([])
@@ -1619,8 +1742,11 @@ function MarkPaidModal({ invoice, onConfirm, onCancel }) {
   const { hasModuleAccess } = useTenant()
   const depositEligible = !invoice.is_deposit && hasModuleAccess('client_deposits')
   const { data: depositBalance } = useSiteDepositBalance(depositEligible ? invoice.site_id : null)
+  const chosenDeposit = invoice.deposit_deduction_amount != null ? Number(invoice.deposit_deduction_amount) || 0 : null
   const suggestedDeposit = depositBalance
-    ? calcDepositDeduction(invoice.subtotal, invoice.sites?.default_deposit_pct || 0, depositBalance.remaining_balance)
+    ? (chosenDeposit != null
+        ? Math.min(chosenDeposit, Math.max(0, depositBalance.remaining_balance || 0))
+        : calcDepositDeduction(invoice.subtotal, invoice.sites?.default_deposit_pct || 0, depositBalance.remaining_balance))
     : 0
   // Pre-fill once the real balance loads, then leave it alone -- a plain
   // `value={suggestedDeposit}` would snap the user's edit back to the
@@ -1650,7 +1776,7 @@ function MarkPaidModal({ invoice, onConfirm, onCancel }) {
               value={depositInput ?? ''} onChange={e => setDepositInput(e.target.value)}
             />
             <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>
-              ค่าเริ่มต้น {fmt(suggestedDeposit)} บาท ({invoice.sites?.default_deposit_pct || 0}% ของยอดก่อน VAT) — มัดจำคงเหลืออยู่ {fmt(depositBalance.remaining_balance)} บาท
+              ค่าเริ่มต้น {fmt(suggestedDeposit)} บาท ({chosenDeposit != null ? 'ยอดที่เลือกไว้ตอนสร้างใบ' : `${invoice.sites?.default_deposit_pct || 0}% ของยอดก่อน VAT`}) — มัดจำคงเหลืออยู่ {fmt(depositBalance.remaining_balance)} บาท
               {' '}เช่น ถ้ายอดนี้เคยถูกหัก ณ ที่จ่ายไปแล้วบางส่วนตอนรับมัดจำ จะลดยอดหักมัดจำตรงนี้ลงเพื่อไม่ให้ซ้ำซ้อนกันก็ได้
             </div>
           </div>
@@ -1702,7 +1828,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
     date:           inv => inv.date || '',
     site:           inv => inv.sites?.name || '',
     client:         inv => inv.quotations?.clients?.name || '',
-    total:          inv => inv.total || 0,
+    total:          inv => invoiceBillingTotal(inv),
     status:         inv => inv.status || '',
   }
   const sortedInvoices = useMemo(() => {
@@ -1738,6 +1864,8 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [receiptRow, setReceiptRow] = useState(null)
   const [photosRow, setPhotosRow] = useState(null)
   const [linkTarget, setLinkTarget] = useState(null)
+  const [drRow, setDrRow] = useState(null)
+  const { map: drMap, refetch: refetchDr } = useDeliveryReportStatuses(sortedInvoices.filter(i => i.site_id).map(i => i.id), { canEdit })
   // แยก state คนละก้อนกับ photosRow เพราะ Modal ของแอปนี้ไม่รองรับ modal
   // ซ้อน modal (ดูคอมเมนต์ใน Modal.jsx) -- คลิก "พิมพ์เอกสาร" ในโมดัลจัดการรูป
   // จึงต้องปิดโมดัลนั้นแล้วเปิดโมดัลพิมพ์แทนที่ ไม่ใช่เปิดซ้อนกัน
@@ -1802,9 +1930,16 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         // same quotation. Retention is deliberately NOT adjusted here --
         // it's a holdback against the full delivered contract value, not
         // a tax, so deposit timing doesn't affect its base.
+        // ใบที่เลือกยอดหักมัดจำตอนสร้าง (deposit_deduction_amount) ใช้ส่วนที่ตัดฐานภาษีจริงของใบนั้นเอง
+        // ใบเก่าคงพฤติกรรมเดิม (ภาษีมัดจำที่ยังไม่ถูกใช้ ณ ตอนนี้)
         const depositTaxOffset = invoice.is_deposit
           ? 0
-          : await getQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
+          : effectiveInvoiceTaxOffset(
+              invoice,
+              invoice.deposit_deduction_amount != null
+                ? 0
+                : await getQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id),
+            )
         const whtBase = Math.max(0, noVat - depositTaxOffset)
         // invoice.wht_pct (set once, at invoice-creation time -- see
         // CreateInvoiceModal's handleSave) wins over the site's CURRENT
@@ -1839,7 +1974,9 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
             const balance = Math.max(0, depositBalance.remaining_balance || 0)
             depositAmt = depositOverride != null
               ? Math.min(Math.max(0, depositOverride), balance)
-              : calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
+              : invoice.deposit_deduction_amount != null
+                ? Math.min(Number(invoice.deposit_deduction_amount) || 0, balance)
+                : calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
           }
         }
 
@@ -2023,12 +2160,19 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         {canEdit && <button className="btn btn-primary" onClick={() => setPickQuotation(true)}>+ สร้างใบแจ้งหนี้</button>}
         {canEdit && <button className="btn btn-ghost" onClick={() => setPickQuotationDeposit(true)}>+ สร้างใบมัดจำ</button>}
         <div style={{ flex: 1 }} />
+        <PhoneFilters title="ช่วงวันที่" count={dateFrom || dateTo ? 1 : 0}
+          summary={dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []}
+          onClear={() => { setDateFrom(''); setDateTo('') }}>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </PhoneFilters>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <PhoneFilters count={(siteId ? 1 : 0) + (status ? 1 : 0)}
+          summary={[...(siteId ? [{ label: 'ไซท์งาน', onRemove: () => setSiteId('') }] : []), ...(status ? [{ label: INV_STATUS_LABELS[status] || 'สถานะ', onRemove: () => setStatus('') }] : [])]}
+          onClear={() => { setSiteId(''); setStatus('') }}>
         <div style={{ minWidth: 200 }}>
           <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
         </div>
@@ -2036,6 +2180,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           <option value="">ทุกสถานะ</option>
           {INV_STATUSES.map(s => <option key={s} value={s}>{INV_STATUS_LABELS[s]}</option>)}
         </select>
+        </PhoneFilters>
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหาลูกค้า..." value={search} onChange={e => setSearch(e.target.value)} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={hideVoid} onChange={e => setHideVoid(e.target.checked)} />
@@ -2044,7 +2189,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -2071,17 +2216,17 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                   <td style={{ fontSize: 12 }}>{inv.quotations?.clients?.name || '—'}</td>
                   <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(inv.invoice_items || []).length} รายการ</td>
                   <td className="font-mono" style={{ fontWeight: 700 }}>
-                    {fmt(inv.total)}
+                    {fmt(invoiceBillingTotal(inv))}
                     {(() => {
-                      const wht = computeWithholding(inv)
+                      const wht = computeWithholding(inv, effectiveInvoiceTaxOffset(inv, 0))
                       return wht.amount > 0 ? (
                         <div style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>
-                          สุทธิ {fmt(inv.total - wht.amount)}{wht.isEstimate ? ' (ประมาณ)' : ''}
+                          สุทธิ {fmt(invoiceBillingTotal(inv) - wht.amount)}{wht.isEstimate ? ' (ประมาณ)' : ''}
                         </div>
                       ) : null
                     })()}
                   </td>
-                  <td><span className={`badge badge-${inv.status}`}>{INV_STATUS_LABELS[inv.status] || inv.status}</span></td>
+                  <td><span className={`badge badge-${inv.status}`}>{INV_STATUS_LABELS[inv.status] || inv.status}</span><DeliveryReportBadge report={drMap[inv.id]} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && inv.status === 'unpaid' && (
                       <button className="btn btn-sm btn-primary" disabled={payingId === inv.id} onClick={() => setPayRow(inv)}>
@@ -2093,6 +2238,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                       ...(canEdit && inv.status === 'unpaid' ? [{ label: '✕ ยกเลิก', onClick: () => setVoidRow(inv), danger: true }] : []),
                       ...(isOwner && inv.status === 'paid' ? [{ label: '↩️ ยกเลิกการชำระเงิน', onClick: () => setUnmarkPaidRow(inv), danger: true }] : []),
                       ...(inv.status === 'paid' ? [{ label: '🧾 ใบเสร็จ', onClick: () => setReceiptRow(inv) }] : []),
+                      ...(canEdit && inv.site_id ? [{ label: '📋 รายงานส่งงาน', onClick: () => setDrRow(inv) }] : []),
                       ...(canEdit ? [{ label: '📷 รูปประกอบการส่งงาน', onClick: () => setPhotosRow(inv) }] : []),
                       ...(canEdit ? [{ label: '🔗 ลิงก์เซ็นรับระยะไกล', onClick: () => setLinkTarget(inv) }] : []),
                     ]} />
@@ -2106,7 +2252,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {pickQuotation && (
@@ -2204,6 +2350,10 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           invoice={photosPrint.invoice} tenant={tenant} photos={photosPrint.photos} urls={photosPrint.urls}
           onClose={() => setPhotosPrint(null)}
         />
+      )}
+      {drRow && (
+        <DeliveryReportLauncher invoice={drRow} current={drMap[drRow.id] || null} tenantId={tenant?.id}
+          onClose={() => setDrRow(null)} onChanged={refetchDr} />
       )}
       {linkTarget && (
         <SignLinkModal documentType="invoice" documentId={linkTarget.id} onClose={() => setLinkTarget(null)} />

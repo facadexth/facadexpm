@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
         title: '🏦 เช็คใกล้ครบกำหนด',
         body: `${dueCheques.length} ใบ ครบกำหนดภายใน ${safeThresholdDays} วัน`,
         tab: 'cheques',
-      })
+      }, 'money')
     }
   }
 

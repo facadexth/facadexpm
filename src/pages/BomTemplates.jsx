@@ -29,6 +29,7 @@ import { defaultTestPick } from './bomTemplates/partEditorView.js'
 import JointsTab from './bomTemplates/JointsTab.jsx'
 import { useAddonTemplateState } from './bomTemplates/addon/addonTemplateGlue.js'
 import HardwarePackagesTab from './bomTemplates/HardwarePackagesTab.jsx'
+import CardTable from '../components/CardTable.jsx'
 import {
   catalogFamilies, templateTypeOptions, typeAllowsMixed, hardwarePartOptions, relinkAfterJointRemoved, validateComponentRows, orderJointIds,
   layoutLoadText,
@@ -662,7 +663,7 @@ export default function BomTemplates(props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div data-phone="chips" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'templates' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('templates')}>🧩 BOM Templates</button>
         {/* Legacy profile / colour lists are hidden so there is one list only (the catalog's).
             Restore these two buttons to bring them back; Phase 2 deletes them for good. */}
@@ -680,7 +681,7 @@ export default function BomTemplates(props) {
         <>
           {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditInfill(null); setShowInfillForm(true) }}>+ เพิ่มวัสดุอุดช่อง</button>}
           <div className="card">
-            <div className="table-wrap">
+            <CardTable>
               <table>
                 <thead><tr><th>ชื่อวัสดุ</th><th>ประเภท</th><th>ราคา/ตร.ม.</th><th>สถานะ</th><th></th></tr></thead>
                 <tbody>
@@ -703,7 +704,7 @@ export default function BomTemplates(props) {
                   {!(infillTypes || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีวัสดุอุดช่อง</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           </div>
         </>
       )}

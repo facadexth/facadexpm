@@ -2,10 +2,16 @@
 const W = window
 W.__log = W.__log || []
 const builder = (table) => {
+  let created = null
   const p = new Proxy(function () {}, {
     get(_, k) {
-      if (k === 'then') return res => Promise.resolve({ data: [], error: null }).then(res)
-      return (...a) => { if (['update', 'insert', 'delete'].includes(k)) W.__log.push([k, table, JSON.stringify(a[0] ?? null)]); return p }
+      if (k === 'then') return res => Promise.resolve({ data: created ?? [], error: null }).then(res)
+      return (...a) => {
+        if (['update', 'insert', 'delete'].includes(k)) W.__log.push([k, table, JSON.stringify(a[0] ?? null)])
+        // an inline-created supplier (QuickAddSelect insert + select + single) gets a fresh id that is NOT in the suppliers list
+        if (k === 'insert' && table === 'suppliers') created = { id: 'SNEW', name: a[0]?.name }
+        return p
+      }
     },
   })
   return p

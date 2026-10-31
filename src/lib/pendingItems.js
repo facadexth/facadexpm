@@ -4,11 +4,25 @@
 
 export const PENDING_ITEMS = [
   { key: 'leave_pending',       icon: '🏖️', label: 'คำขอลารออนุมัติ',                    tab: 'hr' },
+  { key: 'advances_pending',    icon: '💸', label: 'คำขอเบิกเงินรออนุมัติ',                tab: 'hr' },
   { key: 'po_draft',            icon: '📦', label: 'ใบสั่งซื้อฉบับร่าง รอเลือกซัพพลายเออร์', tab: 'purchase_orders' },
   // The list of ALL open problem reports is on the Communication Center page (owner only);
   // an ADMIN, who cannot open it, is sent to the Sites page, where each day's reports are.
   { key: 'issues_open',         icon: '🚧', label: 'แจ้งปัญหาจากหน้างานที่ยังไม่แก้',        tab: 'communication_center', fallbackTabs: ['sites'] },
   { key: 'cheques_due',         icon: '🏦', label: 'เช็คใกล้ครบกำหนด',                    tab: 'cheques' },
+  // OWNER only in practice: the Communication Center is owner-only and there is no fallback page.
+  { key: 'offboarded_in_group', icon: '⚠️', label: 'ช่างพ้นสภาพ รอลบออกจากกลุ่ม LINE', tab: 'communication_center' },
+  // Customers who messaged the tenant's own LINE OA asking for a quote or a repair (owner only in practice,
+  // like offboarded_in_group: the Communication Center is owner-only).
+  { key: 'customer_requests_open', icon: '💬', label: 'ลูกค้าทักทาง LINE', tab: 'communication_center' },
+  { key: 'warranty_followup', icon: '🛡️', label: 'ประกันใกล้หมด — ทักลูกค้า', tab: 'sites' },
+  // Repair reports from customers (LINE) waiting for a yes/no on the งานซ่อม board (admin/owner, module line_bot).
+  { key: 'repair_pending', icon: '🔧', label: 'งานซ่อมรอพิจารณา', tab: 'repairs' },
+  // Accepted repair tickets (received / scheduled / in_progress) the customer added photos or details to
+  // from LINE since staff last opened them (admin/owner). pending_review ones are already in repair_pending.
+  { key: 'repair_customer_update', icon: '🆕', label: 'ลูกค้าเพิ่มข้อมูลงานซ่อม', tab: 'repairs' },
+  // Delivery reports (รายงานส่งงาน) the customer signed that staff haven't opened yet (signed_seen_at null).
+  { key: 'delivery_report_signed', icon: '✍️', label: 'ลูกค้าเซ็นรับงานแล้ว', tab: 'invoices' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา',          tab: 'quotations' },
 ]
 
@@ -46,4 +60,24 @@ export function badgeForTab(tab, byTab) {
 export function formatBadge(n) {
   if (!n || n < 1) return ''
   return n > 99 ? '99+' : String(n)
+}
+
+export function pendingItemByKey(key) {
+  return PENDING_ITEMS.find(i => i.key === key) || null
+}
+
+// Which page a notification about `key` opens for THIS user: the item's own page, then
+// its fallbacks, whichever the user can see first. Unknown key or nothing visible ->
+// the tab the push payload named (the app's access gate redirects if even that is closed).
+export function resolvePendingTab(key, canSeeTab, fallbackTab = null) {
+  const item = pendingItemByKey(key)
+  if (!item) return fallbackTab
+  return [item.tab, ...(item.fallbackTabs || [])].find(canSeeTab) || fallbackTab
+}
+
+// A closed app is launched from a Web Push tap at `/#tab=<id>&pending=<key>` (push-handler.js).
+export function parsePushHash(hash) {
+  const m = /^#tab=([\w-]+)(?:&pending=([\w-]+))?$/.exec(hash || '')
+  if (!m) return null
+  return { tab: m[1], pending: pendingItemByKey(m[2]) ? m[2] : null }
 }

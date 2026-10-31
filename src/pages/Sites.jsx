@@ -8,8 +8,11 @@
 // ✅ Labor cost แยกช่างบริษัท vs sub-contract
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
-import { fetchAllRows } from '../lib/fetchAllRows.js'
+import { autoShortName } from '../lib/siteShortName.js'
+import { ASSEMBLY_MODE_OPTIONS, assemblyModeField } from '../lib/siteAssemblyMode.js'
 import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, usePhaseTasks } from '../hooks/useSupabase.js'
 import GanttView from './sites/GanttView.jsx'
 import { summarizeTasks } from './sites/phaseTasksCalc.js'
@@ -17,15 +20,27 @@ import { PencilIcon, LinkIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { canManageSites, canSeeMoney, isPm } from '../lib/roles.js'
 import { useTenant } from '../hooks/useTenant.js'
 import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
+import { warrantyEnd } from '../lib/warranty.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import WarrantyFollowupCard from '../components/WarrantyFollowupCard.jsx'
+import FinishSiteModal from '../components/FinishSiteModal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
+import CardTable from '../components/CardTable.jsx'
+import MoreActions from '../components/MoreActions.jsx'
+import SitePhoneCards from '../components/phone/SitePhoneCards.jsx'
+import { useIsPhone } from '../hooks/useIsPhone.js'
+
+// Phone card layout of the sites table (CardTable): inferred roles would pick รหัส as the title, so say it explicitly.
+const SITES_CARD_MAP = { title: 'ชื่อไซท์งาน', sub: ['รหัส'], amount: 'มูลค่าสัญญา', status: 'สถานะ', actions: 'last' }
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { loadOrigin, fetchRoute, routeErrorMessage } from '../lib/siteRoute.js'
+import { formatThaiDate } from '../lib/thaiDate.js'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -43,16 +58,18 @@ const COST_TYPES = [
 ]
 
 const EMPTY_FORM = {
-  name: '', client_id: '', location: '',
+  name: '', short_name: '', client_id: '', location: '',
   distance_km: '', travel_minutes: '', map_url: '', lat: '', lng: '',
   status: 'Ongoing', start_date: '', end_date: '',
   has_vat: true, contract_value_no_vat: '', notes: '',
   default_vat_pct: 7, default_tax_withheld_pct: 3, default_retention_pct: 0,
-  default_retention_period_days: '', default_deposit_pct: 0,
+  default_deposit_pct: 0, warranty_months: 12, handover_date: '',
   ...Object.fromEntries(COST_TYPES.map(t => [t.key, '']))
 }
 
 const VAT_RATE = 0.07
+
+const WARRANTY_CHIPS = [6, 12, 24, 60]
 
 /**
  * Build the `sites` insert/update payload from a SiteForm form object.
@@ -66,6 +83,7 @@ export function siteFormToPayload(form) {
   const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
   return {
     name:           form.name,
+    short_name:     (form.short_name || '').trim() || null,
     client_id:      form.client_id || null,
     location:       form.location || null,
     distance_km:    parseFloat(form.distance_km) || null,
@@ -82,17 +100,45 @@ export function siteFormToPayload(form) {
     default_vat_pct:           form.default_vat_pct === '' ? null : parseFloat(form.default_vat_pct),
     default_tax_withheld_pct:  form.default_tax_withheld_pct === '' ? null : parseFloat(form.default_tax_withheld_pct),
     default_retention_pct:     form.default_retention_pct === '' ? null : parseFloat(form.default_retention_pct),
-    default_retention_period_days: form.default_retention_period_days === '' ? null : parseInt(form.default_retention_period_days, 10),
     default_deposit_pct:       form.default_deposit_pct === '' ? null : parseFloat(form.default_deposit_pct),
     notes:          form.notes || null,
+    warranty_months: (() => { const n = parseInt(form.warranty_months, 10); return Number.isNaN(n) ? 12 : n })(),
+    handover_date:  form.handover_date || null,
+    ...assemblyModeField(form),
     ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
   }
 }
 
-export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat, onClientCreated, inventoryCategories = [], siteCostEstimates = [] }) {
+// The only site fields a PM may change (mirrors pm_update_site's whitelist).
+const PM_SITE_KEYS = ['name', 'short_name', 'status', 'start_date', 'end_date', 'location', 'map_url', 'lat', 'lng', 'distance_km', 'travel_minutes', 'notes']
+
+/** PM save: the allowed fields whose value differs from the site as loaded. */
+export function pmSitePatch(site, form) {
+  const clean = v => (typeof v === 'number' && Number.isNaN(v) ? null : v)
+  const before = siteFormToPayload({ ...EMPTY_FORM, ...site })
+  const after = siteFormToPayload(form)
+  const patch = {}
+  for (const k of PM_SITE_KEYS) {
+    if (clean(after[k]) !== clean(before[k])) patch[k] = clean(after[k])
+  }
+  return patch
+}
+
+export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat, onClientCreated, inventoryCategories = [], siteCostEstimates = [], pmMode = false }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // sites.assembly_mode is not in the site list view, so an edit form loads it on its own
+  // (assemblyModeField skips the column until it is loaded, so a save never clears it).
+  useEffect(() => {
+    if (pmMode || !initial?.id || initial.assembly_mode !== undefined) return
+    let cancelled = false
+    supabase.from('sites').select('assembly_mode').eq('id', initial.id).maybeSingle().then(({ data, error }) => {
+      if (!cancelled && !error) setForm(f => ({ ...f, assembly_mode: data?.assembly_mode ?? '' }))
+    })
+    return () => { cancelled = true }
+  }, [initial?.id, pmMode])
 
   // "ดึงพิกัดจากลิงก์" -- resolves a pasted Google Maps link (full or
   // shortened, e.g. maps.app.goo.gl/xxxx) into lat/lng via
@@ -163,14 +209,19 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
   const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
 
   return (
-    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave({ ...form, cost_estimates: costEstimates }) }}>
+    <form onSubmit={e => {
+      e.preventDefault()
+      const wm = form.warranty_months === '' ? 12 : Number(form.warranty_months)
+      if (!Number.isInteger(wm) || wm < 0 || wm > 120) { alert('ระยะประกันต้องอยู่ระหว่าง 0 ถึง 120 เดือน'); return }
+      clearDraft(); onSave({ ...form, cost_estimates: costEstimates })
+    }}>
       <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
         <div className="form-grid-2">
           <div>
             <label className="label">ชื่อไซท์งาน ★</label>
             <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น NCP Tower B" />
           </div>
-          <div>
+          {!pmMode && <div>
             <label className="label">ลูกค้า / เจ้าของงาน</label>
             <QuickAddSelect
               value={form.client_id}
@@ -185,7 +236,11 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
               namePlaceholder="ชื่อลูกค้าใหม่"
               onCreated={onClientCreated}
             />
-          </div>
+          </div>}
+        </div>
+        <div>
+          <label className="label">ชื่อย่อ (ไม่บังคับ)</label>
+          <input className="input" maxLength={30} value={form.short_name ?? ''} onChange={e => set('short_name', e.target.value)} placeholder={autoShortName(form.name) || 'ใช้ชื่ออัตโนมัติจากชื่อไซท์งาน'} />
         </div>
         <div>
           <label className="label">ที่ตั้งโครงการ</label>
@@ -239,11 +294,30 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
         <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: -6, marginBottom: 12 }}>
           ต้องตั้งพิกัดก่อน พนักงานจึงจะเช็คอินที่ไซท์นี้ได้ — ยืนที่ไซท์งานแล้วกดปุ่ม "ใช้ตำแหน่งปัจจุบัน" ง่ายที่สุด
         </p>
+        {!pmMode && (
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">จุดเริ่มงานของช่าง (ไซท์นี้)</label>
+            <select className="select" style={{ maxWidth: 280 }} value={form.assembly_mode ?? ''}
+              disabled={!isAdd && form.assembly_mode === undefined}
+              onChange={e => set('assembly_mode', e.target.value)}>
+              {ASSEMBLY_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        )}
         <div className="form-grid-3">
           <div>
             <label className="label">สถานะ</label>
             <select className="select" value={form.status} onChange={e => set('status', e.target.value)}>
-              {STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
+              {pmMode ? <>
+                {/* PM cannot finish a site (that flow stamps end_date and moves leftover stock); an
+                    already-Completed site keeps its value as a disabled option so the select shows it */}
+                {initial.status === 'Completed' && <option disabled>Completed</option>}
+                {STATUS_OPTS.filter(s => s !== 'Completed').map(s => <option key={s}>{s}</option>)}
+              </> : STATUS_OPTS
+                // Finishing goes through FinishSiteModal (handover + warranty + stock); Completed is offered
+                // here only to keep an already-Completed site's value
+                .filter(s => s !== 'Completed' || initial.status === 'Completed')
+                .map(s => <option key={s}>{s}</option>)}
             </select>
             {sitesFull && (
               <div className="alert alert-warning" style={{ fontSize: 12, marginTop: 6 }}>
@@ -261,6 +335,44 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             <input type="date" className="input" value={form.end_date} onChange={e => set('end_date', e.target.value)} />
           </div>
         </div>
+        {!pmMode && (
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <label className="label">การรับประกันผลงาน</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <span style={{ fontSize: 13 }}>ระยะประกัน</span>
+              <input type="number" className="input input-sm" style={{ width: 80 }} min="0" max="120" step="1"
+                value={form.warranty_months}
+                onChange={e => {
+                  const v = e.target.value
+                  set('warranty_months', v === '' ? '' : String(Math.min(120, Math.max(0, parseInt(v, 10) || 0))))
+                }} />
+              <span style={{ fontSize: 13 }}>เดือน</span>
+              {WARRANTY_CHIPS.map(m => (
+                <button type="button" key={m}
+                  className={`btn btn-sm ${Number(form.warranty_months) === m ? 'btn-primary' : ''}`}
+                  onClick={() => set('warranty_months', String(m))}>{m}</button>
+              ))}
+            </div>
+            {form.status === 'Completed' ? (
+              <>
+                <div style={{ maxWidth: 220, marginBottom: 6 }}>
+                  <label className="label">วันส่งมอบ</label>
+                  <input type="date" className="input" value={form.handover_date || ''} onChange={e => set('handover_date', e.target.value)} />
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>
+                  {Number(form.warranty_months) === 0 ? 'ไม่มีประกัน' : (() => {
+                    const end = warrantyEnd(form.handover_date || null, Number(form.warranty_months))
+                    return end ? `ประกันถึง ${formatThaiDate(end)}` : 'ประกันถึง —'
+                  })()}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>ประกันเริ่มนับเมื่อกด จบไซท์งาน</div>
+            )}
+          </div>
+        )}
+        {/* PM (pmMode) never sees money: contract value, cost estimates and income defaults are left out */}
+        {!pmMode && <>
         <div>
           <label className="label">มูลค่าสัญญา</label>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
@@ -347,11 +459,6 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
               <input type="number" className="input input-sm" min="0" step="0.01"
                 value={form.default_retention_pct} onChange={e => set('default_retention_pct', e.target.value)} placeholder="0" />
             </div>
-            <div>
-              <label className="label">ระยะเวลา retention (วัน)</label>
-              <input type="number" className="input input-sm" min="0" step="1"
-                value={form.default_retention_period_days} onChange={e => set('default_retention_period_days', e.target.value)} placeholder="เช่น 90" />
-            </div>
             {hasModuleAccess('client_deposits') && (
               <div>
                 <label className="label">มัดจำ (%)</label>
@@ -361,6 +468,7 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             )}
           </div>
         </div>
+        </>}
 
         <div>
           <label className="label">หมายเหตุ</label>
@@ -377,124 +485,12 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
   )
 }
 
-// Site completion with linked stock: per spec decision #6, the job keeps
-// 100% of its original cost -- leftover material re-enters stock at
-// unit_cost = 0 (it's already fully expensed). Modeled as a transfer_out
-// at this site paired with a transfer_in at the tenant's "ส่วนกลาง"
-// (central) site, both posted via record_stock_movement() so the
-// weighted-average recalculation happens atomically for each.
-function SiteCompleteModal({ site, onClose, onDone }) {
-  const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState([])
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
-
-  const loadRows = async () => {
-    let data
-    try {
-      data = await fetchAllRows(() => supabase
-        .from('inventory_stock_balances')
-        .select('inventory_item_id, quantity_on_hand, inventory_items(name, base_unit)')
-        .eq('site_id', site.id)
-        .gt('quantity_on_hand', 0)
-        .order('inventory_item_id'))
-    } catch (err) { setError(err.message); return }
-    setRows((data || []).map(r => ({
-      inventory_item_id: r.inventory_item_id,
-      name: r.inventory_items?.name,
-      base_unit: r.inventory_items?.base_unit,
-      quantity_on_hand: r.quantity_on_hand,
-      leftover: String(r.quantity_on_hand),
-    })))
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      await loadRows()
-      if (cancelled) return
-      setLoading(false)
-    })()
-    return () => { cancelled = true }
-  }, [site.id])
-
-  const setLeftover = (id, v) => setRows(rs => rs.map(r => r.inventory_item_id === id ? { ...r, leftover: v } : r))
-
-  const handleConfirm = async () => {
-    setSaving(true)
-    setError(null)
-    try {
-      const toTransfer = rows.filter(r => (parseFloat(r.leftover) || 0) > 0)
-      if (toTransfer.length) {
-        const { data: central, error: centralErr } = await supabase
-          .from('sites').select('id').eq('name', 'ส่วนกลาง').limit(1)
-        if (centralErr) throw centralErr
-        const centralId = central?.[0]?.id
-        if (!centralId) {
-          throw new Error('ไม่พบไซท์งานชื่อ "ส่วนกลาง" — กรุณาสร้างไซท์งานชื่อนี้ก่อน เพื่อใช้เป็นที่รับวัสดุที่เหลือกลับเข้าสต็อกกลาง')
-        }
-        for (const r of toTransfer) {
-          const qty = parseFloat(r.leftover) || 0
-          const { error: outErr } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: r.inventory_item_id, p_site_id: site.id, p_movement_type: 'transfer_out',
-            p_quantity: qty, p_unit_cost: null, p_reference_type: 'site_completion', p_reference_id: site.id, p_notes: null,
-          })
-          if (outErr) throw outErr
-          const { error: inErr } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: r.inventory_item_id, p_site_id: centralId, p_movement_type: 'transfer_in',
-            p_quantity: qty, p_unit_cost: 0, p_reference_type: 'site_completion', p_reference_id: site.id, p_notes: null,
-          })
-          if (inErr) throw inErr
-        }
-      }
-      const { error: siteErr } = await supabase.from('sites')
-        .update({ status: 'Completed', end_date: new Date().toISOString().slice(0, 10) }).eq('id', site.id)
-      if (siteErr) throw siteErr
-      onDone()
-    } catch (e) {
-      // Refresh rows from the live DB before surfacing the error: any item
-      // whose transfer_out/transfer_in already succeeded this attempt now has
-      // less/zero balance at this site, so a retry only reprocesses what's
-      // actually still on hand (see final-review Fix 1).
-      await loadRows()
-      setError(e.message)
-    }
-    finally { setSaving(false) }
-  }
-
-  return (
-    <Modal title={`จบไซท์งาน — ${site.name}`} onClose={onClose} maxWidth={560}>
-      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
-        <p style={{ color: 'var(--text2)', fontSize: 13 }}>
-          ไซท์นี้มีวัสดุคงคลังค้างอยู่ — กรอกจำนวนที่เหลือจริงต่อรายการ (ถ้าใช้หมดแล้วให้ใส่ 0) เพื่อโอนเข้าสต็อกกลาง (ส่วนกลาง) ที่ต้นทุน 0 บาท (งานนี้รับรู้ต้นทุนเต็มจำนวนไปแล้ว)
-        </p>
-        {loading ? <div>⏳ กำลังโหลด...</div> : (
-          <div style={{ display: 'grid', gap: 8 }}>
-            {rows.map(r => (
-              <div key={r.inventory_item_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13 }}>{r.name} (มี {fmt(r.quantity_on_hand)} {r.base_unit})</span>
-                <input className="input input-sm num-spin" style={{ width: 100 }} type="number" min="0" step="any" max={r.quantity_on_hand}
-                  value={r.leftover} onChange={e => setLeftover(r.inventory_item_id, e.target.value)} />
-              </div>
-            ))}
-            {!rows.length && <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่มีวัสดุคงคลังค้างอยู่ที่ไซท์นี้</div>}
-          </div>
-        )}
-        {error && <div className="alert alert-error">{error}</div>}
-      </div>
-      <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
-        <button type="button" className="btn btn-primary" disabled={saving || loading} onClick={handleConfirm}>
-          {saving ? '⏳...' : '✅ ยืนยันจบไซท์งาน'}
-        </button>
-      </div>
-    </Modal>
-  )
-}
-
-export default function Sites({ navigateTo, openSiteOverview }) {
-  const { isAtLeast, role } = useUserRole()
-  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
+export default function Sites({ navigateTo, openSiteOverview, navState }) {
+  const isPhone = useIsPhone()
+  const { role } = useUserRole()
+  const canEdit = canManageSites(role) && canEditPage(role, 'sites')
+  const pm = isPm(role) // PM edits existing sites only, without money fields
+  const showMoney = canSeeMoney(role)
   const { tenant, hasModuleAccess } = useTenant()
   const { data: sites, refetch } = useSites()
   const { data: allPhaseTasks } = usePhaseTasks() // only fetched for the 🗂 Kanban summary subtab below
@@ -509,17 +505,33 @@ export default function Sites({ navigateTo, openSiteOverview }) {
 
   const [showForm,    setShowForm]    = useState(false)
   const [editSite,    setEditSite]    = useState(null)     // site object to edit
-  const [completeId,  setCompleteId]  = useState(null)     // id to mark completed
+  // The list rows come from the site_financial_summary view, which does not carry the warranty
+  // columns, so fetch them from `sites` itself when opening the editor (not for PM: no RPC column).
+  const openEdit = async st => {
+    let extra = {}
+    if (!pm) {
+      const { data, error } = await supabase.from('sites').select('warranty_months, handover_date').eq('id', st.id).single()
+      if (error || !data) { alert('โหลดข้อมูลไซท์ไม่สำเร็จ: ' + (error?.message || 'ไม่พบข้อมูล')); return }
+      extra = data
+    }
+    setEditSite({ ...st, ...extra }); setShowForm(true)
+  }
   const [completeSite, setCompleteSite] = useState(null)
   const [deleteId,    setDeleteId]    = useState(null)
   const [saving,      setSaving]      = useState(false)
   const [showImport,  setShowImport]  = useState(false)
   const [toast,       setToast]       = useState(null)
   const [statusFilter, setStatusFilter] = useState('Ongoing')
+  // An ADMIN cannot open the Communication Center, so an issue-report notification lands here;
+  // the reports themselves are inside each site's daily report.
+  const issuesFocus = usePendingFocus(navState, 'issues_open')
   const [search,      setSearch]      = useState('')
   const [sortCol,     setSortCol]     = useState('last_activity_date')
   const [sortDir,     setSortDir]     = useState('desc')
   const [viewMode,      setViewMode]      = useState('table') // 'table' | 'gantt' | 'kanban'
+  // PM rows (pm_sites) carry no last_activity_date (it is derived from money
+  // activity), so PM has no กิจกรรมล่าสุด column and defaults to site code instead.
+  const sortKey = pm && sortCol === 'last_activity_date' ? 'site_number' : sortCol
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -536,21 +548,22 @@ export default function Sites({ navigateTo, openSiteOverview }) {
       .filter(s => !statusFilter || statusFilter === 'All' || s.status === statusFilter)
       .filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || s.site_number?.toLowerCase().includes(search.toLowerCase()))
     return [...rows].sort((a, b) => {
-      const va = a[sortCol] ?? ''
-      const vb = b[sortCol] ?? ''
+      const va = a[sortKey] ?? ''
+      const vb = b[sortKey] ?? ''
       if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
       return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
-  }, [sites, statusFilter, search, sortCol, sortDir])
+  }, [sites, statusFilter, search, sortKey, sortDir])
 
   const toggleSort = (col) => {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    if (sortKey === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
   }
-  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const si = (col) => sortKey === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   // ── Handlers ──
   const handleSave = async (form) => {
+    if (pm) return handlePmSave(form)
     setSaving(true)
     try {
       const payload = siteFormToPayload(form)
@@ -576,18 +589,21 @@ export default function Sites({ navigateTo, openSiteOverview }) {
     }
   }
 
-  const handleComplete = async () => {
-    if (!completeId) return
-    const { error } = await supabase.from('sites').update({ status: 'Completed', end_date: new Date().toISOString().slice(0,10) }).eq('id', completeId)
-    if (!error) { setCompleteId(null); refetch() }
-    else alert('Error: ' + error.message)
-  }
-
-  const handleCompleteClick = async (s) => {
-    const { data, error } = await supabase.from('inventory_stock_balances').select('id').eq('site_id', s.id).gt('quantity_on_hand', 0).limit(1)
-    if (error) { alert('Error: ' + error.message); return }
-    if (data?.length) setCompleteSite(s)
-    else setCompleteId(s.id)
+  const handlePmSave = async (form) => {
+    if (!editSite) return
+    setSaving(true)
+    try {
+      const patch = pmSitePatch(editSite, form)
+      if (Object.keys(patch).length) {
+        const { error } = await supabase.rpc('pm_update_site', { p_site_id: editSite.id, p_patch: patch })
+        if (error) throw error
+      }
+      setShowForm(false); setEditSite(null); refetch(); refetchSeat()
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDelete = async () => {
@@ -597,19 +613,30 @@ export default function Sites({ navigateTo, openSiteOverview }) {
     else alert('Error: ' + error.message)
   }
 
+  // Row ⋯ menu, shared by the table row and the phone card. PM gets none: completing and
+  // deleting write sites directly; a PM sets the status in the edit form instead.
+  const siteMenuItems = s => pm ? [] : [
+    ...(s.status === 'Ongoing' || s.status === 'On Hold' ? [{ label: '✅ จบไซท์งาน', onClick: () => setCompleteSite(s) }] : []),
+    { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
+  ]
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
+      {(role === 'OWNER' || role === 'ADMIN') && <WarrantyFollowupCard />}
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {canEdit && <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>}
-        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
-        <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
+        {canEdit && !pm && <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>}
+        <MoreActions>
+          {canEdit && !pm && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
+          <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
+        </MoreActions>
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัส..." value={search} onChange={e => setSearch(e.target.value)} />
         <select className="select select-sm" style={{ width: 140 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           {['All', ...STATUS_OPTS].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <PendingFocusChip focus={issuesFocus} pendingKey="issues_open" hint="เปิดไซท์ → รายงานประจำวัน เพื่อดูรายละเอียด" />
+        <div style={{ display: 'flex', gap: 4 }} data-phone="chips">
           <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
           <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>
           <button className={`btn btn-sm ${viewMode === 'kanban' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('kanban')}>🗂 Kanban</button>
@@ -627,22 +654,32 @@ export default function Sites({ navigateTo, openSiteOverview }) {
       )}
 
       {/* ── Table ── */}
-      {viewMode === 'table' && (
+      {viewMode === 'table' && isPhone && (
+        <SitePhoneCards
+          sites={filtered} toggleSort={toggleSort} sortIcon={si} canEdit={canEdit} showMoney={showMoney}
+          onOpen={st => navigateTo('site_detail', { siteId: st.id, siteName: st.name })}
+          onEdit={openEdit}
+          menuItems={siteMenuItems} countdown={countdown} fmtDate={fmtDate} PencilIcon={PencilIcon}
+        />
+      )}
+      {viewMode === 'table' && !isPhone && (
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={SITES_CARD_MAP}>
           <table>
             <thead>
               <tr>
                 <th className="sortable" onClick={() => toggleSort('site_number')}>รหัส{si('site_number')}</th>
                 <th className="sortable" onClick={() => toggleSort('name')}>ชื่อไซท์งาน{si('name')}</th>
                 <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
+                {showMoney && <>
                 <th className="sortable" onClick={() => toggleSort('contract_value')}>มูลค่าสัญญา{si('contract_value')}</th>
                 <th className="sortable" onClick={() => toggleSort('total_income')}>รายรับ (เบิก){si('total_income')}</th>
                 <th className="sortable" onClick={() => toggleSort('total_expense')}>รายจ่าย{si('total_expense')}</th>
                 <th className="sortable" onClick={() => toggleSort('gross_profit')}>กำไร{si('gross_profit')}</th>
                 <th className="sortable" onClick={() => toggleSort('billing_pct')}>% เบิก{si('billing_pct')}</th>
                 <th className="hide-tablet">ค่าแรงช่าง</th>
-                <th className="sortable hide-tablet" onClick={() => toggleSort('last_activity_date')}>กิจกรรมล่าสุด{si('last_activity_date')}</th>
+                </>}
+                {!pm && <th className="sortable hide-tablet" onClick={() => toggleSort('last_activity_date')}>กิจกรรมล่าสุด{si('last_activity_date')}</th>}
                 <th className="sortable hide-tablet" onClick={() => toggleSort('end_date')}>วันจบงาน{si('end_date')}</th>
                 <th></th>
               </tr>
@@ -678,6 +715,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                     <td>
                       <span className={`badge badge-status-${s.status?.toLowerCase().replace(' ','-')}`}>{s.status}</span>
                     </td>
+                    {showMoney && <>
                     <td className="font-mono" style={{ color: 'var(--text2)' }}>
                       {s.contract_value > 0
                         ? <>
@@ -727,9 +765,10 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                     >
                       {laborCost > 0 ? fmt(laborCost) : '—'}
                     </td>
-                    <td className="hide-tablet" style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
+                    </>}
+                    {!pm && <td className="hide-tablet" style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
                       {s.last_activity_date ? fmtDate(s.last_activity_date) : <span style={{ color: 'var(--text3)' }}>—</span>}
-                    </td>
+                    </td>}
                     <td className="hide-tablet">
                       {s.end_date ? (
                         <div>
@@ -745,11 +784,8 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {canEdit && (
                         <div className="actions-cell">
-                          <button className="btn btn-sm btn-edit" onClick={() => { setEditSite(s); setShowForm(true) }}><PencilIcon /></button>
-                          <RowActionsMenu items={[
-                            ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => handleCompleteClick(s) }] : []),
-                            { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
-                          ]} />
+                          <button className="btn btn-sm btn-edit" onClick={() => openEdit(s)}><PencilIcon /></button>
+                          <RowActionsMenu items={siteMenuItems(s)} />
                         </div>
                       )}
                     </td>
@@ -757,11 +793,11 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลไซท์งาน</td></tr>
+                <tr><td colSpan={showMoney ? 12 : 6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลไซท์งาน</td></tr>
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
       )}
 
@@ -857,10 +893,11 @@ export default function Sites({ navigateTo, openSiteOverview }) {
             seat={seat}
             inventoryCategories={inventoryCategories || []}
             siteCostEstimates={editSite ? (siteCostEstimates || []).filter(e => e.site_id === editSite.id) : []}
+            pmMode={pm}
           />
           {editSite && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <AttachmentsSection table="site_attachments" bucket="site-attachments" foreignKey="site_id" entityId={editSite.id} tenantId={tenant.id} />
+              <AttachmentsSection table="site_attachments" bucket="site-attachments" foreignKey="site_id" entityId={editSite.id} tenantId={tenant.id} customerVisibleKind="site_attachment" />
             </div>
           )}
           {!editSite && (
@@ -871,18 +908,8 @@ export default function Sites({ navigateTo, openSiteOverview }) {
         </Modal>
       )}
 
-      {/* ── Confirm Complete ── */}
-      {completeId && (
-        <ConfirmDialog
-          title="จบไซท์งาน"
-          message={`ยืนยันการจบงานไซท์นี้? สถานะจะเปลี่ยนเป็น Completed และบันทึกวันที่วันนี้เป็นวันจบงาน`}
-          onConfirm={handleComplete}
-          onCancel={() => setCompleteId(null)}
-        />
-      )}
-
       {completeSite && (
-        <SiteCompleteModal
+        <FinishSiteModal
           site={completeSite}
           onClose={() => setCompleteSite(null)}
           onDone={() => { setCompleteSite(null); refetch() }}

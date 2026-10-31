@@ -8,7 +8,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import {
   useLaborSubcontractors, useLaborContracts,
-  useAllLaborPayments, useSites, useMySignatureUrl, useMyWorkerName,
+  useAllLaborPayments, useSites, useDocumentSigner,
 } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
@@ -16,6 +16,8 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { thaiBahtText } from '../lib/thaiBahtText.js'
+import Wht50TawiForm from '../components/Wht50TawiForm.jsx'
+import { thaiDateParts } from '../lib/wht50tawi.js'
 
 const scSiteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -28,6 +30,8 @@ import { downloadPDF } from '../lib/pdf.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { readDraft, saveDraft, clearDraft, useDraftForm } from '../hooks/useDraftForm.js'
+import CardTable from '../components/CardTable.jsx'
+const LABOR_CONTRACTORS_CARD_MAP = { title: 'ชื่อผู้รับเหมา' }
 
 // ── Sub-tab 1: ผู้รับเหมา ─────────────────────────────────────
 
@@ -111,7 +115,7 @@ function SubcontractorTab() {
         <span style={{ color:'var(--text3)', fontSize:13 }}>{filtered.length} รายการ</span>
       </div>
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={LABOR_CONTRACTORS_CARD_MAP}>
           <table>
             <thead><tr>
               <th className="sortable" onClick={() => toggleSort('subcontractor_number')}>รหัส{si('subcontractor_number')}</th>
@@ -141,7 +145,7 @@ function SubcontractorTab() {
               {!filtered.length && <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--text3)', padding:24 }}>ยังไม่มีผู้รับเหมา</td></tr>}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {showForm && (
@@ -516,198 +520,38 @@ function PaymentModal({ contract, onClose }) {
 // ── Withholding Tax Certificate (หนังสือรับรองการหักภาษี ณ ที่จ่าย) ──
 // ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร -- issued per labor_payments row
 // (one certificate per payment, matching how each payment already
-// computes its own withholding_tax). ภ.ง.ด.3 only (individual payees) --
-// this codebase's labor subcontractors are individuals, not registered
-// companies, so the ภ.ง.ด.53 (juristic-person) checkbox never applies
-// here. Layout mirrors the official form's structure (two-party info
-// blocks, form-type checkboxes, the income-type table, Thai-words total,
-// signature) rather than reproducing its exact printed box coordinates --
-// legal validity depends on the required fields being present and
-// correct, not on pixel-matching the Revenue Department's own PDF.
+// computes its own withholding_tax). ภ.ง.ด.3 only (individual payees).
+// Printed on the Revenue Department's own form (Wht50TawiForm): the form is
+// the page background and each value is placed in its printed box.
 function WithholdingCertModal({ payment, onClose }) {
   const { tenant } = useTenant()
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
+  const signer = useDocumentSigner(payment.created_by ?? null)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
   const contract = payment.labor_contracts
   const sub = contract?.labor_subcontractors
   const elementId = `wht-cert-${payment.id}`
 
   const handleDownloadPDF = async () => {
-    await downloadPDF(elementId, `WHT-${payment.payment_number}.pdf`)
+    await downloadPDF(elementId, `WHT-${payment.payment_number}.pdf`, { margin: 0, scale: 3 })
   }
 
-  const idBoxes = (value, count) => {
-    const chars = (value || '').padEnd(count, ' ').slice(0, count)
-    return (
-      <div style={{ display: 'flex', gap: 2 }}>
-        {chars.split('').map((c, i) => (
-          <div key={i} style={{ width: 14, height: 17, border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontFamily: 'monospace' }}>{c.trim()}</div>
-        ))}
-      </div>
-    )
+  const payDate = thaiDateParts(payment.payment_date)
+  const signDate = thaiDateParts(payment.paid_date || payment.payment_date)
+  const data = {
+    runNo: payment.payment_number,
+    payerName: tenant?.company_name, payerAddress: tenant?.address, payerTaxId: tenant?.tax_id,
+    payeeName: sub?.name, payeeAddress: sub?.address, payeeTaxId: sub?.id_card_number,
+    payDate: payDate?.short, gross: payment.gross_amount, tax: payment.withholding_tax,
+    taxWords: thaiBahtText(payment.withholding_tax),
+    signatureUrl: mySignature?.url, signerName: myWorkerName,
+    signDay: signDate?.day, signMonth: signDate?.month, signYear: signDate?.year,
   }
 
-  // Sizing below is deliberately dense to match the official form's own
-  // typesetting and to fit on exactly one A4 page through html2pdf's
-  // width-fit scaling (10mm margins each side -> 190x277mm content area,
-  // so the element's rendered height:width ratio must stay <= 277/190 =
-  // 1.4579). Measured via a standalone Playwright harness at this exact
-  // width (680px) with realistic content: ~800px tall, ratio ~1.17 --
-  // comfortable headroom below the 1.4579 threshold. Don't loosen this
-  // without re-measuring; there's headroom but not unlimited.
   return (
-    <Modal title={`หนังสือรับรองการหักภาษี ณ ที่จ่าย — ${payment.payment_number}`} onClose={onClose} maxWidth={720}>
+    <Modal title={`หนังสือรับรองการหักภาษี ณ ที่จ่าย — ${payment.payment_number}`} onClose={onClose} maxWidth={860}>
       <div className="modal-body" style={{ overflow: 'auto' }}>
-        <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', width: 680, padding: '24px 28px', background: '#fff', color: '#111', fontSize: 11, lineHeight: 1.5, border: '1px solid #333' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: 9 }}>
-            <div>
-              <div>ฉบับที่ 1 (สำหรับผู้ถูกหักภาษี ณ ที่จ่าย ใช้แนบพร้อมกับแบบแสดงรายการภาษี)</div>
-              <div>ฉบับที่ 2 (สำหรับผู้ถูกหักภาษี ณ ที่จ่าย เก็บไว้เป็นหลักฐาน)</div>
-            </div>
-            <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-              <div>เล่มที่ .....................</div>
-              <div>เลขที่ {payment.payment_number}</div>
-            </div>
-          </div>
-          <div style={{ textAlign: 'center', margin: '0 0 8px' }}>
-            <div style={{ fontWeight: 800, fontSize: 13 }}>หนังสือรับรองการหักภาษี ณ ที่จ่าย</div>
-            <div style={{ fontSize: 10 }}>ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร</div>
-          </div>
-
-          <div style={{ border: '1px solid #333', padding: '6px 8px', marginBottom: 6 }}>
-            <div style={{ fontWeight: 700, marginBottom: 2 }}>ผู้มีหน้าที่หักภาษี ณ ที่จ่าย :-</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'start' }}>
-              <div>
-                <div>ชื่อ {tenant?.company_name}</div>
-                <div style={{ fontSize: 8, color: '#777' }}>(ให้ระบุว่าเป็น บุคคล นิติบุคคล บริษัท สมาคม หรือคณะบุคคล)</div>
-                <div>ที่อยู่ {tenant?.address || '—'}</div>
-                <div style={{ fontSize: 8, color: '#777' }}>(ให้ระบุชื่ออาคาร/หมู่บ้าน ห้องเลขที่ ชั้นที่ เลขที่ ตรอก/ซอย หมู่ที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 8.5, marginBottom: 2 }}>เลขประจำตัวผู้เสียภาษีอากร (13 หลัก)</div>
-                {idBoxes(tenant?.tax_id, 13)}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ border: '1px solid #333', padding: '6px 8px', marginBottom: 6 }}>
-            <div style={{ fontWeight: 700, marginBottom: 2 }}>ผู้ถูกหักภาษี ณ ที่จ่าย :-</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'start' }}>
-              <div>
-                <div>ชื่อ {sub?.name || '—'}</div>
-                <div style={{ fontSize: 8, color: '#777' }}>(ให้ระบุว่าเป็น บุคคล นิติบุคคล บริษัท สมาคม หรือคณะบุคคล)</div>
-                <div>ที่อยู่ {sub?.address || '—'}</div>
-                <div style={{ fontSize: 8, color: '#777' }}>(ให้ระบุชื่ออาคาร/หมู่บ้าน ห้องเลขที่ ชั้นที่ เลขที่ ตรอก/ซอย หมู่ที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 8.5, marginBottom: 2 }}>เลขประจำตัวประชาชน (13 หลัก)</div>
-                {idBoxes(sub?.id_card_number, 13)}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 6, fontSize: 9.5 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
-              <span>ลำดับที่</span>
-              <span style={{ display: 'inline-block', width: 40, borderBottom: '1px solid #333' }}>&nbsp;</span>
-              <span>ในแบบ</span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
-              {['(1) ภ.ง.ด.1ก', '(2) ภ.ง.ด.1ก พิเศษ', '(3) ภ.ง.ด.2', '(4) ภ.ง.ด.3'].map(l => (
-                <div key={l}>{l.startsWith('(4)') ? '☑' : '☐'} {l}</div>
-              ))}
-              {['(5) ภ.ง.ด.2ก', '(6) ภ.ง.ด.3ก', '(7) ภ.ง.ด.53'].map(l => (
-                <div key={l}>☐ {l}</div>
-              ))}
-            </div>
-            <div style={{ fontSize: 8, color: '#777', marginTop: 2 }}>(ให้สามารถอ้างอิงหรือสอบยันกันได้ระหว่างลำดับที่ตามหนังสือรับรองฯ กับแบบยื่นรายการภาษีหักที่จ่าย)</div>
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, marginBottom: 6 }}>
-            <thead>
-              <tr>
-                <th style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'left' }}>ประเภทเงินได้พึงประเมินที่จ่าย</th>
-                <th style={{ border: '1px solid #333', padding: '3px 4px', width: 70 }}>วันเดือนปีที่จ่าย</th>
-                <th style={{ border: '1px solid #333', padding: '3px 4px', width: 80 }}>จำนวนเงินที่จ่าย</th>
-                <th style={{ border: '1px solid #333', padding: '3px 4px', width: 80 }}>ภาษีที่หักและนำส่งไว้</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                '1. เงินเดือน ค่าจ้าง เบี้ยเลี้ยง โบนัส ฯลฯ ตามมาตรา 40(1)',
-                '2. ค่าธรรมเนียม ค่านายหน้า ฯลฯ ตามมาตรา 40(2)',
-                '3. ค่าแห่งลิขสิทธิ์ ฯลฯ ตามมาตรา 40(3)',
-                '4. ดอกเบี้ย เงินปันผล เงินส่วนแบ่งกำไร ฯลฯ ตามมาตรา 40(4)',
-              ].map(label => (
-                <tr key={label}>
-                  <td style={{ border: '1px solid #333', padding: '3px 4px' }}>{label}</td>
-                  <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
-                  <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
-                  <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
-                </tr>
-              ))}
-              <tr>
-                <td style={{ border: '1px solid #333', padding: '3px 4px' }}>
-                  5. การจ่ายเงินได้ที่ต้องหักภาษี ณ ที่จ่ายตามคำสั่งกรมสรรพากร ที่ ทป.4/2528 ฯ (ค่าจ้างทำของ)
-                  {payment.work_description && <div style={{ fontStyle: 'italic', color: '#555' }}>{payment.work_description}</div>}
-                </td>
-                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'center' }}>{fmtDate(payment.payment_date)}</td>
-                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }} className="font-mono">{fmt(payment.gross_amount)}</td>
-                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }} className="font-mono">{fmt(payment.withholding_tax)}</td>
-              </tr>
-              <tr>
-                <td style={{ border: '1px solid #333', padding: '3px 4px' }}>6. อื่นๆ (ระบุ) ...........................................</td>
-                <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
-                <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
-                <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
-              </tr>
-              <tr style={{ fontWeight: 700 }}>
-                <td colSpan={2} style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }}>รวมเงินที่จ่ายและภาษีที่หักนำส่ง</td>
-                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }} className="font-mono">{fmt(payment.gross_amount)}</td>
-                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }} className="font-mono">{fmt(payment.withholding_tax)}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style={{ marginBottom: 6 }}>
-            รวมเงินภาษีที่นำส่ง (ตัวอักษร) <strong>{thaiBahtText(payment.withholding_tax)}</strong>
-          </div>
-
-          <div style={{ marginBottom: 6 }}>
-            ผู้จ่ายเงิน ☑ (1) หัก ณ ที่จ่าย &nbsp;&nbsp; ☐ (2) ออกให้ตลอดไป &nbsp;&nbsp; ☐ (3) ออกให้ครั้งเดียว &nbsp;&nbsp; ☐ (4) อื่นๆ (ระบุ) ..........................
-          </div>
-
-          <div style={{ marginBottom: 6 }}>
-            เงินที่จ่ายเข้า กบข./กสจ./กองทุนสงเคราะห์ครูโรงเรียนเอกชน .................... บาท
-            &nbsp;&nbsp;กองทุนประกันสังคม .................... บาท
-            &nbsp;&nbsp;กองทุนสำรองเลี้ยงชีพ .................... บาท
-          </div>
-
-          <div style={{ border: '1px solid #333', padding: '5px 6px', marginBottom: 8, fontSize: 8.5, color: '#a00' }}>
-            <strong>คำเตือน</strong> ผู้มีหน้าที่ออกหนังสือรับรองการหักภาษี ณ ที่จ่าย ฝ่าฝืนไม่ปฏิบัติตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร ต้องระวางโทษทางอาญาตามมาตรา 35 แห่งประมวลรัษฎากร
-          </div>
-
-          <div style={{ fontSize: 9, color: '#555', marginBottom: 10 }}>
-            ขอรับรองว่าข้อความและตัวเลขดังกล่าวข้างต้นถูกต้องตรงกับความจริงทุกประการ
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ height: 24, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 22, display: 'block' }} />}
-              </div>
-              <div style={{ borderTop: '1px solid #999', paddingTop: 3 }}>ลงชื่อ ผู้จ่ายเงิน</div>
-              {myWorkerName && <div style={{ fontSize: 9, color: '#555' }}>({myWorkerName})</div>}
-              <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>
-                {new Date(payment.paid_date || payment.payment_date).toLocaleDateString('th-TH')} (วัน เดือน ปี ที่ออกหนังสือรับรองฯ)
-              </div>
-            </div>
-            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
-              <div style={{ width: 50, height: 50, border: '1px dashed #999', marginBottom: 3 }} />
-              <div style={{ fontSize: 8.5, color: '#777' }}>ประทับตรานิติบุคคล (ถ้ามี)</div>
-            </div>
-          </div>
-        </div>
+        <Wht50TawiForm id={elementId} data={data} />
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
@@ -824,7 +668,7 @@ function PaymentsTab({ openSiteOverview }) {
         <span style={{ color:'var(--text3)', fontSize:12 }}>{(payments||[]).length} รายการ</span>
       </div>
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -877,7 +721,7 @@ function PaymentsTab({ openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {whtCertPayment && (

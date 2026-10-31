@@ -9,6 +9,7 @@
 // web-originated photos stay indistinguishable to the rest of the app.
 // See docs/superpowers/specs/2026-09-29-kanban-photo-upload-design.md.
 // ============================================================
+import { newId } from './uuid.js'
 import { supabase } from './supabase.js'
 
 /** Target size for an image before upload -- never upscales, only
@@ -60,7 +61,7 @@ async function decodePhotoSource(file) {
   return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => {} }
 }
 
-async function downscaleToJpegBlob(file, maxDim = 1600, quality = 0.8) {
+export async function downscaleToJpegBlob(file, maxDim = 1600, quality = 0.8) {
   const { source, width: srcWidth, height: srcHeight, close } = await decodePhotoSource(file)
   try {
     const { width, height } = computePhotoDownscaledSize(srcWidth, srcHeight, maxDim)
@@ -86,17 +87,19 @@ async function downscaleToJpegBlob(file, maxDim = 1600, quality = 0.8) {
  */
 export async function uploadSitePhoto({ file, tenantId, workerId, siteId, taskId = null, date }) {
   const blob = await downscaleToJpegBlob(file)
-  const photoPath = `${tenantId}/${siteId}/${Date.now()}-${workerId}.jpg`
+  const photoPath = `${tenantId}/${siteId}/${Date.now()}-${workerId ?? 'office'}.jpg`
   const { error: uploadError } = await supabase.storage.from('line-site-photos').upload(photoPath, blob, { contentType: 'image/jpeg' })
   if (uploadError) throw uploadError
+  // Client-made id, no RETURNING: workers may INSERT but not SELECT line_site_photos (RLS).
+  const id = newId()
   const { error: insertError } = await supabase.from('line_site_photos')
-    .insert({ tenant_id: tenantId, worker_id: workerId, site_id: siteId, date, photo_path: photoPath, task_id: taskId })
+    .insert({ id, tenant_id: tenantId, worker_id: workerId ?? null, site_id: siteId, date, photo_path: photoPath, task_id: taskId })
   if (insertError) {
     const { error: cleanupError } = await supabase.storage.from('line-site-photos').remove([photoPath])
     if (cleanupError) console.error('orphan cleanup failed for', photoPath, cleanupError)
     throw insertError
   }
-  return { photo_path: photoPath }
+  return { id, photo_path: photoPath }
 }
 
 /**
@@ -116,4 +119,11 @@ export async function uploadSitePhotos(files, opts) {
     }
   }
   return { succeeded, failed }
+}
+
+/** Uploader label for a line_site_photos row (embedded workers(name, nickname)).
+ *  worker_id is null for office uploads (DR card picker) -> "สำนักงาน". */
+export function photoUploaderLabel(p, fallback = '-') {
+  if (p && p.worker_id == null && !p.workers) return 'สำนักงาน'
+  return p?.workers?.nickname || p?.workers?.name || fallback
 }

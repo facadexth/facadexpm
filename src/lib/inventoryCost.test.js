@@ -72,6 +72,22 @@ describe('computeInvoiceDeductionPlan', () => {
     { id: `item-${CAT_GLASS}-b`, category_id: CAT_GLASS },
   ]
 
+  // One balance element shaped like an inventory_lots_as_of row group: the
+  // element carries its FIFO lots (oldest first) and quantity_on_hand = Σ lots
+  // qty. bal(item, site, qty, cost) is a single-lot element; pass `lots` to
+  // give several lots ([qty, cost] pairs, oldest first).
+  function bal(itemId, siteId, qty, cost, lots = null) {
+    const pairs = lots || [[qty, cost]]
+    const lotRows = pairs.map(([q, c], i) => ({
+      movement_id: `${itemId}|${siteId}|L${i + 1}`,
+      received_at: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`,
+      unit_cost: c,
+      qty: q,
+    }))
+    return { inventory_item_id: itemId, site_id: siteId, quantity_on_hand: lotRows.reduce((s, l) => s + l.qty, 0), lots: lotRows }
+  }
+  const lotValue = (b) => b.lots.reduce((s, l) => s + (l.unit_cost > 0 && l.qty > 0 ? l.qty * l.unit_cost : 0), 0)
+
   // Value-conservation invariant checked below for every case in this suite:
   // for every categoryResult, deductedValue + shortfall must equal targetValue
   // exactly (within float tolerance). This is the core correctness property
@@ -85,8 +101,8 @@ describe('computeInvoiceDeductionPlan', () => {
 
   it('deducts proportionally when the site alone has enough stock', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 100, weighted_average_cost: 10 }, // value 1000
-      { inventory_item_id: 'item-alu-2', site_id: SITE, quantity_on_hand: 50, weighted_average_cost: 20 },  // value 1000
+      bal('item-alu-1', SITE, 100, 10), // value 1000
+      bal('item-alu-2', SITE, 50, 20),  // value 1000
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 1000000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
@@ -98,39 +114,78 @@ describe('computeInvoiceDeductionPlan', () => {
     expectConservation(result.categoryResults)
   })
 
-  it('splits a fully-covered category proportionally by each item\'s site value, never draining below target', () => {
+  it('cuts FIFO at the site: oldest-received item drained to 0 first, the next one only partly', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 1000, weighted_average_cost: 100 }, // value 100,000
-      { inventory_item_id: 'item-alu-2', site_id: SITE, quantity_on_hand: 500, weighted_average_cost: 100 },  // value 50,000
+      bal('item-alu-2', SITE, 500, 100),  // value 50,000, received later
+      bal('item-alu-1', SITE, 200, 100), // value 20,000, received first
     ]
+    const firstReceivedAt = {
+      'item-alu-1|site-1': '2026-01-01T00:00:00Z',
+      'item-alu-2|site-1': '2026-02-01T00:00:00Z',
+    }
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
-      siteId: SITE, centralSiteId: CENTRAL, items, balances,
+      siteId: SITE, centralSiteId: CENTRAL, items, balances, firstReceivedAt,
     })
-    // target = 100,000 * 0.7 * 0.35 = 24,500. Site total value = 150,000 -- plenty.
+    // target 24,500: item-alu-1 (oldest) gives all 20,000 (qty 200 -> 0), item-alu-2 gives 4,500 (qty 45)
     const cat = result.categoryResults[0]
-    expect(cat.targetValue).toBeCloseTo(24500, 2)
     expect(cat.deductedValue).toBeCloseTo(24500, 2)
     expect(cat.shortfall).toBe(0)
-    expect(result.steps).toHaveLength(2)
-    expect(result.steps.every(s => s.type === 'sale_out' && s.siteId === SITE)).toBe(true)
-    // item-alu-1 holds 2/3 of the category's site value (100k of 150k) -- it should
-    // supply 2/3 of the deducted value: 24500 * (100000/150000) = 16333.33..., at
-    // cost 100/unit -> qty 163.333...
-    const step1 = result.steps.find(s => s.inventoryItemId === 'item-alu-1')
-    expect(step1.quantity).toBeCloseTo(163.333, 2)
-    const step2 = result.steps.find(s => s.inventoryItemId === 'item-alu-2')
-    expect(step2.quantity).toBeCloseTo(81.667, 2)
-    // together they should equal exactly the target value
-    const totalValueTaken = step1.quantity * 100 + step2.quantity * 100
-    expect(totalValueTaken).toBeCloseTo(24500, 2)
+    expect(result.steps.map(s => [s.type, s.inventoryItemId, s.siteId])).toEqual([
+      ['sale_out', 'item-alu-1', SITE],
+      ['sale_out', 'item-alu-2', SITE],
+    ])
+    expect(result.steps[0].quantity).toBe(200)
+    expect(result.steps[1].quantity).toBeCloseTo(45, 6)
     expectConservation(result.categoryResults)
+  })
+
+  it('cuts FIFO from ส่วนกลาง and leaves newer items untouched', () => {
+    const balances = [
+      bal('item-alu-1', CENTRAL, 3, 1000),    // 3,000, newest
+      bal('item-alu-2', CENTRAL, 7.5, 2000),  // 15,000, oldest
+      bal(`item-${CAT_ALU}-a`, CENTRAL, 10, 1000), // 10,000, middle
+    ]
+    const firstReceivedAt = {
+      'item-alu-1|central-1': '2026-05-01T00:00:00Z',
+      'item-alu-2|central-1': '2026-01-01T00:00:00Z',
+      [`item-${CAT_ALU}-a|central-1`]: '2026-03-01T00:00:00Z',
+    }
+    const result = computeInvoiceDeductionPlan({
+      invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 25 },
+      siteId: SITE, centralSiteId: CENTRAL, items, balances, firstReceivedAt,
+    })
+    // target 17,500: item-alu-2 all 15,000 (qty 7.5 exactly), then 2,500 of item-alu-a (qty 2.5); item-alu-1 untouched
+    const outs = result.steps.filter(s => s.type === 'transfer_out')
+    expect(outs.map(s => s.inventoryItemId)).toEqual(['item-alu-2', `item-${CAT_ALU}-a`])
+    expect(outs[0].quantity).toBe(7.5)
+    expect(outs[1].quantity).toBeCloseTo(2.5, 6)
+    expect(result.steps.some(s => s.inventoryItemId === 'item-alu-1')).toBe(false)
+    // each central item still moves as a transfer_out / transfer_in / sale_out triplet
+    expect(result.steps.map(s => s.type)).toEqual(['transfer_out', 'transfer_in', 'sale_out', 'transfer_out', 'transfer_in', 'sale_out'])
+    expect(result.categoryResults[0].deductedValue).toBeCloseTo(17500, 2)
+    expectConservation(result.categoryResults)
+  })
+
+  it('puts items with no known receipt date last, ties broken by item id', () => {
+    const balances = [
+      bal('item-alu-2', SITE, 10, 100),
+      bal('item-alu-1', SITE, 10, 100),
+      bal(`item-${CAT_ALU}-b`, SITE, 10, 100),
+    ]
+    const firstReceivedAt = { [`item-${CAT_ALU}-b|site-1`]: '2026-06-01T00:00:00Z' }
+    const result = computeInvoiceDeductionPlan({
+      invoiceSubtotal: 10000, materialPct: 100, categorySplits: { [CAT_ALU]: 25 }, // target 2,500 -> needs all three
+      siteId: SITE, centralSiteId: null, items, balances, firstReceivedAt,
+    })
+    expect(result.steps.map(s => s.inventoryItemId)).toEqual([`item-${CAT_ALU}-b`, 'item-alu-1', 'item-alu-2'])
+    expect(result.categoryResults[0].shortfall).toBeCloseTo(0, 6)
   })
 
   it('drains the site then backfills the shortfall from ส่วนกลาง via a transfer+sale_out triplet', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 10, weighted_average_cost: 100 },     // value 1,000 at site
-      { inventory_item_id: 'item-alu-1', site_id: CENTRAL, quantity_on_hand: 500, weighted_average_cost: 100 }, // value 50,000 at central
+      bal('item-alu-1', SITE, 10, 100),     // value 1,000 at site
+      bal('item-alu-1', CENTRAL, 500, 100), // value 50,000 at central
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
@@ -159,8 +214,8 @@ describe('computeInvoiceDeductionPlan', () => {
 
   it('reports a shortfall (never blocks, never fabricates stock) when site + ส่วนกลาง together are insufficient', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 5, weighted_average_cost: 100 },    // value 500
-      { inventory_item_id: 'item-alu-1', site_id: CENTRAL, quantity_on_hand: 10, weighted_average_cost: 100 }, // value 1,000
+      bal('item-alu-1', SITE, 5, 100),    // value 500
+      bal('item-alu-1', CENTRAL, 10, 100), // value 1,000
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
@@ -198,7 +253,7 @@ describe('computeInvoiceDeductionPlan', () => {
 
   it('ignores items with no category_id entirely, even if they have huge balances at the site', () => {
     const balances = [
-      { inventory_item_id: 'item-uncategorized', site_id: SITE, quantity_on_hand: 100000, weighted_average_cost: 1000 },
+      bal('item-uncategorized', SITE, 100000, 1000),
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
@@ -212,8 +267,8 @@ describe('computeInvoiceDeductionPlan', () => {
 
   it('handles multiple categories independently in one call', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 1000, weighted_average_cost: 100 },
-      { inventory_item_id: 'item-glass-1', site_id: SITE, quantity_on_hand: 1000, weighted_average_cost: 50 },
+      bal('item-alu-1', SITE, 1000, 100),
+      bal('item-glass-1', SITE, 1000, 50),
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35, [CAT_GLASS]: 35 },
@@ -234,7 +289,7 @@ describe('computeInvoiceDeductionPlan', () => {
 
   it('reports full shortfall for a categorySplits key that matches no item at all (not just no stock)', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 1000, weighted_average_cost: 100 },
+      bal('item-alu-1', SITE, 1000, 100),
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { 'cat-does-not-exist': 35 },
@@ -251,10 +306,11 @@ describe('computeInvoiceDeductionPlan', () => {
   it('never sources from a zero-cost balance (treats it as unavailable, not free)', () => {
     const balances = [
       // item-alu-1 has huge quantity but zero recorded cost -- e.g. a fully
-      // written-down leftover balance. It must not be used to satisfy the
-      // target "for free"; it should be skipped as if it weren't there.
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 100000, weighted_average_cost: 0 },
-      { inventory_item_id: 'item-alu-2', site_id: SITE, quantity_on_hand: 100, weighted_average_cost: 100 }, // value 10,000
+      // written-down leftover balance. inventory_lots_as_of never returns a
+      // lot with unit_cost <= 0, so this element arrives with no lots at all
+      // and must be skipped as if it weren't there, not used "for free".
+      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 100000, lots: [] },
+      bal('item-alu-2', SITE, 100, 100), // value 10,000
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
@@ -271,7 +327,7 @@ describe('computeInvoiceDeductionPlan', () => {
 
   it('treats a negative or NaN split percentage as zero target rather than crashing or going negative', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 1000, weighted_average_cost: 100 },
+      bal('item-alu-1', SITE, 1000, 100),
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: -10, [CAT_GLASS]: NaN },
@@ -288,8 +344,8 @@ describe('computeInvoiceDeductionPlan', () => {
 
   it('exhausts central exactly to zero remaining shortfall when central value equals the remainder precisely', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: SITE, quantity_on_hand: 5, weighted_average_cost: 100 },       // value 500
-      { inventory_item_id: 'item-alu-2', site_id: CENTRAL, quantity_on_hand: 240, weighted_average_cost: 100 },  // value 24,000 == exact remainder
+      bal('item-alu-1', SITE, 5, 100),       // value 500
+      bal('item-alu-2', CENTRAL, 240, 100),  // value 24,000 == exact remainder
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
@@ -306,7 +362,7 @@ describe('computeInvoiceDeductionPlan', () => {
 
   it('never double-sources from central when the invoice site IS the central site', () => {
     const balances = [
-      { inventory_item_id: 'item-alu-1', site_id: CENTRAL, quantity_on_hand: 10, weighted_average_cost: 100 }, // value 1,000
+      bal('item-alu-1', CENTRAL, 10, 100), // value 1,000
     ]
     const result = computeInvoiceDeductionPlan({
       invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
@@ -323,14 +379,103 @@ describe('computeInvoiceDeductionPlan', () => {
     expect(result.steps[0]).toMatchObject({ type: 'sale_out', inventoryItemId: 'item-alu-1', siteId: CENTRAL, quantity: 10 })
   })
 
+  // --- FIFO lot pricing (2026-10-26): each step is one lot at that lot's own cost ---
+
+  it('splits a category take across two lots at each lot\'s own price', () => {
+    const balances = [bal('item-alu-1', SITE, null, null, [[2, 100], [5, 120]])] // lot A 2@100, lot B 5@120
+    const result = computeInvoiceDeductionPlan({
+      invoiceSubtotal: 400, materialPct: 100, categorySplits: { [CAT_ALU]: 100 }, // target ฿400
+      siteId: SITE, centralSiteId: null, items, balances,
+    })
+    expect(result.steps).toHaveLength(2)
+    expect(result.steps[0]).toMatchObject({ type: 'sale_out', inventoryItemId: 'item-alu-1', siteId: SITE, quantity: 2, unitCost: 100, lotMovementId: 'item-alu-1|site-1|L1' })
+    expect(result.steps[1]).toMatchObject({ type: 'sale_out', inventoryItemId: 'item-alu-1', siteId: SITE, unitCost: 120, lotMovementId: 'item-alu-1|site-1|L2' })
+    expect(result.steps[1].quantity).toBeCloseTo(200 / 120, 9) // 1.666...
+    expect(result.categoryResults[0].deductedValue).toBeCloseTo(400, 6)
+    expect(result.categoryResults[0].shortfall).toBeCloseTo(0, 6)
+    expectConservation(result.categoryResults)
+  })
+
+  it('drains a lot to exactly zero across float remainders', () => {
+    const q = 3.7824656778742924
+    const cost = 2030.76
+    const balances = [bal('item-alu-1', SITE, q, cost)]
+    const result = computeInvoiceDeductionPlan({
+      invoiceSubtotal: q * cost, materialPct: 100, categorySplits: { [CAT_ALU]: 100 },
+      siteId: SITE, centralSiteId: CENTRAL, items, balances,
+    })
+    expect(result.steps).toHaveLength(1)
+    // the exact lot qty, not target/cost (which can float a hair above or below)
+    expect(result.steps[0].quantity).toBe(q)
+    expect(balances[0].lots[0].qty - result.steps[0].quantity).toBe(0)
+    expect(result.steps[0].unitCost).toBe(cost)
+    expect(result.categoryResults[0].shortfall).toBeCloseTo(0, 6)
+    expect(result.steps.some(s => s.type === 'transfer_out')).toBe(false)
+    expectConservation(result.categoryResults)
+  })
+
+  it('skips lots with non-positive unit_cost', () => {
+    const balances = [bal('item-alu-1', SITE, null, null, [[50, 0], [3, -10], [4, 100]])]
+    const result = computeInvoiceDeductionPlan({
+      invoiceSubtotal: 1000, materialPct: 100, categorySplits: { [CAT_ALU]: 100 }, // target 1,000; only 400 has real cost
+      siteId: SITE, centralSiteId: null, items, balances,
+    })
+    expect(result.steps).toEqual([
+      { type: 'sale_out', inventoryItemId: 'item-alu-1', siteId: SITE, quantity: 4, unitCost: 100, categoryId: CAT_ALU, lotMovementId: 'item-alu-1|site-1|L3' },
+    ])
+    expect(result.categoryResults[0].deductedValue).toBeCloseTo(400, 6)
+    expect(result.categoryResults[0].shortfall).toBeCloseTo(600, 6)
+    expectConservation(result.categoryResults)
+  })
+
+  it('central triplet carries the source lot on transfer_out only', () => {
+    const balances = [bal('item-alu-1', CENTRAL, 10, 100)]
+    const result = computeInvoiceDeductionPlan({
+      invoiceSubtotal: 500, materialPct: 100, categorySplits: { [CAT_ALU]: 100 },
+      siteId: SITE, centralSiteId: CENTRAL, items, balances,
+    })
+    const base = { inventoryItemId: 'item-alu-1', quantity: 5, unitCost: 100, categoryId: CAT_ALU }
+    expect(result.steps).toEqual([
+      { ...base, type: 'transfer_out', siteId: CENTRAL, lotMovementId: 'item-alu-1|central-1|L1' },
+      { ...base, type: 'transfer_in', siteId: SITE, lotMovementId: null },
+      { ...base, type: 'sale_out', siteId: SITE, lotMovementId: null },
+    ])
+  })
+
+  it('a central take spanning two lots emits two strictly adjacent triplets, never interleaved', () => {
+    const balances = [
+      bal('item-alu-1', SITE, 1, 100), // site lot drained first
+      bal('item-alu-2', CENTRAL, null, null, [[2, 100], [5, 120]]),
+    ]
+    const result = computeInvoiceDeductionPlan({
+      invoiceSubtotal: 500, materialPct: 100, categorySplits: { [CAT_ALU]: 100 }, // 100 site + 200 lot A + 200 lot B
+      siteId: SITE, centralSiteId: CENTRAL, items, balances,
+    })
+    expect(result.steps.map(s => [s.type, s.inventoryItemId, s.siteId, s.unitCost, s.lotMovementId])).toEqual([
+      ['sale_out', 'item-alu-1', SITE, 100, 'item-alu-1|site-1|L1'],
+      ['transfer_out', 'item-alu-2', CENTRAL, 100, 'item-alu-2|central-1|L1'],
+      ['transfer_in', 'item-alu-2', SITE, 100, null],
+      ['sale_out', 'item-alu-2', SITE, 100, null],
+      ['transfer_out', 'item-alu-2', CENTRAL, 120, 'item-alu-2|central-1|L2'],
+      ['transfer_in', 'item-alu-2', SITE, 120, null],
+      ['sale_out', 'item-alu-2', SITE, 120, null],
+    ])
+    expect(result.steps.slice(1, 4).every(s => s.quantity === 2)).toBe(true)
+    for (const s of result.steps.slice(4)) expect(s.quantity).toBeCloseTo(200 / 120, 9)
+    expect(result.steps.every(s => s.quantity > 0)).toBe(true)
+    expect(result.categoryResults[0].deductedValue).toBeCloseTo(500, 6)
+    expectConservation(result.categoryResults)
+  })
+
   it('never over-deducts, regardless of random inputs (property test)', () => {
     const rand = (min, max) => min + Math.random() * (max - min)
     for (let i = 0; i < 2000; i++) {
       const siteId = Math.random() < 0.3 ? CENTRAL : SITE // sometimes site IS central -- this is what catches Finding 1's class
       const balances = []
       for (const cat of [CAT_ALU, CAT_GLASS]) {
-        if (Math.random() < 0.7) balances.push({ inventory_item_id: `item-${cat}-a`, site_id: siteId, quantity_on_hand: rand(0, 1000), weighted_average_cost: rand(1, 500) })
-        if (Math.random() < 0.5) balances.push({ inventory_item_id: `item-${cat}-b`, site_id: CENTRAL, quantity_on_hand: rand(0, 1000), weighted_average_cost: rand(1, 500) })
+        const randLots = () => Array.from({ length: 1 + Math.floor(Math.random() * 3) }, () => [rand(0, 400), rand(1, 500)])
+        if (Math.random() < 0.7) balances.push(bal(`item-${cat}-a`, siteId, null, null, randLots()))
+        if (Math.random() < 0.5) balances.push(bal(`item-${cat}-b`, CENTRAL, null, null, randLots()))
       }
       const categorySplits = { [CAT_ALU]: rand(0, 60), [CAT_GLASS]: rand(0, 60) }
       const result = computeInvoiceDeductionPlan({
@@ -344,8 +489,13 @@ describe('computeInvoiceDeductionPlan', () => {
       // total real value actually removed from the ledger must never exceed
       // what existed anywhere for that category before this call
       const totalDeducted = result.steps.filter(s => s.type === 'sale_out').reduce((s, st) => s + st.quantity * st.unitCost, 0)
-      const totalAvailable = balances.reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0)
+      const totalAvailable = balances.reduce((s, b) => s + lotValue(b), 0)
       expect(totalDeducted).toBeLessThanOrEqual(totalAvailable + 1e-6)
+      // no step ever moves zero or negative stock, and no lot is ever over-taken
+      expect(result.steps.every(st => st.quantity > 0)).toBe(true)
+      const takenPerLot = {}
+      for (const st of result.steps) if (st.lotMovementId) takenPerLot[st.lotMovementId] = (takenPerLot[st.lotMovementId] || 0) + st.quantity
+      for (const b of balances) for (const l of b.lots) expect(takenPerLot[l.movement_id] || 0).toBeLessThanOrEqual(l.qty + 1e-9)
     }
   })
 })
@@ -403,6 +553,15 @@ describe('computeFinishedGoodsProductionPlan', () => {
   it('skips a line whose invoice-billed amount is zero (division/no-op guard)', () => {
     const plan = computeFinishedGoodsProductionPlan({ billedLines: [line({ invoiceItemLineTotal: 0 })], materialPct: 70 })
     expect(plan.steps).toEqual([])
+  })
+
+  it('finished goods scale by actualFactor', () => {
+    const actualFactor = 0.9941234567
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line({ invoiceItemLineTotal: 10000 })], materialPct: 70, actualFactor })
+    expect(plan.steps[0].value).toBeCloseTo(10000 * 0.7 * actualFactor, 9)
+    expect(plan.steps[0].value).not.toBeCloseTo(7000, 2)
+    // omitted factor keeps the old value exactly
+    expect(computeFinishedGoodsProductionPlan({ billedLines: [line()], materialPct: 70 }).steps[0].value).toBe(7000)
   })
 })
 
@@ -517,6 +676,27 @@ describe('computeStockLedgerReport', () => {
     expect(nonMatching).toHaveLength(0)
   })
 
+  it('no OB and no pre-period history: every row opens at exactly 0 qty / 0 value', () => {
+    // Review Focus 5: a tenant with no opening-balance document and no
+    // movements before dateFrom must render a clean ยอดยกมา of zero,
+    // not undefined/NaN, for both a stock-in item and a stock-out item.
+    const rows = computeStockLedgerReport({
+      movements: [
+        m({ inventory_item_id: 'item-rm', movement_type: 'purchase_in', quantity: 5, unit_cost: 100, created_at: '2026-09-02T10:00:00Z' }),
+        m({ inventory_item_id: 'item-fg', movement_type: 'sale_out', quantity: 1, unit_cost: 500, created_at: '2026-09-03T10:00:00Z', stock_document_id: 'doc-dp' }),
+      ],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows).toHaveLength(2)
+    for (const r of rows) {
+      expect(r.openingQty).toBe(0)
+      expect(r.openingValue).toBe(0)
+    }
+    const fg = rows.find(r => r.itemId === 'item-fg')
+    expect(fg).toMatchObject({ outQty: 1, closingQty: -1, closingValue: -500 })
+    expect(fg.movements[0].stockDocumentId).toBe('doc-dp')
+  })
+
   it('a movement after dateTo is excluded entirely (not opening, not in-range)', () => {
     const rows = computeStockLedgerReport({
       movements: [m({ created_at: '2026-10-05T10:00:00Z' })],
@@ -529,13 +709,13 @@ describe('computeStockLedgerReport', () => {
     const rows = computeStockLedgerReport({
       movements: [
         m({ movement_type: 'sale_out', quantity: 3, unit_cost: 100, created_at: '2026-09-10T10:00:00Z', notes: 'IN2609-002', inventory_item_id: 'item-rm' }),
-        m({ movement_type: 'sale_out', quantity: 5, unit_cost: 100, created_at: '2026-09-05T10:00:00Z', notes: 'IN2609-001', reference_type: 'invoice', reference_id: 'inv-1', inventory_item_id: 'item-rm' }),
+        m({ movement_type: 'sale_out', quantity: 5, unit_cost: 100, created_at: '2026-09-05T10:00:00Z', notes: 'IN2609-001', reference_type: 'invoice', reference_id: 'inv-1', stock_document_id: 'doc-dm-1', inventory_item_id: 'item-rm' }),
       ],
       items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
     })
     expect(rows[0].movements).toEqual([
-      { date: '2026-09-05T10:00:00Z', type: 'sale_out', referenceType: 'invoice', referenceId: 'inv-1', notes: 'IN2609-001', qty: 5, unitCost: 100, value: 500, direction: 'out' },
-      { date: '2026-09-10T10:00:00Z', type: 'sale_out', referenceType: null, referenceId: null, notes: 'IN2609-002', qty: 3, unitCost: 100, value: 300, direction: 'out' },
+      { date: '2026-09-05T10:00:00Z', type: 'sale_out', referenceType: 'invoice', referenceId: 'inv-1', stockDocumentId: 'doc-dm-1', notes: 'IN2609-001', qty: 5, unitCost: 100, value: 500, direction: 'out' },
+      { date: '2026-09-10T10:00:00Z', type: 'sale_out', referenceType: null, referenceId: null, stockDocumentId: null, notes: 'IN2609-002', qty: 3, unitCost: 100, value: 300, direction: 'out' },
     ])
   })
 })

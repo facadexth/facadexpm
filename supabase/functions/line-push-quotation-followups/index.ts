@@ -21,7 +21,7 @@
 // supabase/migrations/2026-09-19-04-line-push-cron-secret-verify-fn.sql)
 // BEFORE any other query or LINE push.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
+import { sendLinePush, LINE_PUSH_ENABLED, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
     for (const quotation of dueQuotations) {
       quotationsDue++
 
-      if (lineOn) {
+      if (lineOn && LINE_PUSH_ENABLED) {
         const recipients = new Set<string>(ownerLineIds)
         if (quotation.created_by) {
           const { data: creator, error: creatorError } = await admin
@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
         }
       }
       if (webOn) {
-        await sendWebPushToTenantAdmins(admin, tenantId, quotationExpiryPush(quotation.quotation_number, quotation.valid_until as string, daysUntil(today, quotation.valid_until as string)))
+        await sendWebPushToTenantAdmins(admin, tenantId, quotationExpiryPush(quotation.quotation_number, quotation.valid_until as string, daysUntil(today, quotation.valid_until as string)), 'money')
       }
 
       // Mark as noticed for THIS valid_until (even with no recipients) so it is not repeated

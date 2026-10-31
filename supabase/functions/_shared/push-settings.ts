@@ -26,7 +26,11 @@ export const PUSH_TOGGLE_DEFAULTS: Record<string, boolean> = {
   web_push_material_request: true,
   web_push_issue_report: true,
   web_push_quotation_expiry: true,
-  web_push_cheque_due: false,
+  web_push_cheque_due: true,
+  web_push_worker_offboarded: true,
+  web_push_advance_request: true,
+  // Customer-facing repair messages (shown in the customer-LINE settings, not the crew list).
+  customer_line_push_enabled: true,
 }
 
 export function parseToggle(value: unknown, defaultOn: boolean): boolean {

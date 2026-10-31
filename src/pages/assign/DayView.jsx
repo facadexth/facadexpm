@@ -5,13 +5,13 @@
 import { useMemo } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { TYPE_COLOR, TYPE_LABEL, SITE_TYPES } from './constants.js'
-import { otCost } from './otMath.js'
+import { otCost, workerDayRate } from './otMath.js'
 import { useSitePhases, usePhaseTasks } from '../../hooks/useSupabase.js'
 import { pickActivePhase } from '../sites/phaseTasksCalc.js'
 import { STATUS_COLOR } from '../sites/ganttTimeline.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
 
-const dayRate = (w) => Math.round((w?.monthly_salary || 0) / 30)
+const dayRate = (w) => Math.round(workerDayRate(w))
 
 const MINI_COLUMNS = [
   { status: 'not_started', label: 'ยังไม่เริ่ม' },
@@ -19,7 +19,7 @@ const MINI_COLUMNS = [
   { status: 'done', label: 'เสร็จแล้ว' },
 ]
 
-export default function DayView({ dayIso, assignments, otEntries, sites, travelRate, onEditHalf }) {
+export default function DayView({ dayIso, assignments, otEntries, sites, travelRate, onEditHalf, showMoney = true }) {
   const { data: allPhases } = useSitePhases()
   const { data: allTasks } = usePhaseTasks()
 
@@ -75,7 +75,7 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
         title={`${a.workers?.name || ''}${a.is_team_leader ? ' — หัวหน้าทีม' : ''}${a.type === 'factory' ? ' (โรงงาน)' : ''}${a.ot_hours > 0 ? ' OT' + a.ot_hours + 'h' : ''}`}
         style={{ background: tc.bg, color: tc.color, borderRadius: 5, padding: '3px 8px', margin: 2, fontSize: 11, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
         {a.is_team_leader && <img src={teamLeaderBadge} alt="หัวหน้าทีม" style={{ width: 14, height: 14, objectFit: 'contain' }} />}
-        {a.workers?.nickname || a.workers?.name}{a.type === 'factory' ? ' 🏭' : ''}{a.ot_hours > 0 ? ' ⚡' : ''}
+        {a.workers?.nickname || a.workers?.name}{a.type === 'factory' ? ' 🏭' : ''}{a.repair_ticket_id ? ' 🔧' : ''}{a.ot_hours > 0 ? ' ⚡' : ''}
       </span>
     )
   }
@@ -88,7 +88,7 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
           const meta = siteMeta[sid] || {}
           const travel = g.hasSiteType ? (meta.distance_km || 0) * 2 * (travelRate || 0) : 0
           const siteOT = otBySite[sid] || []
-          const otTotal = siteOT.reduce((s, o) => s + otCost(o.workers?.monthly_salary, o.ot_hours), 0)
+          const otTotal = siteOT.reduce((s, o) => s + otCost(o.workers, o.ot_hours), 0)
           const total = g.labor + travel + otTotal
           const sitePhases = (phasesBySite[sid] || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
           const activePhase = pickActivePhase(sitePhases, tasksByPhaseId)
@@ -100,13 +100,13 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
                   <div style={{ fontSize: 11, color: 'var(--accent)' }}>{meta.site_number}</div>
                   <div style={{ fontWeight: 700, fontSize: 14, overflowWrap: 'anywhere' }}>{meta.name}</div>
                 </div>
-                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {showMoney && <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <div style={{ fontSize: 10, color: 'var(--text3)' }}>รวมวันนี้</div>
                   <div style={{ color: 'var(--yellow)', fontWeight: 800, fontSize: 16 }}>{fmt(total)}</div>
                   <div style={{ fontSize: 10, color: 'var(--text3)' }}>
                     แรง {fmt(g.labor)}{travel > 0 && <> · เดินทาง {fmt(travel)}</>}{otTotal > 0 && <> · OT {fmt(otTotal)}</>}
                   </div>
-                </div>
+                </div>}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>

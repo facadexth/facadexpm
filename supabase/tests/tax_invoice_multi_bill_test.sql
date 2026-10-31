@@ -11,7 +11,7 @@
 BEGIN;
 DO $$
 DECLARE
-  t_owner UUID; t_tenant UUID; t_site UUID; t_sup UUID; t_cat UUID; t_item UUID;
+  t_owner UUID; t_tenant UUID; t_site UUID; t_central UUID; t_sup UUID; t_cat UUID; t_item UUID;
   email TEXT := '__test_timb_owner__@example.com';
   poM UUID; m1 UUID; m2 UUID; poP UUID; p1 UUID; p2 UUID; inv UUID; j JSONB; v_rev INT; bill1 UUID; bill2 UUID;
   c2 UUID; r1 UUID; r2 UUID; r3 UUID; g2 UUID; x_exp UUID; x_notes TEXT; dep_exp UUID; dep_no TEXT; dep_notes TEXT;
@@ -21,6 +21,7 @@ BEGIN
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at) VALUES ('__TEST timb__', t_owner, 'trial', now() + interval '14 days') RETURNING id INTO t_tenant;
   INSERT INTO user_roles (user_email, role, status, tenant_id) VALUES (email, 'OWNER', 'approved', t_tenant);
   INSERT INTO sites (tenant_id, site_number, name) VALUES (t_tenant, '__TIMB-1__', '__timb site__') RETURNING id INTO t_site;
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (t_tenant, '__TIMB-C__', 'ส่วนกลาง') RETURNING id INTO t_central;  -- 2026-10-15-01: stock from receipts goes here
   INSERT INTO suppliers (tenant_id, name) VALUES (t_tenant, '__timb sup__') RETURNING id INTO t_sup;
   INSERT INTO expense_categories (tenant_id, name) VALUES (t_tenant, '__timb cat__') RETURNING id INTO t_cat;
   INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (t_tenant, '__timb item__', 'kg') RETURNING id INTO t_item;

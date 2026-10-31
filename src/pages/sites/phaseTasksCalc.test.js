@@ -11,14 +11,24 @@ describe('computePhaseTaskStats', () => {
     expect(computePhaseTaskStats(tasks)).toEqual({ total: 2, done: 2, pct: 100, derivedStatus: 'done' })
   })
 
-  it('returns in_progress with the correct done/total/pct when some but not all are done', () => {
+  it('returns in_progress with the correct done/total when some but not all are done (general cards: pct 0 until all done)', () => {
     const tasks = [{ status: 'done' }, { status: 'done' }, { status: 'done' }, { status: 'in_progress' }, { status: 'not_started' }]
-    expect(computePhaseTaskStats(tasks)).toEqual({ total: 5, done: 3, pct: 60, derivedStatus: 'in_progress' })
+    expect(computePhaseTaskStats(tasks)).toEqual({ total: 5, done: 3, pct: 0, derivedStatus: 'in_progress' })
   })
 
   it('returns in_progress when a task has started even with zero done', () => {
     const tasks = [{ status: 'in_progress' }, { status: 'not_started' }]
     expect(computePhaseTaskStats(tasks).derivedStatus).toBe('in_progress')
+  })
+
+  it('pct comes from BOQ card points; general and issue cards are ignored', () => {
+    const tasks = [
+      { id: 'a', weight_pts: 60, progress_mode: 'quantity', planned_qty: 10, done_qty: 10, status: 'done' },
+      { id: 'b', weight_pts: 40, progress_mode: 'quantity', planned_qty: 10, done_qty: 0, status: 'not_started' },
+      { id: 'g', weight_pts: 0, status: 'done' },
+      { id: 'i', weight_pts: 0, status: 'done', issue_report_id: 'R1' },
+    ]
+    expect(computePhaseTaskStats(tasks)).toEqual({ total: 4, done: 3, pct: 60, derivedStatus: 'in_progress' })
   })
 
   it('returns not_started when every task is still not_started', () => {

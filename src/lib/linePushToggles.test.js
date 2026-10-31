@@ -6,7 +6,8 @@ import { PUSH_TOGGLE_DEFAULTS, parseToggle as parseToggleServer, isPushEnabled }
 describe('push toggle list stays in step between the UI and the functions', () => {
   it('has the same keys and defaults on both sides', () => {
     const ui = Object.fromEntries([...LINE_PUSH_TOGGLES, ...WEB_PUSH_TOGGLES].map(t => [t.key, t.defaultOn]))
-    expect(ui).toEqual(PUSH_TOGGLE_DEFAULTS)
+    // customer_line_push_enabled is switched in CustomerLineSettings, not in the crew toggle lists.
+    expect({ ...ui, customer_line_push_enabled: true }).toEqual(PUSH_TOGGLE_DEFAULTS)
   })
   it('has a label and detail for every switch', () => {
     for (const t of LINE_PUSH_TOGGLES) {

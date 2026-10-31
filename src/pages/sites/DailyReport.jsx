@@ -25,6 +25,8 @@
 // ============================================================
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
+import { photoUploaderLabel } from '../../lib/photoUpload.js'
+import { attachPmWorkerNames } from '../../hooks/useSupabase.js'
 import { downloadPDF } from '../../lib/pdf.js'
 import PendingMark from '../../components/PendingMark.jsx'
 import { isIssueOpen } from '../../lib/pendingRules.js'
@@ -63,25 +65,25 @@ export default function DailyReport({ site }) {
     const dayEnd = `${date}T23:59:59+07:00`
 
     const [assignRes, taskRes, issueRes, photoRes] = await Promise.all([
-      supabase.from('worker_assignments').select('shift, type, workers(name, nickname)')
+      supabase.from('worker_assignments').select('shift, type, worker_id, workers(name, nickname)')
         .eq('site_id', site.id).eq('date', date).in('type', ['site', 'factory', 'subcontract']),
       supabase.from('phase_tasks').select('id, name, status, zone')
         .eq('site_id', site.id).neq('status', 'done').order('sort_order'),
-      supabase.from('line_issue_reports').select('id, message, status, created_at, workers(name, nickname)')
+      supabase.from('line_issue_reports').select('id, message, status, created_at, worker_id, workers(name, nickname)')
         .eq('site_id', site.id).gte('created_at', dayStart).lte('created_at', dayEnd).order('created_at'),
-      supabase.from('line_site_photos').select('id, photo_path, task_id, created_at, workers(name, nickname), phase_tasks(name, status)')
+      supabase.from('line_site_photos').select('id, photo_path, task_id, created_at, worker_id, workers(name, nickname), phase_tasks(name, status)')
         .eq('site_id', site.id).eq('date', date),
     ])
 
-    const assignments = assignRes.data || []
+    // PM cannot embed workers(...): attach names from pm_workers (no-op for other roles).
+    const [assignments, issueRows, photos] = await Promise.all([assignRes.data, issueRes.data, photoRes.data].map(attachPmWorkerNames))
     setCrew({
       morning: assignments.filter((r) => r.shift !== 'evening').map((r) => workerLabel(r.workers)),
       evening: assignments.filter((r) => r.shift === 'evening').map((r) => workerLabel(r.workers)),
     })
     setOpenTasks(taskRes.data || [])
-    setIssues(issueRes.data || [])
+    setIssues(issueRows)
 
-    const photos = photoRes.data || []
     const urlByPath = await signPhotoUrls(photos)
     const withUrl = photos.map((p) => ({ ...p, url: urlByPath[p.photo_path] }))
 
@@ -197,7 +199,7 @@ export default function DailyReport({ site }) {
             {!generalPhotos.length ? <Empty text="ไม่มีรูปภาพ" /> : (
               <PhotoGrid
                 photos={generalPhotos}
-                labelFor={(p) => (p.task_id ? `${workerLabel(p.workers)} · มอบหมายให้: ${p.phase_tasks?.name || 'ไม่ทราบชื่องาน'}` : workerLabel(p.workers))}
+                labelFor={(p) => (p.task_id ? `${photoUploaderLabel(p, 'ไม่ทราบชื่อ')} · มอบหมายให้: ${p.phase_tasks?.name || 'ไม่ทราบชื่องาน'}` : photoUploaderLabel(p, 'ไม่ทราบชื่อ'))}
                 italicFor={(p) => !!p.task_id}
               />
             )}
@@ -209,7 +211,7 @@ export default function DailyReport({ site }) {
                 {completions.map((c, i) => (
                   <div key={i}>
                     <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>{c.taskName}</div>
-                    <PhotoGrid photos={c.photos} labelFor={(p) => workerLabel(p.workers)} />
+                    <PhotoGrid photos={c.photos} labelFor={(p) => photoUploaderLabel(p, 'ไม่ทราบชื่อ')} />
                   </div>
                 ))}
               </div>

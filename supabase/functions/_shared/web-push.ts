@@ -11,6 +11,7 @@
 import webpush from 'npm:web-push@3.6.7'
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import type { PushPayload } from './web-push-messages.ts'
+import { rolesFor, type Audience } from './roleAudience.ts'
 
 export type PushSub = { id: string; endpoint: string; p256dh_key: string; auth_key: string; failure_count: number }
 export type PushResult = { sent: number; failed: number; removed: number }
@@ -68,10 +69,12 @@ export async function sendToSubscriptions(admin: SupabaseClient, subs: PushSub[]
 
 const SUB_COLUMNS = 'id, endpoint, p256dh_key, auth_key, failure_count'
 
-// Every device of the company's current OWNERs and ADMINs.
-export async function sendWebPushToTenantAdmins(admin: SupabaseClient, tenantId: string, payload: PushPayload): Promise<PushResult> {
+// Every device of the company's staff for the audience: 'ops' = OWNER/ADMIN/PM, 'money' = OWNER/ADMIN.
+// audience is required; a missing/invalid value throws (caught below -> nothing is sent, logged).
+export async function sendWebPushToTenantAdmins(admin: SupabaseClient, tenantId: string, payload: PushPayload, audience: Audience): Promise<PushResult> {
   try {
-    const { data: roles } = await admin.from('user_roles').select('user_email').eq('tenant_id', tenantId).in('role', ['OWNER', 'ADMIN'])
+    const roleList = rolesFor(audience)
+    const { data: roles } = await admin.from('user_roles').select('user_email').eq('tenant_id', tenantId).in('role', roleList)
     const emails = (roles ?? []).map((r) => r.user_email as string)
     if (emails.length === 0) return { ...EMPTY }
     const { data: subs } = await admin.from('push_subscriptions').select(SUB_COLUMNS).eq('tenant_id', tenantId).in('user_email', emails).limit(200)

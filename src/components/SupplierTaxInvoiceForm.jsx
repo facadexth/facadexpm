@@ -8,15 +8,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   useReceivedPosForSupplier, useSuppliers, useSites, useCategories, useInventoryItems, useAllInventoryItems,
   useInventoryItemUnitFactors, useSupplierDocumentExamples, extractPoDocument, useSupplierDeposits,
-  useActiveTaxInvoiceLinks,
+  useActiveTaxInvoiceLinks, useDeliveryReceipts, useActiveReceiptTaxInvoiceLinks,
 } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, exVatUnitPrice } from '../lib/poDocumentExtraction.js'
 import { calcPoTotals } from '../lib/poTotals.js'
 import { round2 } from '../lib/depositMath.js'
 import { lineAmount, evaluateMatch, proposePos, lineBase } from '../lib/supplierTaxInvoice.js'
 import {
-  emptyLine, validateFormForSave, poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds,
+  emptyLine, validateFormForSave, poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds, missingReceiptIds, normalizeLinkKind,
+  stockSiteLookup, applySitesToLines,
 } from '../lib/taxInvoiceForm.js'
+import { evaluateDeliveryMatch, receiptSelectionTotals, receiptPickerRows, receiptLabel, splitDeliveryPoIds } from '../lib/deliveryTaxInvoice.js'
+import { NO_RECEIPTS_TEXT, DELIVERY_PO_IN_PO_INVOICE_TEXT } from '../lib/deliveryTaxInvoiceText.js'
 import { SCAN_REMINDER } from '../lib/scanNotice.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
@@ -24,6 +27,8 @@ import SearchableSelect from './SearchableSelect.jsx'
 import QuickAddSelect from './QuickAddSelect.jsx'
 import ScanNotice from './ScanNotice.jsx'
 import ScanDocPreview from './ScanDocPreview.jsx'
+import CardTable from './CardTable.jsx'
+const LINES_MAP = { title: 'รายละเอียด', amount: 'จำนวนเงิน', sub: [], actions: 'last' }
 
 const amber = { background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.5)', borderRadius: 8, padding: 10, fontSize: 13 }
 const badge = (color, bg) => ({ fontSize: 11, padding: '1px 6px', borderRadius: 6, color, background: bg, marginLeft: 6, whiteSpace: 'nowrap' })
@@ -52,6 +57,17 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
   const posRows = poRowsFor(poResult, form.supplier_id)
   const { data: deposits } = useSupplierDeposits(form.supplier_id || undefined)
   const { data: examples } = useSupplierDocumentExamples(form.supplier_id || null)
+  const { data: deliveryData } = useDeliveryReceipts()
+  const { data: receiptLinkData } = useActiveReceiptTaxInvoiceLinks()
+  const deliveryReady = deliveryData?.ready === true && receiptLinkData?.ready === true
+  const kind = form.link_kind === 'delivery' ? 'delivery' : 'po'
+  const receiptRows = deliveryReady ? deliveryData.rows : null
+  const picker = useMemo(() => receiptPickerRows({ receipts: receiptRows || [], supplierId: form.supplier_id, links: receiptLinkData?.map || new Map(), invoiceId }),
+    [receiptRows, form.supplier_id, receiptLinkData, invoiceId])
+  const receiptById = useMemo(() => new Map((receiptRows || []).map(r => [r.id, r])), [receiptRows])
+  const selectedReceipts = (form.receipt_ids || []).map(id => receiptById.get(id)).filter(Boolean)
+  const selTotals = receiptSelectionTotals(selectedReceipts)
+  const missingReceipts = kind === 'delivery' ? missingReceiptIds(form.receipt_ids, receiptRows) : []
 
   const itemById = useMemo(() => new Map((allItems || []).map(i => [i.id, i])), [allItems])
   const factorFor = (itemId, unit) => (unitFactors || []).find(f => f.inventory_item_id === itemId && f.unit_name === unit) || null
@@ -67,27 +83,37 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
   // provably belongs to that supplier (posRows !== null).
   const [autoTickedFor, setAutoTickedFor] = useState(null)
   useEffect(() => {
-    if (invoiceId || !posRows || !links || !form.supplier_id || autoTickedFor === form.supplier_id) return
+    if (invoiceId || kind !== 'po' || !posRows || !links || !form.supplier_id || autoTickedFor === form.supplier_id) return
     const supplierId = form.supplier_id
     // never overwrite a selection that is already there (e.g. an initial form that came with po_ids)
     setForm(f => (f.supplier_id === supplierId && f.po_ids.length === 0 ? { ...f, po_ids: proposal.proposed.map(p => p.id) } : f))
     setAutoTickedFor(supplierId)
-  }, [invoiceId, posRows, links, form.supplier_id, proposal, autoTickedFor])
+  }, [invoiceId, kind, posRows, links, form.supplier_id, proposal, autoTickedFor])
 
-  const selectedPos = form.po_ids.map(id => poById.get(id)).filter(Boolean)
-  const missing = missingPoIds(form.po_ids, posRows)
-  const match = evaluateMatch({
-    netBeforeVat: form.net_before_vat, poSubtotals: selectedPos.map(poSubtotal), lineAmounts: form.lines.map(lineAmount),
-  })
+  // A draft saved before its PO was switched to "per delivery" can still hold that PO: never counted, shown with a remove button.
+  const { delivery: deliveryPoIds } = kind === 'po' ? splitDeliveryPoIds(form.po_ids, posRows) : { delivery: [] }
+  const selectedPos = form.po_ids.filter(id => !deliveryPoIds.includes(id)).map(id => poById.get(id)).filter(Boolean)
+  const missing = kind === 'po' ? missingPoIds(form.po_ids, posRows) : []
   const netNum = Number(form.net_before_vat)
-  const unlinkedInMonth = proposal.proposed.filter(p => !form.po_ids.includes(p.id))
-  const commonSite = selectedPos.length && selectedPos.every(p => p.site_id === selectedPos[0].site_id) ? selectedPos[0].site_id : ''
+  const grandNum = round2((Number.isFinite(netNum) ? netNum : 0) + (Number.isFinite(Number(form.vat)) ? Number(form.vat) : 0))
+  const match = kind === 'delivery'
+    ? evaluateDeliveryMatch({ netBeforeVat: form.net_before_vat, grandTotal: grandNum, receipts: selectedReceipts, lineAmounts: form.lines.map(lineAmount) })
+    : evaluateMatch({ netBeforeVat: form.net_before_vat, poSubtotals: selectedPos.map(poSubtotal), lineAmounts: form.lines.map(lineAmount) })
+  const unlinkedInMonth = kind === 'po' ? proposal.proposed.filter(p => !form.po_ids.includes(p.id)) : []
+  // Stock lines have no site field: stock always goes to the central site "ส่วนกลาง" (expenses stay per job
+  // site). undefined while the sites load, so a reopened draft keeps its stored sites until then.
+  const siteLookup = useMemo(() => stockSiteLookup(sites), [sites])
 
   // Line changes go through applyLineChange (pure, tested). Lookups come from a ref so a change made
   // after an await (quick create) never uses stale closures.
   const lookupsRef = useRef({})
-  lookupsRef.current = { itemById, unitFactors: unitFactors || [], commonSite }
+  lookupsRef.current = { itemById, unitFactors: unitFactors || [], siteLookup }
   const updateLine = (key, patch) => setForm(f => ({ ...f, lines: f.lines.map(l => (l.key === key ? applyLineChange(l, patch, lookupsRef.current) : l)) }))
+
+  // Sites loaded (or a line was prefilled from a receipt with the PO's site): every stock line goes to central.
+  useEffect(() => {
+    setForm(f => { const lines = applySitesToLines(f.lines, siteLookup); return lines === f.lines ? f : { ...f, lines } })
+  }, [siteLookup])
 
   // Saved invoice: once the lookups are loaded, a stored base quantity that equals the conversion is not "typed".
   const reconciled = useRef(false)
@@ -96,6 +122,14 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
     reconciled.current = true
     setForm(f => ({ ...f, lines: reconcileBaseManual(f.lines, { itemById, unitFactors }) }))
   }, [invoiceId, allItems, unitFactors, itemById])
+
+  // A new form prefilled from a receipt has lines without a stored base quantity: compute it once the lookups are loaded.
+  const baseFilled = useRef(false)
+  useEffect(() => {
+    if (invoiceId || baseFilled.current || !allItems || !unitFactors) return
+    baseFilled.current = true
+    setForm(f => ({ ...f, lines: f.lines.map(l => (l.inventory_item_id && l.base_qty === '' && !l.base_manual ? applyLineChange(l, {}, lookupsRef.current) : l)) }))
+  }, [invoiceId, allItems, unitFactors])
 
   // A quick-created stock item is not in itemById until the refetch has rendered: recompute its base then.
   const recalcKeys = useRef(new Set())
@@ -109,10 +143,12 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
   }, [itemById, form.lines])
 
   const togglePo = id => set('po_ids', form.po_ids.includes(id) ? form.po_ids.filter(x => x !== id) : [...form.po_ids, id])
+  const toggleReceipt = id => set('receipt_ids', form.receipt_ids.includes(id) ? form.receipt_ids.filter(x => x !== id) : [...form.receipt_ids, id])
+  const setKind = k => setForm(f => ({ ...f, link_kind: k, po_ids: [], receipt_ids: [] }))
   const [showOutsideOpen, setShowOutsideOpen] = useState(false)
   const showOutside = showOutsideOpen || proposal.outsideMonth.some(p => form.po_ids.includes(p.id))
 
-  const pickSupplier = v => setForm(f => ({ ...f, supplier_id: v, po_ids: [] }))
+  const pickSupplier = v => setForm(f => ({ ...f, supplier_id: v, po_ids: [], receipt_ids: [] }))
 
   // ── optional scan (same pattern as SwapTaxInvoiceModal). Never posts anything. ──
   const [scanning, setScanning] = useState(false)
@@ -156,13 +192,20 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
 
   const run = fn => {
     const errs = validateFormForSave(form)
-    if (form.supplier_id && !posRows && form.po_ids.length) errs.push('กำลังโหลดใบสั่งซื้อ กรุณารอสักครู่')
-    if (missing.length) errs.push(`มีใบสั่งซื้อที่เลือกไว้ ${missing.length} ใบที่ไม่พบในรายการ — เอาออกก่อนบันทึก`)
+    if (kind === 'delivery') {
+      if (!form.receipt_ids.length) errs.push(NO_RECEIPTS_TEXT)
+      if (form.supplier_id && !receiptRows && form.receipt_ids.length) errs.push('กำลังโหลดการรับของ กรุณารอสักครู่')
+      if (missingReceipts.length) errs.push(`มีการรับของที่เลือกไว้ ${missingReceipts.length} รายการที่ไม่พบในรายการ — เอาออกก่อนบันทึก`)
+    } else {
+      if (form.supplier_id && !posRows && form.po_ids.length) errs.push('กำลังโหลดใบสั่งซื้อ กรุณารอสักครู่')
+      if (missing.length) errs.push(`มีใบสั่งซื้อที่เลือกไว้ ${missing.length} ใบที่ไม่พบในรายการ — เอาออกก่อนบันทึก`)
+      if (deliveryPoIds.length) errs.push(DELIVERY_PO_IN_PO_INVOICE_TEXT)
+    }
     if (errs.length) { alert(errs.join('\n')); return }
-    return fn(form)
+    // emit only the selected kind's ids (an initial form may carry both)
+    return fn(normalizeLinkKind(form))
   }
 
-  const siteOpts = (sites || []).map(s => ({ value: s.id, label: s.name, keywords: s.name }))
   const itemOpts = (inventoryItems || []).map(it => ({ value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name }))
   const catOpts = (categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))
 
@@ -183,6 +226,19 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
       </label>
     )
   }
+
+  const renderReceiptRow = (r, { disabled, link } = {}) => (
+    <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, padding: '4px 0', opacity: disabled ? 0.6 : 1 }}>
+      <input type="checkbox" disabled={disabled} checked={form.receipt_ids.includes(r.id)} onChange={() => toggleReceipt(r.id)} style={{ marginTop: 3 }} />
+      <span>
+        <b>{receiptLabel(r.purchase_orders?.po_number, r.seq)}</b> · รับ {fmtDate(r.received_date)}
+        {' · '}มูลค่าสินค้า {fmt(r.goods_subtotal)} · VAT {fmt(r.goods_vat)}
+        {!r.expense_id && <span style={badge('#b45309', 'rgba(245,158,11,.15)')}>ไม่มีบิล (หักมัดจำครบ)</span>}
+        {r.purchase_orders?.stock_from_invoice && <span style={badge('#1d4ed8', 'rgba(59,130,246,.15)')}>สต็อกเข้าจากใบกำกับ</span>}
+        {link && <span style={{ color: 'var(--text3)', marginLeft: 6 }}>ผูกกับใบกำกับ {link.invoice_no}</span>}
+      </span>
+    </label>
+  )
 
   return (
     <form onSubmit={e => e.preventDefault()}>
@@ -217,7 +273,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
             <div>
               <label className="label">ยอดรวม</label>
               <div className="input" style={{ display: 'flex', alignItems: 'center' }}>
-                {fmt(round2((Number.isFinite(netNum) ? netNum : 0) + (Number.isFinite(Number(form.vat)) ? Number(form.vat) : 0)))}
+                {fmt(grandNum)}
               </div>
             </div>
           </div>
@@ -231,44 +287,94 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
             {scanFile && !scanning && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>{SCAN_REMINDER}</div>}
           </div>
 
-          <div>
-            <label className="label">ใบสั่งซื้อที่รวมอยู่ในใบกำกับนี้</label>
-            {!form.supplier_id ? (
-              <div style={{ fontSize: 13, color: 'var(--text3)' }}>เลือกซัพพลายเออร์ก่อน</div>
-            ) : !posRows || !links ? (
-              <div style={{ fontSize: 13, color: 'var(--text3)' }}>⏳ กำลังโหลดใบสั่งซื้อ...</div>
-            ) : (
-              <>
-                {proposal.proposed.length === 0 && proposal.outsideMonth.length === 0 && proposal.linkedElsewhere.length === 0 && (
-                  <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบใบสั่งซื้อที่รับของแล้วของซัพพลายเออร์นี้</div>
-                )}
-                {proposal.proposed.map(po => <div key={po.id}>{renderPoRow(po)}</div>)}
-                {proposal.outsideMonth.length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowOutsideOpen(s => !s)}>
-                      {showOutside ? '▾' : '▸'} ใบสั่งซื้อนอกเดือน ({proposal.outsideMonth.length})
-                    </button>
-                    {showOutside && proposal.outsideMonth.map(po => (
-                      <div key={po.id}>
-                        {renderPoRow(po)}
-                        <span style={{ ...badge('#b45309', 'rgba(245,158,11,.2)'), marginLeft: 26 }}>นอกเดือน</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {proposal.linkedElsewhere.map(({ po, link }) => <div key={po.id}>{renderPoRow(po, { disabled: true, link })}</div>)}
-              </>
-            )}
-            {missing.length > 0 && (
-              <div style={{ ...amber, marginTop: 8 }}>
-                ใบสั่งซื้อที่เลือกไว้ไม่พบในรายการ (อาจถูกแก้ไขหรือยกเลิก) {missing.length} ใบ — บันทึกไม่ได้จนกว่าจะเอาออก
-                {missing.map(id => (
-                  <button key={id} type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }}
-                    onClick={() => set('po_ids', form.po_ids.filter(x => x !== id))}>เอาออก {id.slice(0, 8)}</button>
-                ))}
-              </div>
-            )}
-          </div>
+          {(deliveryReady || kind === 'delivery') && (
+            <div role="radiogroup" aria-label="ผูกกับ" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, alignItems: 'center' }}>
+              <span>ผูกกับ:</span>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}><input type="radio" name="sti-link-kind" checked={kind === 'po'} onChange={() => setKind('po')} /> ใบสั่งซื้อ</label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}><input type="radio" name="sti-link-kind" checked={kind === 'delivery'} onChange={() => setKind('delivery')} /> การส่งของ</label>
+            </div>
+          )}
+          {kind === 'po' && (
+            <div>
+              <label className="label">ใบสั่งซื้อที่รวมอยู่ในใบกำกับนี้</label>
+              {!form.supplier_id ? (
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>เลือกซัพพลายเออร์ก่อน</div>
+              ) : !posRows || !links ? (
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>⏳ กำลังโหลดใบสั่งซื้อ...</div>
+              ) : (
+                <>
+                  {proposal.proposed.length === 0 && proposal.outsideMonth.length === 0 && proposal.linkedElsewhere.length === 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบใบสั่งซื้อที่รับของแล้วของซัพพลายเออร์นี้</div>
+                  )}
+                  {proposal.proposed.map(po => <div key={po.id}>{renderPoRow(po)}</div>)}
+                  {proposal.outsideMonth.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowOutsideOpen(s => !s)}>
+                        {showOutside ? '▾' : '▸'} ใบสั่งซื้อนอกเดือน ({proposal.outsideMonth.length})
+                      </button>
+                      {showOutside && proposal.outsideMonth.map(po => (
+                        <div key={po.id}>
+                          {renderPoRow(po)}
+                          <span style={{ ...badge('#b45309', 'rgba(245,158,11,.2)'), marginLeft: 26 }}>นอกเดือน</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {proposal.linkedElsewhere.map(({ po, link }) => <div key={po.id}>{renderPoRow(po, { disabled: true, link })}</div>)}
+                </>
+              )}
+              {missing.length > 0 && (
+                <div style={{ ...amber, marginTop: 8 }}>
+                  ใบสั่งซื้อที่เลือกไว้ไม่พบในรายการ (อาจถูกแก้ไขหรือยกเลิก) {missing.length} ใบ — บันทึกไม่ได้จนกว่าจะเอาออก
+                  {missing.map(id => (
+                    <button key={id} type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }}
+                      onClick={() => set('po_ids', form.po_ids.filter(x => x !== id))}>เอาออก {id.slice(0, 8)}</button>
+                  ))}
+                </div>
+              )}
+              {deliveryPoIds.length > 0 && (
+                <div style={{ ...amber, marginTop: 8 }}>
+                  {deliveryPoIds.map(id => (
+                    <div key={id}>{poById.get(id)?.po_number || id.slice(0, 8)} — {DELIVERY_PO_IN_PO_INVOICE_TEXT}
+                      <button type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }} onClick={() => set('po_ids', form.po_ids.filter(x => x !== id))}>เอาออก</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {kind === 'delivery' && (
+            <div>
+              <label className="label">การส่งของ (ล็อต) ที่รวมอยู่ในใบกำกับนี้</label>
+              {!form.supplier_id ? (
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>เลือกซัพพลายเออร์ก่อน</div>
+              ) : !receiptRows ? (
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>⏳ กำลังโหลดการรับของ...</div>
+              ) : (
+                <>
+                  {picker.available.length === 0 && picker.linkedElsewhere.length === 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบการรับของที่รอใบกำกับของซัพพลายเออร์นี้ (ใบสั่งซื้อต้องตั้งเป็น "1 ใบต่อการส่งของ")</div>
+                  )}
+                  {picker.available.map(r => <div key={r.id}>{renderReceiptRow(r)}</div>)}
+                  {picker.linkedElsewhere.map(({ receipt, link }) => <div key={receipt.id}>{renderReceiptRow(receipt, { disabled: true, link })}</div>)}
+                </>
+              )}
+              {selTotals.count > 0 && (
+                <div data-testid="receipt-sum" style={{ marginTop: 6, fontSize: 13, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
+                  เลือก {selTotals.count} ใบรับของ รวม {fmt(selTotals.sum)} (รวม VAT {fmt(selTotals.sumIncl)})
+                </div>
+              )}
+              {missingReceipts.length > 0 && (
+                <div style={{ ...amber, marginTop: 8 }}>
+                  การรับของที่เลือกไว้ไม่พบในรายการ {missingReceipts.length} รายการ — บันทึกไม่ได้จนกว่าจะเอาออก
+                  {missingReceipts.map(id => (
+                    <button key={id} type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }}
+                      onClick={() => set('receipt_ids', form.receipt_ids.filter(x => x !== id))}>เอาออก {id.slice(0, 8)}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {unlinkedInMonth.length > 0 && (
             <div style={amber}>
@@ -278,8 +384,10 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
 
           <div style={{ fontSize: 13, padding: 10, borderRadius: 8, border: `1px solid ${match.matchOk ? 'rgba(16,185,129,.5)' : 'rgba(239,68,68,.5)'}`, background: match.matchOk ? 'rgba(16,185,129,.1)' : 'rgba(239,68,68,.08)' }}>
             {match.invalid
-              ? 'กรอกยอดก่อน VAT และรายการให้ครบเพื่อเทียบกับใบสั่งซื้อ'
-              : `มูลค่าสินค้าใบสั่งซื้อ ${fmt(match.poSum)} · ใบกำกับก่อน VAT ${fmt(netNum)} · ต่าง ${fmt(match.diff)} (เกณฑ์ ±${fmt(match.tolerance)})`}
+              ? (kind === 'delivery' ? 'กรอกยอดก่อน VAT และรายการให้ครบ และเลือกใบรับของ เพื่อเทียบกับการส่งของ' : 'กรอกยอดก่อน VAT และรายการให้ครบเพื่อเทียบกับใบสั่งซื้อ')
+              : kind === 'delivery'
+                ? `มูลค่าสินค้าที่รับ ${fmt(match.sum)} (รวม VAT ${fmt(match.sumIncl)}) · ใบกำกับก่อน VAT ${fmt(netNum)} · ต่าง ${fmt(match.diffExcl)}${match.basis === 'incl' ? ` · ตรงเมื่อเทียบรวม VAT (ต่าง ${fmt(match.diffIncl)})` : ''} (เกณฑ์ ±${fmt(match.tolerance)})`
+                : `มูลค่าสินค้าใบสั่งซื้อ ${fmt(match.poSum)} · ใบกำกับก่อน VAT ${fmt(netNum)} · ต่าง ${fmt(match.diff)} (เกณฑ์ ±${fmt(match.tolerance)})`}
           </div>
           {!match.matchOk && !match.invalid && (
             <div>
@@ -289,7 +397,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
           )}
 
           <div>
-            <div className="table-wrap">
+            <CardTable map={LINES_MAP}>
               <table>
                 <thead>
                   <tr>
@@ -331,11 +439,6 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
                           {l.inventory_item_id && (
                             <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
                               <div>
-                                <label className="label" style={{ fontSize: 11.5 }}>ไซท์งาน ★</label>
-                                <SearchableSelect value={l.site_id} onChange={v => updateLine(l.key, { site_id: v })} disabled={!!busy}
-                                  placeholder="— เลือกไซท์ —" options={siteOpts} />
-                              </div>
-                              <div>
                                 <label className="label" style={{ fontSize: 11.5 }}>จำนวนในหน่วยหลัก ({item?.base_unit || '—'}) ★</label>
                                 <input className="input input-sm" type="number" min="0" step="any" value={l.base_qty}
                                   onChange={e => updateLine(l.key, { base_qty: e.target.value, base_manual: true, base_stale: false })} />
@@ -358,7 +461,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
                   })}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
             <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 6 }}
               onClick={() => setForm(f => ({ ...f, lines: [...f.lines, emptyLine()] }))}>+ เพิ่มรายการ</button>
             <div style={{ marginTop: 6, fontSize: 13, color: match.invalid || match.linesOk ? 'inherit' : 'var(--danger, #e55)' }}>

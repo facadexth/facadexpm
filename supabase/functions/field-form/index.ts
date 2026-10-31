@@ -37,7 +37,16 @@ import { withPushBudget } from '../_shared/push-budget.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import { APP_URL } from '../_shared/app-url.ts'
+import { rolesFor } from '../_shared/roleAudience.ts'
 import { dailySubmitLimitReached, DAILY_LIMIT_MESSAGE } from '../_shared/form-throttle.ts'
+import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
+import { parseAdvanceAmount, defaultStartMonth } from '../_shared/advance-logic.ts'
+import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
+import { payslipWindow, inPayslipWindow, pickYtd, pickContribBalance } from '../_shared/payslip-data.ts'
+import { todaysSites, pickSiteForNow } from '../_shared/todays-sites.ts'
+import { resolveFactoryLocation } from '../_shared/factory-location.ts'
+import { planAssemblyDay, skipStep, stepLabel, chooseStepByGps, distanceM, nextStepHint, type DayStep } from '../_shared/assembly-day.ts'
+import { mergeSiteLists, repairSiteOptions, repairTicketOnSiteToday, REPAIR_ACTIVE_STATUSES } from '../_shared/material-sites.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -55,6 +64,36 @@ function json(body: unknown, status = 200) {
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
+// Completed sites with a repair job on today: scheduled for today, or in_progress since today or earlier
+// (multi-day jobs). Service-role client, so the tenant filter is explicit.
+async function repairSitesToday(admin: any, tenantId: string): Promise<{ id: string; name: string }[]> {
+  const today = bangkokToday()
+  const { data } = await admin.from('repair_tickets').select('status, scheduled_date, sites(id, name)')
+    .eq('tenant_id', tenantId).in('status', REPAIR_ACTIVE_STATUSES).lte('scheduled_date', today)
+  return repairSiteOptions((data ?? []).filter((r: any) => repairTicketOnSiteToday(r, today)))
+}
+function bangkokHour(): number {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).getUTCHours()
+}
+
+// Payslip link: this worker's closed-period salary records inside the 12-month window.
+// Plain separate queries (no embeds), every one filtered by tenant_id.
+const PAYSLIP_ERR = 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง'
+async function loadPayslipMonths(tenantId: string, workerId: string): Promise<{ error: true } | { periods: any[]; records: any[] }> {
+  const win = payslipWindow(bangkokToday())
+  const { data: periods, error: pErr } = await admin.from('payroll_periods')
+    .select('id, year, month, status, paid_date')
+    .eq('tenant_id', tenantId).eq('status', 'closed')
+    .gte('year', win.from.year).lte('year', win.to.year)
+  if (pErr) return { error: true }
+  const inWin = (periods ?? []).filter((p: any) => inPayslipWindow(win, p.year, p.month))
+  if (inWin.length === 0) return { periods: [], records: [] }
+  const { data: records, error: rErr } = await admin.from('salary_records')
+    .select('id, worker_id, year, month, net_pay, paid_date, facts, period_id')
+    .eq('tenant_id', tenantId).eq('worker_id', workerId).in('period_id', inWin.map((p: any) => p.id))
+  if (rErr) return { error: true }
+  return { periods: inWin, records: records ?? [] }
+}
 
 // Shared by both actions: loads the token row plus the worker's own
 // {id, name, tenant_id}, or a `reason` FieldFormPage already knows how
@@ -62,36 +101,154 @@ function bangkokToday(): string {
 async function loadToken(token: string) {
   const { data: tok } = await admin
     .from('line_deep_link_tokens')
-    .select('id, worker_id, action_type, expires_at, used_at')
+    .select('id, tenant_id, worker_id, action_type, expires_at, used_at, site_id, checkin_location_id')
     .eq('token', token)
     .maybeSingle()
   if (!tok) return { reason: 'not_found' as const }
   if (tok.used_at) return { reason: 'used' as const }
   if (new Date(tok.expires_at as string).getTime() < Date.now()) return { reason: 'expired' as const }
 
-  const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id, line_user_id, annual_leave_days, annual_sick_leave_days').eq('id', tok.worker_id).maybeSingle()
+  const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id, line_user_id, status, annual_leave_days, annual_sick_leave_days').eq('id', tok.worker_id).maybeSingle()
   if (!worker) return { reason: 'not_found' as const }
+  // The token's own tenant must match the worker's: anything else is treated as an unknown link.
+  if (tok.tenant_id !== worker.tenant_id) return { reason: 'not_found' as const }
   return { tok, worker }
+}
+
+// Atomically claims a single-use token: only the one request that flips used_at from null wins,
+// so a double-tap cannot write twice. Returns a Response to send back when the claim fails
+// (DB error -> 500, already used/expired -> {reason:'used'}), or null when we own the token.
+async function claimToken(tokId: string): Promise<Response | null> {
+  const nowIso = new Date().toISOString()
+  const { data, error } = await admin.from('line_deep_link_tokens')
+    .update({ used_at: nowIso }).eq('id', tokId).is('used_at', null).gt('expires_at', nowIso).select('id')
+  if (error) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+  if (!data || data.length === 0) return json({ reason: 'used' }, 200)
+  return null
+}
+// Gives the token back after the write it guarded failed, so the worker can retry with the same link.
+async function releaseToken(tokId: string) {
+  const { error } = await admin.from('line_deep_link_tokens').update({ used_at: null }).eq('id', tokId)
+  if (error) console.error('releaseToken failed', error.message)
 }
 
 // Same "which site is this worker actually on today" resolution
 // line-webhook's own resolveTodaysSite uses -- duplicated here (Deno
 // Edge Functions can't share code across function directories except
-// via ../_shared/) since this is the only other place that needs it.
+// via ../_shared/; the pick itself is shared, _shared/todays-sites.ts).
+// With 2+ sites today it picks by Bangkok time (before 12:00 the first
+// morning site, from 12:00 the first evening site). Only reached for an
+// OLD check-in/out token without site_id -- new ones name their site.
+const TODAY_SITE_TYPES = ['site', 'factory', 'subcontract']
 async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ id: string; name: string } | null> {
-  const { data: assignment } = await admin
+  const { data: rows } = await admin
     .from('worker_assignments')
-    .select('site_id')
+    .select('site_id, shift, type')
     .eq('worker_id', workerId)
     .eq('tenant_id', tenantId)
     .eq('date', bangkokToday())
-    .in('type', ['site', 'factory', 'subcontract'])
+    .in('type', TODAY_SITE_TYPES)
     .not('site_id', 'is', null)
+    .order('shift')
+  const pick = pickSiteForNow(todaysSites((rows ?? []).map((r: any) => ({ site_id: r.site_id, site_name: null, shift: r.shift, type: r.type })), []), bangkokHour())
+  if (!pick) return null
+  const { data: site } = await admin.from('sites').select('id, name').eq('id', pick.siteId).maybeSingle()
+  return site ?? null
+}
+
+// The site a check-in/out token is for. A token that names its site (line-webhook, since
+// 2026-10-20 multi-site check-in) is used as-is, but only if this worker really has work
+// there today (Bangkok date, tenant-filtered) -- otherwise null, which callers answer with
+// no_site. An old token without site_id falls back to resolveTodaysSite.
+async function resolveTokenSite(tok: { site_id?: string | null }, worker: { id: string; tenant_id: string }): Promise<{ id: string; name: string } | null> {
+  if (!tok.site_id) return await resolveTodaysSite(worker.id, worker.tenant_id)
+  const { data: assignment } = await admin
+    .from('worker_assignments')
+    .select('id')
+    .eq('worker_id', worker.id)
+    .eq('tenant_id', worker.tenant_id)
+    .eq('site_id', tok.site_id)
+    .eq('date', bangkokToday())
+    .in('type', TODAY_SITE_TYPES)
     .limit(1)
     .maybeSingle()
-  if (!assignment?.site_id) return null
-  const { data: site } = await admin.from('sites').select('id, name').eq('id', assignment.site_id).maybeSingle()
+  if (!assignment) return null
+  const { data: site } = await admin.from('sites').select('id, name').eq('id', tok.site_id).eq('tenant_id', worker.tenant_id).maybeSingle()
   return site ?? null
+}
+
+// What the check-in/out page shows as the place. Factory work (the worker's assignment at
+// this site today is type 'factory') says the FACTORY, and the job:
+// 'โรงงาน (ส่วนกลาง) — งานบ้านคุณบิ๊ก'. Otherwise the plain site name. The RPC still gets site_id.
+async function checkinPlaceName(site: { id: string; name: string }, worker: { id: string; tenant_id: string }): Promise<string> {
+  const { data: rows } = await admin.from('worker_assignments').select('type')
+    .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('site_id', site.id)
+    .eq('date', bangkokToday()).in('type', TODAY_SITE_TYPES)
+  const types = (rows ?? []) as Array<{ type: string | null }>
+  if (!types.length || !types.every((r) => r.type === 'factory')) return site.name
+  const loc = await resolveFactoryLocation(admin, worker.tenant_id, worker.id, site.id, bangkokToday())
+  return loc ? `${loc.name} — งาน${site.name}` : site.name
+}
+
+// A check-in/out token for a fixed check-in location (office admin with no site today,
+// 2026-10-21 -- issued by line-webhook's issueLocationFormLink). The location row must be
+// the worker's tenant's; whether this worker may clock THERE is re-checked inside the
+// perform_location_checkin_by_id/checkout RPCs (location_checkin_allowed), the same
+// user_roles rule the web's perform_location_checkin applies.
+async function resolveTokenLocation(tok: { checkin_location_id?: string | null }, worker: { tenant_id: string }): Promise<{ id: string; name: string } | null> {
+  if (!tok.checkin_location_id) return null
+  const { data } = await admin.from('checkin_locations').select('id, name')
+    .eq('id', tok.checkin_location_id).eq('tenant_id', worker.tenant_id).maybeSingle()
+  return data ?? null
+}
+
+// ── Assembly day (2026-10-21, รวมพลที่บริษัท/โรงงานก่อน) ─────────────────────────────
+// A time_clock token carries no site: the page works out the step from the day's order
+// (_shared/assembly-day.ts) and the GPS. Every write still goes through a geofenced RPC.
+type AssemblyLoc = { location_id: string; location_name: string; lat: number; lng: number }
+type PlannedDay = { assembly: AssemblyLoc; steps: DayStep[]; next: DayStep | null; coords: Map<string, { lat: number; lng: number } | null> }
+
+async function loadAssemblyDay(worker: { id: string; tenant_id: string }): Promise<PlannedDay | null> {
+  const today = bangkokToday()
+  const { data: asmRows, error: asmErr } = await admin.rpc('worker_assembly_location', { p_worker_id: worker.id, p_date: today })
+  if (asmErr) throw new Error(asmErr.message)
+  const assembly = (asmRows ?? [])[0] as AssemblyLoc | undefined
+  if (!assembly) return null
+  const [{ data: rows }, { data: checkins }] = await Promise.all([
+    admin.from('worker_assignments').select('site_id, shift, type, sites(name, lat, lng)')
+      .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('date', today)
+      .in('type', TODAY_SITE_TYPES).not('site_id', 'is', null),
+    admin.from('worker_checkins').select('site_id, checkin_location_id, is_assembly, checkin_at, checkout_at')
+      .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('date', today),
+  ])
+  const sites = todaysSites(
+    (rows ?? []).map((r: any) => ({ site_id: r.site_id, site_name: r.sites?.name ?? null, shift: r.shift, type: r.type })),
+    ((checkins ?? []) as any[]).filter((c) => c.site_id),
+  )
+  // Where each site step is geofenced: the site itself, or the factory for factory work.
+  const coords = new Map<string, { lat: number; lng: number } | null>()
+  for (const s of sites) {
+    if (s.atFactory) {
+      const loc = await resolveFactoryLocation(admin, worker.tenant_id, worker.id, s.siteId, today)
+      if (loc) s.siteName = `${loc.name} — งาน${s.siteName}`
+      coords.set(s.siteId, loc?.lat != null && loc?.lng != null ? { lat: Number(loc.lat), lng: Number(loc.lng) } : null)
+    } else {
+      const r = (rows ?? []).find((x: any) => x.site_id === s.siteId) as any
+      coords.set(s.siteId, r?.sites?.lat != null && r?.sites?.lng != null ? { lat: Number(r.sites.lat), lng: Number(r.sites.lng) } : null)
+    }
+  }
+  const asm = ((checkins ?? []) as any[]).find((c) => c.is_assembly && c.checkin_location_id === assembly.location_id)
+  const plan = planAssemblyDay(sites, asm ? { leave_at: asm.checkin_at, return_at: asm.checkout_at } : null, assembly.location_name)
+  return { assembly, ...plan, coords }
+}
+
+function stepCoords(day: PlannedDay, step: DayStep): { lat: number; lng: number } | null {
+  if (step.kind === 'assembly_leave' || step.kind === 'assembly_return') return { lat: Number(day.assembly.lat), lng: Number(day.assembly.lng) }
+  return day.coords.get(step.siteId as string) ?? null
+}
+
+function stepView(step: DayStep) {
+  return { kind: step.kind, siteId: step.siteId, done: step.done, ...stepLabel(step) }
 }
 
 async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ name: string }>> {
@@ -105,13 +262,13 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
   return (data ?? []).map((row: any) => ({ name: row.phase_tasks.name as string }))
 }
 
-// Pushes to every ADMIN/OWNER with a linked LINE account for this
+// Pushes to every OWNER/ADMIN/PM with a linked LINE account for this
 // tenant -- same user_roles.line_user_id the "เชื่อมต่อ LINE ส่วนตัว" card
 // in CommunicationCenter.jsx sets up. Best-effort: a push failure never
 // blocks the PO/leave request itself from having been created.
 async function notifyAdmins(tenantId: string, text: string, toggleKey: string) {
   if (!(await isPushEnabled(admin, tenantId, toggleKey))) return
-  const { data: admins } = await admin.from('user_roles').select('line_user_id').eq('tenant_id', tenantId).in('role', ['OWNER', 'ADMIN']).not('line_user_id', 'is', null)
+  const { data: admins } = await admin.from('user_roles').select('line_user_id').eq('tenant_id', tenantId).in('role', rolesFor('ops')).not('line_user_id', 'is', null)
   for (const a of admins ?? []) {
     await withPushBudget(admin, tenantId, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, a.line_user_id as string, text)).catch((e) => console.error('notifyAdmins push failed', e))
   }
@@ -123,27 +280,11 @@ async function webPushAdmins(tenantId: string, toggleKey: string, build: (m: typ
   try {
     if (!(await isPushEnabled(admin, tenantId, toggleKey))) return
     const [{ sendWebPushToTenantAdmins }, messages] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
-    await sendWebPushToTenantAdmins(admin, tenantId, build(messages))
+    await sendWebPushToTenantAdmins(admin, tenantId, build(messages), 'ops')
   } catch (e) { console.error('web push failed', (e as Error).message) }
 }
 
-// Remaining ลากิจ/ลาป่วย for the current (Bangkok) calendar year -- mirrors
-// useLeaveQuotaUsage/useSickLeaveQuotaUsage in src/hooks/useSupabase.js
-// EXACTLY (same worker_assignments row-count * 0.5 convention, same legacy
-// 'leave' => leave_personal rule) so the LINE-side numbers never drift from
-// what HR.jsx/MySchedule.jsx show in the app itself.
-async function leaveQuotaRemaining(workerId: string, annualLeaveDays: number, annualSickDays: number) {
-  const year = Number(bangkokToday().slice(0, 4))
-  const from = `${year}-01-01`
-  const to = `${year}-12-31`
-  const [personalRes, sickRes] = await Promise.all([
-    admin.from('worker_assignments').select('id').eq('worker_id', workerId).in('type', ['leave_personal', 'leave']).gte('date', from).lte('date', to),
-    admin.from('worker_assignments').select('id').eq('worker_id', workerId).eq('type', 'leave_sick').gte('date', from).lte('date', to),
-  ])
-  const personalUsed = (personalRes.data?.length ?? 0) * 0.5
-  const sickUsed = (sickRes.data?.length ?? 0) * 0.5
-  return { remainingPersonal: annualLeaveDays - personalUsed, remainingSick: annualSickDays - sickUsed }
-}
+// Remaining ลากิจ/ลาป่วย: _shared/leave-quota.ts (shared with line-webhook's "สถานะคำขอ").
 
 // Confirms back to the WORKER who submitted the request -- previously only
 // notifyAdmins fired, so a worker's only feedback was the one-time in-browser
@@ -177,10 +318,11 @@ Deno.serve(async (req) => {
       const workerName = worker.nickname || worker.name
 
       if (tok.action_type === 'material_request') {
-        const [itemsRes, sitesRes] = await Promise.all([
+        const [itemsRes, sitesRes, repairSites] = await Promise.all([
           admin.from('inventory_items').select('id, name, base_unit, category_id, expense_categories(name)')
             .eq('tenant_id', worker.tenant_id).eq('item_kind', 'raw_material').eq('active', true).order('name'),
           admin.from('sites').select('id, name').eq('tenant_id', worker.tenant_id).eq('status', 'Ongoing').order('name'),
+          repairSitesToday(admin, worker.tenant_id),
         ])
         const items = (itemsRes.data ?? []).map((it: any) => ({
           id: it.id, name: it.name, unit: it.base_unit, categoryId: it.category_id, categoryName: it.expense_categories?.name || 'อื่นๆ',
@@ -188,19 +330,118 @@ Deno.serve(async (req) => {
         const categoryMap = new Map<string, string>()
         for (const it of items) if (it.categoryId) categoryMap.set(it.categoryId, it.categoryName)
         const categories = [...categoryMap.entries()].map(([id, name]) => ({ id, name }))
-        return json({ actionType: 'material_request', workerName, categories, items, sites: sitesRes.data ?? [] })
+        return json({ actionType: 'material_request', workerName, categories, items, sites: mergeSiteLists(sitesRes.data, repairSites) })
+      }
+
+      if (tok.action_type === 'time_clock') {
+        const day = await loadAssemblyDay(worker)
+        if (!day) return json({ actionType: 'time_clock', workerName, reason: 'no_site' })
+        return json({ actionType: 'time_clock', workerName, next: day.next ? stepView(day.next) : null, steps: day.steps.map(stepView) })
       }
 
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
-        const site = await resolveTodaysSite(worker.id, worker.tenant_id)
+        if (tok.checkin_location_id) {
+          const loc = await resolveTokenLocation(tok, worker)
+          if (!loc) return json({ actionType: tok.action_type, workerName, reason: 'no_site' })
+          return json({ actionType: tok.action_type, workerName, siteName: loc.name, placeKind: 'location' })
+        }
+        const site = await resolveTokenSite(tok, worker)
         if (!site) return json({ actionType: tok.action_type, workerName, reason: 'no_site' })
-        return json({ actionType: tok.action_type, workerName, siteName: site.name })
+        return json({ actionType: tok.action_type, workerName, siteName: await checkinPlaceName(site, worker) })
       }
       if (tok.action_type === 'leave') {
-        const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(worker.id, worker.annual_leave_days ?? 0, worker.annual_sick_leave_days ?? 0)
-        return json({ actionType: tok.action_type, workerName, remainingPersonal, remainingSick })
+        const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(admin, worker.id, worker.annual_leave_days ?? 0, worker.annual_sick_leave_days ?? 0, worker.tenant_id)
+        // The worker's own latest requests with their outcome: LINE no longer pushes the result,
+        // so opening the leave link is how a worker finds out.
+        const { data: recent } = await admin.from('leave_requests')
+          .select('leave_type, date_from, date_to, shift, status, requested_at')
+          .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id)
+          .order('requested_at', { ascending: false }).limit(10)
+        return json({ actionType: tok.action_type, workerName, remainingPersonal, remainingSick, recentRequests: recent ?? [] })
+      }
+      if (tok.action_type === 'advance') {
+        // Same eligibility as the LINE command: active worker, tenant has payroll.
+        if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+        const loaded = await loadAdvanceSummary(admin, worker.tenant_id, worker.id)
+        if (!loaded) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+        return json({ actionType: 'advance', workerName, outstanding: loaded.summary.outstanding, pendingOther: loaded.summary.pendingOther, installmentOptions: [1, 2, 3, 4, 5, 6] })
+      }
+      if (tok.action_type === 'payslip') {
+        // Same eligibility as advance: active worker, linked to LINE, tenant has payroll.
+        if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payslip_disabled' }, 200)
+        const loaded = await loadPayslipMonths(worker.tenant_id, worker.id)
+        if ('error' in loaded) return json({ error: PAYSLIP_ERR }, 500)
+        const months = loaded.records
+          .map((r: any) => ({ year: r.year as number, month: r.month as number, netPay: Number(r.net_pay) }))
+          .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month))
+        return json({ actionType: 'payslip', workerName, months })
       }
       return json({ actionType: tok.action_type, workerName })
+    }
+
+    if (action === 'slip') {
+      // Read-only: never claims the token or sets used_at.
+      const result = await loadToken(token)
+      if ('reason' in result) return json({ reason: result.reason }, 200)
+      const { tok, worker } = result
+      if (!(await tenantHasModuleAccess(admin, worker.tenant_id, 'line_bot'))) return json({ reason: 'line_bot_disabled' }, 200)
+      if (tok.action_type !== 'payslip') return json({ reason: 'not_found' }, 200)
+      if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payslip_disabled' }, 200)
+      const year = body?.year, month = body?.month
+      if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return json({ error: 'invalid_input' }, 400)
+
+      const tenantId = worker.tenant_id as string
+      const loaded = await loadPayslipMonths(tenantId, worker.id)
+      if ('error' in loaded) return json({ error: PAYSLIP_ERR }, 500)
+      const rec = loaded.records.find((r: any) => r.year === year && r.month === month)
+      const per = rec && loaded.periods.find((p: any) => p.id === rec.period_id)
+      if (!rec || !per) return json({ reason: 'no_slip' }, 200)
+
+      // YTD: closed months of that year up to the requested month, this worker only.
+      const { data: ytdPeriods, error: ypErr } = await admin.from('payroll_periods').select('id, month')
+        .eq('tenant_id', tenantId).eq('status', 'closed').eq('year', year).lte('month', month)
+      if (ypErr) return json({ error: PAYSLIP_ERR }, 500)
+      const ytdPeriodIds = (ytdPeriods ?? []).map((p: any) => p.id)
+      const { data: ytdRecs, error: yrErr } = ytdPeriodIds.length
+        ? await admin.from('salary_records').select('id').eq('tenant_id', tenantId).eq('worker_id', worker.id).in('period_id', ytdPeriodIds)
+        : { data: [], error: null }
+      if (yrErr) return json({ error: PAYSLIP_ERR }, 500)
+      const ytdRecIds = (ytdRecs ?? []).map((r: any) => r.id)
+
+      const [tenantRes, workerRes, linesRes, otRes, itemsRes, ytdLinesRes, contribRes] = await Promise.all([
+        admin.from('tenants').select('company_name, tax_id').eq('id', tenantId).maybeSingle(),
+        admin.from('workers').select('name, nickname, employee_code, position, bank_account_name').eq('id', worker.id).eq('tenant_id', tenantId).maybeSingle(),
+        admin.from('salary_record_lines').select('id, pay_item_id, name, side, sort_order, amount, quantity, rate, note')
+          .eq('tenant_id', tenantId).eq('salary_record_id', rec.id).order('sort_order'),
+        admin.from('pay_items').select('id, name, sort_order').eq('tenant_id', tenantId).eq('method', 'ot').eq('active', true).order('sort_order').limit(1),
+        admin.from('pay_items').select('id, method, system_key').eq('tenant_id', tenantId),
+        ytdRecIds.length
+          ? admin.from('salary_record_lines').select('side, amount, pay_item_id').eq('tenant_id', tenantId).in('salary_record_id', ytdRecIds)
+          : Promise.resolve({ data: [], error: null }),
+        // เงินสมทบสะสม; a failure only drops the line from the slip (never errors the slip)
+        admin.rpc('contribution_balance', { p_worker: worker.id, p_year: year, p_month: month })
+          .then((r: any) => r, (e: unknown) => ({ data: null, error: e })),
+      ])
+      if (tenantRes.error || workerRes.error || linesRes.error || otRes.error || itemsRes.error || ytdLinesRes.error) return json({ error: PAYSLIP_ERR }, 500)
+      const itemById = new Map((itemsRes.data ?? []).map((i: any) => [i.id, i]))
+      const ytd = pickYtd((ytdLinesRes.data ?? []).map((l: any) => ({ side: l.side, amount: l.amount, pay_items: itemById.get(l.pay_item_id) ?? null })))
+
+      return json({
+        tenant: { company_name: tenantRes.data?.company_name ?? null, tax_id: tenantRes.data?.tax_id ?? null },
+        worker: {
+          name: workerRes.data?.name ?? worker.name, nickname: workerRes.data?.nickname ?? null,
+          employee_code: workerRes.data?.employee_code ?? null, position: workerRes.data?.position ?? null,
+          bank_account_name: workerRes.data?.bank_account_name ?? null,
+        },
+        record: {
+          worker_id: rec.worker_id, net_pay: rec.net_pay, paid_date: rec.paid_date, facts: rec.facts ?? {},
+          salary_record_lines: linesRes.data ?? [],
+        },
+        period: { status: per.status, paid_date: per.paid_date },
+        otItem: otRes.data?.[0] ?? null,
+        ytd,
+        contribBalance: pickContribBalance(contribRes),
+      })
     }
 
     if (action === 'submit') {
@@ -211,7 +452,7 @@ Deno.serve(async (req) => {
       const workerName = worker.nickname || worker.name
 
       // Shown on the form as the error text (the page prints data.error).
-      if ((tok.action_type === 'material_request' || tok.action_type === 'leave') && (await dailySubmitLimitReached(admin, tok.worker_id, tok.action_type))) {
+      if ((tok.action_type === 'material_request' || tok.action_type === 'leave' || tok.action_type === 'advance') && (await dailySubmitLimitReached(admin, tok.worker_id, tok.action_type))) {
         return json({ error: DAILY_LIMIT_MESSAGE })
       }
 
@@ -248,12 +489,14 @@ Deno.serve(async (req) => {
           }
         }
 
+        const claimedPo = await claimToken(tok.id)
+        if (claimedPo) return claimedPo
         const { data: po, error: poError } = await admin.from('purchase_orders').insert({
           tenant_id: worker.tenant_id, site_id: siteId, category_id: resolved[0].categoryId, supplier_id: null,
           date: bangkokToday(), status: 'draft', has_vat: true, price_includes_vat: false,
           ordered_by: workerName, notes: `ขอเบิกผ่านไลน์โดย ${workerName}`,
         }).select('id').single()
-        if (poError || !po) return json({ error: poError?.message ?? 'po_insert_failed' }, 500)
+        if (poError || !po) { await releaseToken(tok.id); return json({ error: poError?.message ?? 'po_insert_failed' }, 500) }
 
         const { error: itemsError } = await admin.from('purchase_order_items').insert(
           resolved.map((r, i) => ({
@@ -261,9 +504,13 @@ Deno.serve(async (req) => {
             unit_price: 0, line_total: 0, sort_order: i, inventory_item_id: r.inventoryItemId,
           }))
         )
-        if (itemsError) return json({ error: itemsError.message }, 500)
+        if (itemsError) {
+          // Do not leave an empty draft PO behind: the worker can retry with the same link.
+          await admin.from('purchase_orders').delete().eq('id', po.id).eq('tenant_id', worker.tenant_id)
+          await releaseToken(tok.id)
+          return json({ error: itemsError.message }, 500)
+        }
 
-        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         const itemLines = resolved.map(r => `- ${r.description} (${r.quantity} ${r.unit})`).join('\n')
         await notifyAdmins(worker.tenant_id, `📦 ${workerName} ขอเบิกที่ไซต์ ${site.name}:\n${itemLines}\nสร้างใบสั่งซื้อร่างไว้ให้แล้ว รอเลือกซัพพลายเออร์และราคาที่ ${APP_URL}`, 'line_push_material_request_admin')
         await webPushAdmins(worker.tenant_id, 'web_push_material_request', (m) => m.materialRequestPush(workerName, site.name))
@@ -282,12 +529,13 @@ Deno.serve(async (req) => {
         // never trust the client for a multi-day range, force full_day
         // server-side regardless of what shift value was sent.
         const shift = dateFrom === dateTo && (requestedShift === 'morning' || requestedShift === 'evening') ? requestedShift : 'full_day'
+        const claimedLeave = await claimToken(tok.id)
+        if (claimedLeave) return claimedLeave
         const { error } = await admin.from('leave_requests').insert({
           tenant_id: worker.tenant_id, worker_id: tok.worker_id, leave_type: leaveType, date_from: dateFrom, date_to: dateTo, reason, shift,
         })
-        if (error) return json({ error: error.message }, 500)
+        if (error) { await releaseToken(tok.id); return json({ error: error.message }, 500) }
 
-        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         const leaveLabel = leaveType === 'leave_sick' ? 'ลาป่วย' : 'ลากิจ'
         const shiftLabel = shift === 'morning' ? ' (ช่วงเช้า)' : shift === 'evening' ? ' (ช่วงบ่าย)' : ''
         const dateLabel = dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`
@@ -297,13 +545,132 @@ Deno.serve(async (req) => {
         return json({ ok: true, workerName })
       }
 
+      if (tok.action_type === 'advance') {
+        // Tenant and worker come from the token only; the body carries just the request itself.
+        if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+        const parsed = parseAdvanceAmount(body?.amount)
+        if (!parsed.ok) return json({ error: parsed.error }, 400)
+        const rawInst = body?.installments
+        const installments = typeof rawInst === 'number' || (typeof rawInst === 'string' && /^\d+$/.test(rawInst)) ? Number(rawInst) : NaN
+        if (!Number.isInteger(installments) || installments < 1 || installments > 6) return json({ error: 'จำนวนงวดต้องเป็น 1 ถึง 6 งวด' }, 400)
+        const title = (typeof body?.title === 'string' ? body.title.trim() : '') || 'เบิกเงินล่วงหน้า'
+        if (title.length > 100) return json({ error: 'หัวข้อยาวเกินไป (ไม่เกิน 100 ตัวอักษร)' }, 400)
+
+        // First month, from the current Bangkok month, whose period is missing or still draft.
+        const { data: periods, error: periodsError } = await admin.from('payroll_periods').select('year, month, status').eq('tenant_id', worker.tenant_id)
+        if (periodsError) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+        const periodsByKey: Record<string, string> = {}
+        for (const p of periods ?? []) periodsByKey[`${p.year}-${p.month}`] = p.status as string
+        const [ty, tm] = bangkokToday().split('-').map(Number)
+        const start = defaultStartMonth(periodsByKey, { year: ty, month: tm })
+
+        const claimed = await claimToken(tok.id)
+        if (claimed) return claimed
+        const { error } = await admin.from('salary_advances').insert({
+          tenant_id: worker.tenant_id, worker_id: worker.id, title, amount: parsed.amount, installments,
+          start_year: start.year, start_month: start.month, status: 'pending',
+          requested_by: 'line:' + worker.id, requested_amount: parsed.amount, requested_installments: installments,
+        })
+        if (error) { await releaseToken(tok.id); return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500) }
+
+        // Web Push only, to OWNER/ADMIN ('money' audience, never PM). No LINE push.
+        try {
+          if (await isPushEnabled(admin, worker.tenant_id, 'web_push_advance_request')) {
+            const [{ sendWebPushToTenantAdmins }, messages] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
+            await sendWebPushToTenantAdmins(admin, worker.tenant_id, messages.advanceRequestPush(workerName, parsed.amount), 'money')
+          }
+        } catch (e) { console.error('web push failed', (e as Error).message) }
+        return json({ ok: true, workerName })
+      }
+
+      if (tok.action_type === 'time_clock') {
+        const lat = Number(body?.lat)
+        const lng = Number(body?.lng)
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: 'missing_location' }, 400)
+        const day = await loadAssemblyDay(worker)
+        if (!day) return json({ error: 'no_site' }, 400)
+        if (!day.next) return json({ ok: false, message: 'วันนี้บันทึกครบทุกจุดแล้ว' })
+        const { data: radiusRow } = await admin.from('app_settings').select('value').eq('tenant_id', worker.tenant_id).eq('key', 'checkin_radius_m').maybeSingle()
+        const radius = Number(radiusRow?.value) || 200
+        const dist = (st: DayStep | null) => {
+          const c = st ? stepCoords(day, st) : null
+          return c ? distanceM(lat, lng, c.lat, c.lng) : null
+        }
+        const skip = skipStep(day)
+        const pick = chooseStepByGps({ next: day.next, nextDistance: dist(day.next), skip, skipDistance: dist(skip), radius })
+        if ('refused' in pick) {
+          const place = stepLabel(day.next).place
+          return json({ ok: false, message: `คุณอยู่ห่างจาก${place} ${Math.round(pick.distanceM)} เมตร ต้องอยู่ในระยะ ${Math.round(radius)} เมตรจึงจะบันทึกได้`, distanceM: pick.distanceM, radiusM: radius })
+        }
+        const step = pick.step
+        let rpc: { name: string; args: Record<string, unknown> }
+        if (step.kind === 'assembly_leave' || step.kind === 'assembly_return') {
+          rpc = { name: 'perform_assembly_tap_by_id', args: { p_worker_id: worker.id, p_step: step.kind === 'assembly_leave' ? 'leave' : 'return', p_lat: lat, p_lng: lng } }
+        } else {
+          rpc = { name: step.kind === 'site_arrive' ? 'perform_worker_checkin_by_id' : 'perform_worker_checkout_by_id', args: { p_worker_id: worker.id, p_site_id: step.siteId, p_lat: lat, p_lng: lng } }
+        }
+        const { data, error } = await admin.rpc(rpc.name, rpc.args)
+        const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
+        if (error || !result) return json({ error: error?.message ?? 'rpc_failed' }, 500)
+        if (!result.success) return json({ ok: false, message: result.message, distanceM: result.distance_m, radiusM: result.radius_m })
+        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
+        const openTasks = step.kind === 'site_arrive' ? await resolveOpenTasksForWorker(worker.id, worker.tenant_id) : []
+        const label = stepLabel(step)
+        return json({ ok: true, message: result.message, hint: nextStepHint(day.steps, step), step: stepView({ ...step, done: true }), title: label.title, siteName: label.place, openTasks: openTasks.map(t => t.name) })
+      }
+
       if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
         const lat = Number(body?.lat)
         const lng = Number(body?.lng)
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: 'missing_location' }, 400)
 
-        const site = await resolveTodaysSite(worker.id, worker.tenant_id)
+        // Fixed check-in location token (office admin, no site today): same GPS + radius
+        // rule, same worker_checkins table (keyed by checkin_location_id) as the web's
+        // LocationCheckinCard, via the service-role twin of its RPC.
+        if (tok.checkin_location_id) {
+          const loc = await resolveTokenLocation(tok, worker)
+          if (!loc) return json({ error: 'no_site' }, 400)
+          if (tok.action_type === 'check_in') {
+            // One open check-in at a time: an open SITE check-in must be closed first.
+            const { data: open, error: openErr } = await admin.from('worker_checkins')
+              .select('site_id, sites(name)')
+              .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('date', bangkokToday())
+              .not('checkin_at', 'is', null).is('checkout_at', null).not('site_id', 'is', null)
+              .limit(1)
+            if (openErr) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+            if (open && open.length) {
+              const openName = (open[0] as any).sites?.name ?? 'ไซท์ก่อนหน้า'
+              return json({ ok: false, message: `ยังไม่ได้เช็คเอาท์ที่ ${openName} — เช็คเอาท์ก่อนจึงจะเช็คอินที่ ${loc.name} ได้` })
+            }
+          }
+          const rpcName = tok.action_type === 'check_in' ? 'perform_location_checkin_by_id' : 'perform_location_checkout_by_id'
+          const { data, error } = await admin.rpc(rpcName, { p_worker_id: worker.id, p_location_id: loc.id, p_lat: lat, p_lng: lng })
+          const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
+          if (error || !result) return json({ error: error?.message ?? 'rpc_failed' }, 500)
+          if (!result.success) {
+            // Distance (or entitlement) rejection: token stays unused so the same link can be retried.
+            return json({ ok: false, message: result.message, distanceM: result.distance_m, radiusM: result.radius_m })
+          }
+          await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
+          return json({ ok: true, message: result.message, siteName: loc.name, placeKind: 'location', openTasks: [] })
+        }
+
+        const site = await resolveTokenSite(tok, worker)
         if (!site) return json({ error: 'no_site' }, 400)
+
+        // One open check-in at a time: check out of the current site before checking in at another.
+        if (tok.action_type === 'check_in') {
+          const { data: open, error: openErr } = await admin.from('worker_checkins')
+            .select('site_id, sites(name)')
+            .eq('worker_id', worker.id).eq('tenant_id', worker.tenant_id).eq('date', bangkokToday())
+            .not('checkin_at', 'is', null).is('checkout_at', null).neq('site_id', site.id)
+            .limit(1)
+          if (openErr) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+          if (open && open.length) {
+            const openName = (open[0] as any).sites?.name ?? 'ไซท์ก่อนหน้า'
+            return json({ ok: false, message: `ยังไม่ได้เช็คเอาท์ที่ ${openName} — เช็คเอาท์ก่อนจึงจะเช็คอินไซท์ใหม่ได้` })
+          }
+        }
 
         const rpcName = tok.action_type === 'check_in' ? 'perform_worker_checkin_by_id' : 'perform_worker_checkout_by_id'
         const { data, error } = await admin.rpc(rpcName, { p_worker_id: worker.id, p_site_id: site.id, p_lat: lat, p_lng: lng })
@@ -320,7 +687,7 @@ Deno.serve(async (req) => {
         await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
 
         const openTasks = tok.action_type === 'check_in' ? await resolveOpenTasksForWorker(worker.id, worker.tenant_id) : []
-        return json({ ok: true, message: result.message, siteName: site.name, openTasks: openTasks.map(t => t.name) })
+        return json({ ok: true, message: result.message, siteName: await checkinPlaceName(site, worker), openTasks: openTasks.map(t => t.name) })
       }
 
       return json({ error: 'unknown_action_type' }, 400)
@@ -328,6 +695,7 @@ Deno.serve(async (req) => {
 
     return json({ error: 'unknown_action' }, 400)
   } catch (e) {
-    return json({ error: (e as Error).message }, 500)
+    console.error('field-form failed', (e as Error).message)
+    return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
   }
 })

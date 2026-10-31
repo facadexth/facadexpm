@@ -7,7 +7,7 @@
 // longer identify which tenant sent an event -- signature verification
 // is checked once per request against the shared LINE_CHANNEL_SECRET,
 // then EACH event resolves its own tenant individually (from
-// line_settings.crew_group_id for a group message, or
+// line_groups.group_id for a group message, or
 // workers/user_roles.line_user_id for a DM) before being handled.
 // verify_jwt is OFF for this function (LINE itself calls it,
 // unauthenticated by Supabase's own JWT check) -- signature
@@ -103,24 +103,39 @@
 // recognized -- not dependent on ever having posted in the crew group,
 // since group membership is unreliable: people come and go).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
+import { verifyLineSignature, sendLineReply, sendLinePush, fetchLineGroupName, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
 import { todayMenuOptions } from '../_shared/today-menu.ts'
 import { CANCEL_PHRASE, CANCEL_CHIP, CANCEL_REPLY, isCancel } from '../_shared/cancel.ts'
 import { isMenuButtonText, pendingWaitMinutes } from '../_shared/pending-flow.ts'
 import { siteMapLink } from '../_shared/site-map-link.ts'
+import { resolveFactoryLocation } from '../_shared/factory-location.ts'
 import { linkRequestsThrottled, THROTTLED_LINK_MESSAGE } from '../_shared/form-throttle.ts'
 import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-message.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
+import { isWorkerDoneable, doneErrorReply } from '../_shared/lineTaskRules.ts'
+import { todaysSites, pickSiteForNow, sitesNeedingLinks, multiSiteReplyText, currentSite, shiftEmoji, shiftLabel, type TodaysSite, type Shift } from '../_shared/todays-sites.ts'
+import { planAssemblyDay, stepAction, assemblyLinkReplyText } from '../_shared/assembly-day.ts'
+import { pickTimeClockTarget, pickCheckinLocationFromRole, locationNextAction, locationLinkReplyText, locationTokenPayload, type CheckinLocation } from '../_shared/location-checkin.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
+import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
+import { decideGroupClaim } from '../_shared/line-groups.ts'
 import {
   routeDmEvent, isStartPhrase, logSafeError, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_NOTICE, ADMIN_CHAT_ACK_NOTICE,
   ADMIN_CHAT_NOT_ALLOWED_NOTICE, ADMIN_CHAT_END_QUICK_REPLY,
 } from '../_shared/line-admin-chat-logic.ts'
 import { getChatMode, canStartAdminChat, claimAckForSession, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
 import { APP_URL } from '../_shared/app-url.ts'
+import {
+  type GroupActionType, type ActionType, type CommandSettingsByKey,
+  SCHEDULE_COMMAND_ORDER, ADVANCE_COMMAND_KEYS, resolveEffectivePhrases, resolveEnabled,
+  matchGroupAction, matchDMAction, matchGroupInfoAction, groupAdvanceHint, requestMenuChips, formatBaht, advanceItemsForReply,
+  ADVANCE_NOT_ALLOWED_MESSAGE, ADVANCE_DM_ONLY_MESSAGE, REQUEST_MENU_PROMPT, advanceLinkMessage,
+} from '../_shared/line-command-match.ts'
+import { ADVANCE_PHRASES, formatAdvanceStatusReply, formatRequestStatusReply } from '../_shared/advance-logic.ts'
+import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -137,13 +152,29 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 // before sending, confirmed exploitable live). 30 minutes is enough to
 // switch from LINE to the browser and back without leaving a stale
 // link usable for days.
-async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out'): Promise<string | null> {
+// siteId (check-in/out only): the site this link is for -- field-form uses it instead of
+// guessing, so a worker with 2+ sites today checks in where they actually are.
+async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out' | 'advance' | 'payslip' | 'time_clock', siteId?: string): Promise<string | null> {
   const token = crypto.randomUUID().replace(/-/g, '')
   const { error } = await admin.from('line_deep_link_tokens').insert({
     tenant_id: tenantId, worker_id: workerId, action_type: actionType, token,
     expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    ...(siteId ? { site_id: siteId } : {}),
   })
   if (error) { logSafeError('issueFieldFormLink insert failed', error); return null }
+  return `${APP_URL}/f/${token}`
+}
+
+// Same one-time link, for เช็คอิน/เช็คเอาท์ at a fixed check-in location (office admin with
+// no site today -- see _shared/location-checkin.ts). The token names the location in
+// checkin_location_id; field-form then calls perform_location_checkin_by_id/checkout.
+async function issueLocationFormLink(tenantId: string, workerId: string, actionType: 'check_in' | 'check_out', locationId: string): Promise<string | null> {
+  const token = crypto.randomUUID().replace(/-/g, '')
+  const { error } = await admin.from('line_deep_link_tokens').insert({
+    ...locationTokenPayload({ tenantId, workerId, actionType, locationId }), token,
+    expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+  })
+  if (error) { logSafeError('issueLocationFormLink insert failed', error); return null }
   return `${APP_URL}/f/${token}`
 }
 
@@ -159,6 +190,9 @@ function json(body: unknown, status = 200) {
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
+function bangkokHour(): number {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).getUTCHours()
+}
 // LINE quick-reply labels cap at 20 chars -- the message `text` sent on
 // tap can stay full-length (used for the exact-match lookup below), so
 // truncating only the visible label loses no matching precision.
@@ -166,9 +200,8 @@ function truncateLabel(s: string, max = 20): string {
   return s.length <= max ? s : s.slice(0, max - 1) + '…'
 }
 
-type GroupActionType = 'issue_report' | 'material_request' | 'leave'
-type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job' | 'time_clock' | 'schedule_menu'
-type ActionType = GroupActionType | DMOnlyActionType
+// GroupActionType / DMOnlyActionType (incl. the 4 salary-advance keys) / ActionType
+// live in _shared/line-command-match.ts with the matchers.
 type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done'
 
 // LINE bots have no way to remove someone from a group chat -- there's
@@ -192,13 +225,21 @@ async function alertOwnersOfInactiveWorker(
     const hoursSince = (Date.now() - new Date(worker.line_offboarding_alerted_at).getTime()) / (60 * 60 * 1000)
     if (hoursSince < 24) return
   }
-  if (!(await isPushEnabled(admin, settings.tenant_id, 'line_push_offboarding'))) return
-  const { data: owners } = await admin
+  const lineOn = await isPushEnabled(admin, settings.tenant_id, 'line_push_offboarding')
+  const webOn = await isPushEnabled(admin, settings.tenant_id, 'web_push_worker_offboarded')
+  if (!lineOn && !webOn) return
+  const { data: owners } = lineOn ? await admin
     .from('user_roles')
     .select('line_user_id')
     .eq('tenant_id', settings.tenant_id)
     .eq('role', 'OWNER')
-    .not('line_user_id', 'is', null)
+    .not('line_user_id', 'is', null) : { data: [] as Array<{ line_user_id: string }> }
+  if (webOn) {
+    try {
+      const [{ sendWebPushToTenantAdmins }, { workerOffboardedPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
+      await sendWebPushToTenantAdmins(admin, settings.tenant_id, workerOffboardedPush(worker.name), 'ops')
+    } catch (e) { console.error('web push failed', (e as Error).message) }
+  }
   for (const owner of owners ?? []) {
     await withPushBudget(admin, settings.tenant_id, () => sendLinePush(settings.channel_access_token, owner.line_user_id as string, `⚠️ ${worker.name} (พ้นสภาพพนักงานแล้ว) ยังคงส่งข้อความในระบบ LINE อยู่ กรุณาลบออกจากกลุ่มทีมงานด้วยครับ`))
   }
@@ -238,21 +279,8 @@ function promptForAction(action: GroupActionType | 'site_photo'): string {
   return '🏖️ รับทราบครับ ช่วยบอกรายละเอียดวันที่ลาด้วยครับ'
 }
 
-// Simple substring match, not NLP, tuned against real collisions found
-// in review: a bare "ปัญหา" also matches "ไม่มีปัญหา"/"ไม่ปัญหา" ("no
-// problem"), and a bare "ลา" matches ordinary words like ตลาด/ปลา/ฉลาด
-// with zero relation to leave. Each set is chosen so no phrase is a
-// substring of another branch's phrase. Used by the crew GROUP path --
-// scoped to the original three actions only.
-function matchGroupAction(text: string): GroupActionType | null {
-  const isIssueReport = text.includes('ปัญหา') && !text.includes('ไม่มีปัญหา') && !text.includes('ไม่ปัญหา')
-  if (isIssueReport) return 'issue_report'
-  const isMaterialRequest = ['อยากเบิก', 'ขอเบิก', 'เบิกของ'].some((kw) => text.includes(kw))
-  if (isMaterialRequest) return 'material_request'
-  const isLeaveRequest = ['ลากิจ', 'ลาป่วย', 'ขอลา', 'อยากลา'].some((kw) => text.includes(kw))
-  if (isLeaveRequest) return 'leave'
-  return null
-}
+// matchGroupAction (crew GROUP path, the original three write actions) lives in
+// _shared/line-command-match.ts, tested by src/lib/lineCommandMatch.test.js.
 
 // Used by the 1:1 DM path -- all eleven actions. เช็คอิน/เช็คเอาท์/
 // รูปภาพ/งานเสร็จ/งานวันนี้/งานวันพรุ่งนี้/งานอาทิตย์นี้/งานอาทิตย์หน้า don't
@@ -278,71 +306,70 @@ function matchGroupAction(text: string): GroupActionType | null {
 // does the enabled-check + "feature disabled" reply uniformly instead
 // (see DISABLED_MESSAGE below), so a disabled command gets an explicit
 // reply rather than silently doing nothing.
-const SCHEDULE_COMMAND_DEFAULTS: Record<string, string> = {
-  today_job: 'งานวันนี้',
-  tomorrow_job: 'งานวันพรุ่งนี้',
-  this_week_job: 'งานอาทิตย์นี้',
-  next_week_job: 'งานอาทิตย์หน้า',
-}
-type CommandSettingsRow = { command_key: string; enabled_dm: boolean; enabled_group: boolean; custom_phrase: string | null }
-type CommandSettingsByKey = Record<string, CommandSettingsRow>
-function splitPhrases(raw: string | null | undefined): string[] {
-  return (raw || '').split(',').map((s) => s.trim()).filter(Boolean)
-}
-function resolveEffectivePhrases(commandKey: string, settingsByKey: CommandSettingsByKey): string[] {
-  const row = settingsByKey[commandKey]
-  const custom = splitPhrases(row?.custom_phrase)
-  return custom.length ? custom : [SCHEDULE_COMMAND_DEFAULTS[commandKey]]
-}
-// context: 'dm' | 'group' -- each command is independently toggleable per
-// chat context (2026-09-29). A missing row still means "enabled" in both.
-function resolveEnabled(commandKey: string, settingsByKey: CommandSettingsByKey, context: 'dm' | 'group'): boolean {
-  const row = settingsByKey[commandKey]
-  const field = context === 'group' ? 'enabled_group' : 'enabled_dm'
-  return row ? row[field] !== false : true
-}
-const SCHEDULE_COMMAND_ORDER = ['tomorrow_job', 'this_week_job', 'next_week_job', 'today_job'] as const
+// SCHEDULE_COMMAND_DEFAULTS / splitPhrases / resolveEffectivePhrases / resolveEnabled /
+// SCHEDULE_COMMAND_ORDER: _shared/line-command-match.ts.
 const DISABLED_MESSAGE = '⚠️ ฟีเจอร์นี้ปิดอยู่ขณะนี้ กรุณาติดต่อแอดมินโดยตรงครับ'
 
-function matchDMAction(text: string, commandSettings: CommandSettingsByKey): ActionType | null {
-  // The two Rich Menu buttons that need a decision first. Checked before everything
-  // else: the combined phrase contains both เช็คอิน and เช็คเอาท์ and would otherwise
-  // be read as a plain check-in.
-  if (text.includes(TIME_CLOCK_PHRASE)) return 'time_clock'
-  if (text.includes(SCHEDULE_MENU_PHRASE)) return 'schedule_menu'
-  const base = matchGroupAction(text)
-  if (base) return base
-  if (text.includes('เช็คอิน')) return 'check_in'
-  if (text.includes('เช็คเอาท์')) return 'check_out'
-  if (text.includes('รูปภาพ')) return 'site_photo'
-  if (text.includes('งานเสร็จ') || text.includes('เสร็จงาน')) return 'job_done_start'
-  for (const key of SCHEDULE_COMMAND_ORDER) {
-    if (resolveEffectivePhrases(key, commandSettings).some((p) => text.includes(p))) return key
-  }
-  return null
-}
+// matchDMAction: _shared/line-command-match.ts. It checks the salary-advance phrases
+// (เบิกเงิน / ยอดเบิก / ยื่นคำขอ / สถานะคำขอ) BEFORE matchGroupAction, because the
+// material keyword "ขอเบิก" is a substring of "ขอเบิกเงิน".
 
-// Resolves "which site" for เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน from the
-// worker's own real site work assigned for today -- explicit user
-// choice over asking each time. Same "real site work" filter Task 4's
-// review already established (site/factory/subcontract, matching
-// SITE_TYPES + DayView.jsx's own grouping). If a worker has more than
-// one site assigned today, this just takes one -- a genuine edge case,
-// not worth a disambiguation prompt for how rarely it happens.
-async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ id: string; name: string; map_url?: string | null; lat?: number | null; lng?: number | null } | null> {
-  const { data: assignment } = await admin
+// Resolves "which site" for รูปภาพหน้างาน / แจ้งปัญหา / งานวันนี้ / งานเสร็จ from the
+// worker's own real site work assigned for today. Same "real site work" filter Task 4's
+// review already established (site/factory/subcontract, matching SITE_TYPES +
+// DayView.jsx's own grouping).
+// A worker can have 2+ sites on one day (bug found live 2026-10-19: this used to take an
+// arbitrary one via an unordered limit(1)). Callers here need ONE site, so it is picked by
+// Bangkok time: before 12:00 the first morning site, from 12:00 the first evening site,
+// otherwise the first (_shared/todays-sites.ts pickSiteForNow). เช็คอิน/เช็คเอาท์ do NOT
+// use this any more: with 2+ sites the worker picks the site (sendTimeClockLinks).
+type SiteWithMap = { id: string; name: string; map_url?: string | null; lat?: number | null; lng?: number | null }
+async function loadTodaysAssignmentRows(workerId: string, tenantId: string) {
+  const { data } = await admin
     .from('worker_assignments')
-    .select('site_id')
+    .select('site_id, shift, type, sites(id, name, map_url, lat, lng)')
     .eq('worker_id', workerId)
     .eq('tenant_id', tenantId)
     .eq('date', bangkokToday())
     .in('type', ['site', 'factory', 'subcontract'])
     .not('site_id', 'is', null)
-    .limit(1)
-    .maybeSingle()
-  if (!assignment?.site_id) return null
-  const { data: site } = await admin.from('sites').select('id, name, map_url, lat, lng').eq('id', assignment.site_id).maybeSingle()
-  return site ?? null
+    .order('shift') // stable read order only; the real order is set in code (todaysSites)
+  return (data ?? []) as Array<{ site_id: string; shift: string | null; type: string | null; sites: SiteWithMap | null }>
+}
+function toTodaysAssignments(rows: Array<{ site_id: string; shift: string | null; type: string | null; sites: SiteWithMap | null }>) {
+  return rows.map((r) => ({ site_id: r.site_id, site_name: r.sites?.name ?? null, shift: r.shift, type: r.type }))
+}
+async function resolveTodaysSite(workerId: string, tenantId: string): Promise<SiteWithMap | null> {
+  const rows = await loadTodaysAssignmentRows(workerId, tenantId)
+  const pick = pickSiteForNow(todaysSites(toTodaysAssignments(rows), []), bangkokHour())
+  if (!pick) return null
+  const site = rows.find((r) => r.site_id === pick.siteId)?.sites
+  if (site) return site
+  const { data } = await admin.from('sites').select('id, name, map_url, lat, lng').eq('id', pick.siteId).maybeSingle()
+  return data ?? null
+}
+
+// งานวันนี้ for a factory-only site: the worker goes to the FACTORY, so show the factory
+// location (name + map) instead of the customer's site. null = no factory location found,
+// the caller keeps the normal site display.
+async function factoryDisplayFor(tenantId: string, workerId: string, siteId: string, siteName: string): Promise<{ line: string; map: string | null } | null> {
+  const loc = await resolveFactoryLocation(admin, tenantId, workerId, siteId, bangkokToday())
+  if (!loc) return null
+  return { line: `🏭 ที่โรงงาน: ${loc.name} (งาน${siteName})`, map: siteMapLink(loc) }
+}
+
+// Today's DISTINCT sites with this worker's own check-in state at each (Bangkok date,
+// tenant-filtered), for เช็คอิน/เช็คเอาท์.
+async function loadTodaysSitesWithCheckins(workerId: string, tenantId: string): Promise<TodaysSite[]> {
+  const [rows, { data: checkins }] = await Promise.all([
+    loadTodaysAssignmentRows(workerId, tenantId),
+    admin.from('worker_checkins').select('site_id, checkin_at, checkout_at')
+      .eq('worker_id', workerId).eq('tenant_id', tenantId).eq('date', bangkokToday()),
+  ])
+  return todaysSites(
+    toTodaysAssignments(rows),
+    (checkins ?? []) as Array<{ site_id: string | null; checkin_at: string | null; checkout_at: string | null }>,
+  )
 }
 
 // A tenant's designated fallback site for group-photo auto-filing, when
@@ -471,41 +498,53 @@ function bangkokWeekDates(weekOffset: number): string[] {
 // dates in one query (งานวันพรุ่งนี้/งานอาทิตย์นี้/งานอาทิตย์หน้า) --
 // same "real site work" filter as resolveTodaysSite, just batched
 // across a date range instead of pinned to today. A date with more
-// than one site assignment just takes the first, same simplification
-// resolveTodaysSite already makes.
-type SiteWithMap = { id: string; name: string; map_url?: string | null; lat?: number | null; lng?: number | null }
-async function resolveSitesForDates(workerId: string, tenantId: string, dates: string[]): Promise<Map<string, SiteWithMap>> {
+// than one site assignment just takes the first.
+// Every DISTINCT site per date (a day can have a morning site and an afternoon site),
+// ordered morning first, each with its shift label.
+type DaySite = SiteWithMap & { shifts: Shift[] }
+async function resolveSitesForDates(workerId: string, tenantId: string, dates: string[]): Promise<Map<string, DaySite[]>> {
   const { data } = await admin
     .from('worker_assignments')
-    .select('date, site_id, sites(id, name, map_url, lat, lng)')
+    .select('date, site_id, shift, sites(id, name, map_url, lat, lng)')
     .eq('worker_id', workerId)
     .eq('tenant_id', tenantId)
     .in('date', dates)
     .in('type', ['site', 'factory', 'subcontract'])
     .not('site_id', 'is', null)
-  const bySite = new Map<string, SiteWithMap>()
-  for (const r of data ?? []) {
-    const date = r.date as string
-    const site = r.sites as SiteWithMap | null
-    if (site && !bySite.has(date)) bySite.set(date, site)
+  const rowsByDate = new Map<string, Array<{ site_id: string; shift: string | null; sites: SiteWithMap | null }>>()
+  for (const r of (data ?? []) as Array<{ date: string; site_id: string; shift: string | null; sites: SiteWithMap | null }>) {
+    if (!rowsByDate.has(r.date)) rowsByDate.set(r.date, [])
+    rowsByDate.get(r.date)!.push(r)
   }
-  return bySite
+  const out = new Map<string, DaySite[]>()
+  for (const [date, rows] of rowsByDate) {
+    const ordered = todaysSites(rows.map((r) => ({ site_id: r.site_id, site_name: r.sites?.name ?? null, shift: r.shift })), [])
+    const list = ordered
+      .map((s) => { const site = rows.find((r) => r.site_id === s.siteId)?.sites; return site ? { ...site, shifts: s.shifts } : null })
+      .filter((x): x is DaySite => !!x)
+    if (list.length) out.set(date, list)
+  }
+  return out
 }
+
+type OpenTask = { id: string; name: string; progress_mode: string | null }
 
 // Resolves the worker's OWN currently-open Kanban tasks (not yet
 // 'done'), via phase_task_workers. Used by งานเสร็จ's actual closing
 // action -- a worker can only mark done what's assigned to THEM, for
 // accountability. Ordered by sort_order so the list matches the order
 // tasks appear on the real board.
-async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
+async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<OpenTask[]> {
+  // phase_tasks(*) so progress_mode / parent_task_id ride along once the migration is applied
+  // (and nothing breaks before it).
   const { data } = await admin
     .from('phase_task_workers')
-    .select('task_id, phase_tasks!inner(id, name, status, tenant_id, sort_order)')
+    .select('task_id, phase_tasks!inner(*)')
     .eq('worker_id', workerId)
     .eq('phase_tasks.tenant_id', tenantId)
     .neq('phase_tasks.status', 'done')
     .order('sort_order', { referencedTable: 'phase_tasks' })
-  return (data ?? []).map((row: any) => ({ id: row.phase_tasks.id as string, name: row.phase_tasks.name as string }))
+  return (data ?? []).map((row: any) => ({ id: row.phase_tasks.id as string, name: row.phase_tasks.name as string, progress_mode: row.phase_tasks.progress_mode ?? null, site_id: (row.phase_tasks.site_id ?? null) as string | null }))
 }
 
 // All open Kanban cards for the SITE, not just this worker's own --
@@ -514,15 +553,15 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
 // todays work across the board"). Shown in งานวันนี้'s summary;
 // deliberately distinct from resolveOpenTasksForWorker above, which
 // stays the source of truth for the actual งานเสร็จ closing action.
-async function resolveOpenTasksForSite(siteId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
+async function resolveOpenTasksForSite(siteId: string, tenantId: string): Promise<OpenTask[]> {
   const { data } = await admin
     .from('phase_tasks')
-    .select('id, name')
+    .select('*')
     .eq('site_id', siteId)
     .eq('tenant_id', tenantId)
     .neq('status', 'done')
     .order('sort_order')
-  return data ?? []
+  return (data ?? []).map((r: any) => ({ id: r.id as string, name: r.name as string, progress_mode: r.progress_mode ?? null }))
 }
 
 // ⛑️ วันนี้ ไซท์นี้ใครเป็นหัวหน้าทีม (แยกเช้า/บ่าย) -- ตั้งค่าจาก Assign
@@ -580,32 +619,219 @@ async function fetchLineImageContent(accessToken: string, messageId: string): Pr
 // submit handler (same perform_worker_checkin_by_id/checkout RPCs,
 // unchanged) once the worker's browser reports its position -- this
 // function's only job is resolving today's site and sending the link.
-async function handleCheckInStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
-  const site = await resolveTodaysSite(worker.id, settings.tenant_id)
-  if (!site) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
-    return
-  }
-  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'check_in')
+//
+// Multi-site (owner decision 2026-10-19, "ช่างกดเลือกไซท์"): with 2+ DIFFERENT sites today
+// the worker gets ONE reply with one link per site that still needs an action, each link
+// carrying its own site_id. A single-site day replies exactly as before.
+const NO_SITE_TODAY_MESSAGE = '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน'
+const SYSTEM_ERROR_MESSAGE = '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง'
+
+async function sendSingleSiteLink(
+  worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string,
+  site: TodaysSite, actionType: 'check_in' | 'check_out',
+) {
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, actionType, site.siteId)
   if (!link) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
   } else {
-    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อเช็คอินที่ ${site.name} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
+    const verb = actionType === 'check_in' ? 'เช็คอิน' : 'เช็คเอาท์'
+    // Factory work: the worker checks in at the factory, not at the customer's site.
+    const where = site.atFactory ? `โรงงาน (งาน${site.siteName})` : site.siteName
+    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อ${verb}ที่${site.atFactory ? '' : ' '}${where} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
   }
 }
 
-async function handleCheckOutStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
-  const site = await resolveTodaysSite(worker.id, settings.tenant_id)
-  if (!site) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
+// The 2+ site reply: one token per listed site, all issued for this one tap.
+async function sendMultiSiteLinks(
+  worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string,
+  sites: TodaysSite[], toLink: TodaysSite[],
+) {
+  const links: Record<string, string> = {}
+  for (const s of toLink) {
+    const link = await issueFieldFormLink(settings.tenant_id, worker.id, s.nextAction as 'check_in' | 'check_out', s.siteId)
+    if (!link) {
+      await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
+      return
+    }
+    links[s.siteId] = link
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, multiSiteReplyText(sites, links))
+}
+
+// The fixed check-in location this LINE worker may clock at when they have no site today:
+// the worker's own user_roles row (ADMIN/OWNER/PM; matched by workers.email =
+// user_roles.user_email, or the same line_user_id) with its assigned location, else the
+// tenant's role='office' location -- the same rule the web (useMyAssignedCheckinLocation +
+// perform_location_checkin) applies. Tenant-filtered on every read (service role).
+async function loadCheckinLocationForWorker(workerId: string, tenantId: string): Promise<CheckinLocation | null> {
+  const { data: w } = await admin.from('workers').select('email, line_user_id').eq('id', workerId).eq('tenant_id', tenantId).maybeSingle()
+  if (!w) return null
+  type RoleRow = { role: string | null; checkin_locations: CheckinLocation | null }
+  // Plain eq lookups (no .or() string built from an email): email first, then line_user_id.
+  const lookups: Array<['user_email' | 'line_user_id', string]> = []
+  if (w.email) lookups.push(['user_email', w.email as string])
+  if (w.line_user_id) lookups.push(['line_user_id', w.line_user_id as string])
+  let row: RoleRow | null = null
+  for (const [col, val] of lookups) {
+    const { data, error } = await admin.from('user_roles').select('role, checkin_locations(id, name)')
+      .eq('tenant_id', tenantId).eq(col, val).limit(1).maybeSingle()
+    if (error) { logSafeError('user_roles location lookup failed', error); return null }
+    if (data) { row = data as unknown as RoleRow; break }
+  }
+  if (!row) return null
+  const { data: office } = await admin.from('checkin_locations').select('id, name').eq('tenant_id', tenantId).eq('role', 'office').maybeSingle()
+  return pickCheckinLocationFromRole(row, office ?? null)
+}
+
+// The one link for a fixed-location day. Typed เช็คอิน/เช็คเอาท์ always send their own
+// link (as a single-site day does); the Rich Menu button follows the day's step from this
+// worker's own worker_checkins row at that location.
+async function sendLocationLink(
+  worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string,
+  location: CheckinLocation, mode: 'auto' | 'check_in' | 'check_out', commandSettings: CommandSettingsByKey,
+) {
+  let actionType: 'check_in' | 'check_out'
+  if (mode !== 'auto') {
+    actionType = mode
+  } else {
+    const { data: row } = await admin.from('worker_checkins').select('checkin_at, checkout_at')
+      .eq('worker_id', worker.id).eq('tenant_id', settings.tenant_id).eq('checkin_location_id', location.id).eq('date', bangkokToday()).maybeSingle()
+    const next = locationNextAction(row as { checkin_at: string | null; checkout_at: string | null } | null)
+    if (next === 'done') {
+      await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+      return
+    }
+    if (!resolveEnabled(next, commandSettings, 'dm')) {
+      await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+      return
+    }
+    actionType = next
+  }
+  const link = await issueLocationFormLink(settings.tenant_id, worker.id, actionType, location.id)
+  if (!link) {
+    await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
     return
   }
-  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'check_out')
-  if (!link) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-  } else {
-    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อเช็คเอาท์ที่ ${site.name} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
+  await sendLineReply(settings.channel_access_token, replyToken, locationLinkReplyText(actionType, location, link))
+}
+
+// The tenant's assembly location for this worker today, or null when today is not an assembly
+// day (worker_assembly_location: first site's assembly_mode, else the tenant default).
+async function loadAssemblyLocation(workerId: string): Promise<{ location_id: string; location_name: string } | null> {
+  const { data, error } = await admin.rpc('worker_assembly_location', { p_worker_id: workerId, p_date: bangkokToday() })
+  if (error) { logSafeError('worker_assembly_location failed', error); return null }
+  const row = (data ?? [])[0] as { location_id: string; location_name: string; lat: number; lng: number } | undefined
+  return row ?? null
+}
+
+// Every time-clock command on an assembly day sends ONE time_clock link (or the done note).
+async function sendAssemblyDayLink(
+  worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string,
+  sites: TodaysSite[], assembly: { location_id: string; location_name: string }, commandSettings: CommandSettingsByKey,
+) {
+  const { data: row } = await admin.from('worker_checkins').select('checkin_at, checkout_at')
+    .eq('worker_id', worker.id).eq('tenant_id', settings.tenant_id).eq('checkin_location_id', assembly.location_id)
+    .eq('date', bangkokToday()).eq('is_assembly', true).maybeSingle()
+  // Factory work: name the work place exactly as the /f/ page does ('โรงงาน (ส่วนกลาง) — งานX').
+  const named: TodaysSite[] = []
+  for (const s of sites) {
+    if (!s.atFactory) { named.push(s); continue }
+    const loc = await resolveFactoryLocation(admin, settings.tenant_id, worker.id, s.siteId, bangkokToday())
+    named.push(loc ? { ...s, siteName: `${loc.name} — งาน${s.siteName}` } : s)
   }
+  const plan = planAssemblyDay(named, row ? { leave_at: row.checkin_at, return_at: row.checkout_at } : null, assembly.location_name)
+  if (!plan.next) {
+    await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+    return
+  }
+  if (!resolveEnabled(stepAction(plan.next.kind), commandSettings, 'dm')) {
+    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    return
+  }
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'time_clock')
+  if (!link) {
+    await sendLineReply(settings.channel_access_token, replyToken, SYSTEM_ERROR_MESSAGE)
+    return
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, assemblyLinkReplyText(plan.next, link))
+}
+
+// mode 'auto' = the Rich Menu เช็คอิน/เช็คเอาท์ button; 'check_in' / 'check_out' = the typed
+// commands (the router has already checked that the typed command is enabled).
+// No link throttle here: check-in/out links never had one (only เบิกของ/ขอลา/เบิกเงิน/สลิป do).
+async function sendTimeClockLinks(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  mode: 'auto' | 'check_in' | 'check_out',
+  commandSettings: CommandSettingsByKey,
+) {
+  const sites = await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id)
+  if (sites.length === 0) {
+    // No site today: an office admin with a fixed check-in location (2026-10-21) clocks
+    // there instead; anyone else keeps the existing "no work today" reply.
+    const target = pickTimeClockTarget(sites, await loadCheckinLocationForWorker(worker.id, settings.tenant_id))
+    if (target.kind === 'location') {
+      await sendLocationLink(worker, settings, replyToken, target.location, mode, commandSettings)
+      return
+    }
+    await sendLineReply(settings.channel_access_token, replyToken, NO_SITE_TODAY_MESSAGE)
+    return
+  }
+
+  // Assembly day (2026-10-21, รวมพลที่บริษัท/โรงงานก่อน): one time_clock link whose page works
+  // out the step (leave assembly -> sites -> back). Off (the default) -> the code below, unchanged.
+  const assembly = await loadAssemblyLocation(worker.id)
+  if (assembly) {
+    await sendAssemblyDayLink(worker, settings, replyToken, sites, assembly, commandSettings)
+    return
+  }
+
+  if (sites.length === 1) {
+    // Single site: unchanged behaviour. The typed commands always send their own link;
+    // the Rich Menu button follows the day's step.
+    const site = sites[0]
+    if (mode !== 'auto') {
+      await sendSingleSiteLink(worker, settings, replyToken, site, mode)
+      return
+    }
+    const step = timeClockStep({ hasSite: true, hasCheckedIn: site.nextAction !== 'check_in', hasCheckedOut: site.nextAction === 'done' })
+    if (step === 'done') {
+      await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+    } else if (step === 'no_site') {
+      await sendLineReply(settings.channel_access_token, replyToken, NO_SITE_TODAY_MESSAGE)
+    } else if (!resolveEnabled(step, commandSettings, 'dm')) {
+      await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    } else {
+      await sendSingleSiteLink(worker, settings, replyToken, site, step)
+    }
+    return
+  }
+
+  // 2+ sites: the worker picks the site.
+  if (sites.every((s) => s.nextAction === 'done')) {
+    await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+    return
+  }
+  const enabled = { check_in: resolveEnabled('check_in', commandSettings, 'dm'), check_out: resolveEnabled('check_out', commandSettings, 'dm') }
+  let toLink = sitesNeedingLinks(sites, mode, mode === 'auto' ? enabled : { check_in: true, check_out: true })
+  // A typed เช็คอิน with nothing left to check in (or เช็คเอาท์ with nothing left to check
+  // out): answer like the Rich Menu button would, so the worker still gets the link they need.
+  if (toLink.length === 0 && mode !== 'auto') toLink = sitesNeedingLinks(sites, 'auto', enabled)
+  // sitesNeedingLinks already narrows to the one open check-out when a site is checked in.
+  if (toLink.length === 0) {
+    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    return
+  }
+  await sendMultiSiteLinks(worker, settings, replyToken, sites, toLink)
+}
+
+async function handleCheckInStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string, commandSettings: CommandSettingsByKey) {
+  await sendTimeClockLinks(worker, settings, replyToken, 'check_in', commandSettings)
+}
+
+async function handleCheckOutStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string, commandSettings: CommandSettingsByKey) {
+  await sendTimeClockLinks(worker, settings, replyToken, 'check_out', commandSettings)
 }
 
 // The Rich Menu's single "เช็คอิน/เช็คเอาท์" button: look at the worker's day and send
@@ -618,26 +844,7 @@ async function handleTimeClock(
   replyToken: string,
   commandSettings: CommandSettingsByKey,
 ) {
-  const site = await resolveTodaysSite(worker.id, settings.tenant_id)
-  let hasCheckedIn = false
-  let hasCheckedOut = false
-  if (site) {
-    const { data: row } = await admin.from('worker_checkins').select('checkin_at, checkout_at').eq('worker_id', worker.id).eq('site_id', site.id).eq('date', bangkokToday()).maybeSingle()
-    hasCheckedIn = !!row?.checkin_at
-    hasCheckedOut = !!row?.checkout_at
-  }
-  const step = timeClockStep({ hasSite: !!site, hasCheckedIn, hasCheckedOut })
-  if (step === 'no_site') {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
-  } else if (step === 'done') {
-    await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
-  } else if (!resolveEnabled(step, commandSettings, 'dm')) {
-    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
-  } else if (step === 'check_in') {
-    await handleCheckInStart(worker, settings, replyToken)
-  } else {
-    await handleCheckOutStart(worker, settings, replyToken)
-  }
+  await sendTimeClockLinks(worker, settings, replyToken, 'auto', commandSettings)
 }
 
 // The Rich Menu's "ตารางงาน" button: offer the four schedule views as tappable chips
@@ -660,6 +867,98 @@ async function handleScheduleMenu(
   await sendLineReply(settings.channel_access_token, replyToken, SCHEDULE_MENU_PROMPT, [...chips, CANCEL_PHRASE].map((p) => ({ label: truncateLabel(p), text: p })))
 }
 
+// ---- Salary advance (เบิกเงิน / ยอดเบิก) and the request menus (ยื่นคำขอ / สถานะคำขอ) ----
+// DM only, replies only (free; no LINE push). The worker is the linked, active one
+// resolveWorker returned; the tenant is the one that worker belongs to. Every read
+// below filters on both explicitly, since this client is the service role.
+
+// The worker's advances, with deductions from CLOSED payroll periods only: the query and
+// the rule live in _shared/advance-summary.ts (shared with field-form). null on a lookup error.
+async function loadAdvanceSummaryForReply(tenantId: string, workerId: string) {
+  const loaded = await loadAdvanceSummary(admin, tenantId, workerId, logSafeError)
+  if (!loaded) return null
+  return advanceItemsForReply(loaded.summary, loaded.requestedAtById)
+}
+
+async function handleAdvanceRequest(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
+  if (await linkRequestsThrottled(admin, worker.id, 'advance', settings.tenant_id)) {
+    await sendLineReply(settings.channel_access_token, replyToken, THROTTLED_LINK_MESSAGE)
+    return
+  }
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'advance')
+  await sendLineReply(settings.channel_access_token, replyToken, link ? advanceLinkMessage(link) : '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+}
+
+async function handlePayslipRequest(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
+  if (await linkRequestsThrottled(admin, worker.id, 'payslip', settings.tenant_id)) {
+    await sendLineReply(settings.channel_access_token, replyToken, THROTTLED_LINK_MESSAGE)
+    return
+  }
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'payslip')
+  await sendLineReply(settings.channel_access_token, replyToken, link ? `🧾 กดลิงก์นี้เพื่อดูสลิปเงินเดือนครับ (ใช้ได้ 30 นาที)\n${link}` : '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+}
+
+async function handleAdvanceStatus(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
+  const summary = await loadAdvanceSummaryForReply(settings.tenant_id, worker.id)
+  await sendLineReply(settings.channel_access_token, replyToken, summary ? formatAdvanceStatusReply(summary, formatBaht) : '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+}
+
+// "ยื่นคำขอ" (Rich Menu): chips for ขอลา / เบิกของ / เบิกเงิน. Each chip sends the phrase
+// the bot already understands, so a tap runs the same flow as typing it.
+async function handleRequestMenu(
+  settings: { channel_access_token: string },
+  replyToken: string,
+  commandSettings: CommandSettingsByKey,
+  hasPayroll: boolean,
+) {
+  const chips = requestMenuChips({
+    leaveOn: resolveEnabled('leave', commandSettings, 'dm'),
+    materialOn: resolveEnabled('material_request', commandSettings, 'dm'),
+    advanceOn: hasPayroll && resolveEnabled('advance_request', commandSettings, 'dm'),
+    advancePhrase: resolveEffectivePhrases('advance_request', commandSettings)[0] ?? null,
+    payslipOn: hasPayroll && resolveEnabled('payslip_request', commandSettings, 'dm'),
+    payslipPhrase: resolveEffectivePhrases('payslip_request', commandSettings)[0] ?? null,
+  })
+  if (!chips.length) {
+    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    return
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, REQUEST_MENU_PROMPT, chips.map((c) => ({ label: truncateLabel(c.label), text: c.text })))
+}
+
+// "สถานะคำขอ" (Rich Menu): leave requests of the last 60 days + days left, and (with
+// the payroll module) the advances, in one reply.
+const REQUEST_STATUS_LEAVE_DAYS = 60
+async function handleRequestStatus(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  hasPayroll: boolean,
+) {
+  const since = new Date(Date.now() - REQUEST_STATUS_LEAVE_DAYS * 24 * 3600 * 1000).toISOString()
+  const [workerRes, leaveRes] = await Promise.all([
+    admin.from('workers').select('annual_leave_days, annual_sick_leave_days').eq('id', worker.id).eq('tenant_id', settings.tenant_id).maybeSingle(),
+    admin.from('leave_requests').select('leave_type, date_from, date_to, status, requested_at')
+      .eq('worker_id', worker.id).eq('tenant_id', settings.tenant_id).gte('requested_at', since)
+      .order('requested_at', { ascending: false }).limit(10),
+  ])
+  if (workerRes.error || leaveRes.error) {
+    logSafeError('request status lookup failed', workerRes.error ?? leaveRes.error)
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    return
+  }
+  const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(
+    admin, worker.id, Number(workerRes.data?.annual_leave_days ?? 0), Number(workerRes.data?.annual_sick_leave_days ?? 0), settings.tenant_id,
+  )
+  // An advance lookup error (null) still gets the leave section, just without advances.
+  const advances = hasPayroll ? await loadAdvanceSummaryForReply(settings.tenant_id, worker.id) : null
+  const recent = ((leaveRes.data ?? []) as Array<Record<string, any>>).map((r) => ({
+    type: r.leave_type as string, from: r.date_from as string, to: r.date_to as string, status: r.status as string,
+  }))
+  const text = formatRequestStatusReply({ leave: { recent, personalLeft: remainingPersonal, sickLeft: remainingSick }, advances }, formatBaht)
+  await sendLineReply(settings.channel_access_token, replyToken, text)
+}
+
 // The new single entry point -- resolves today's status and shows only
 // the tap-options relevant right now, instead of the earlier flat
 // 6-button menu that assumed a worker already knew which action to
@@ -675,6 +974,44 @@ async function handleTodaysJobMenu(
   // or null if that command is off in direct chat -- decides the last chip.
   tomorrowPhrase: string | null,
 ) {
+  // 2+ different sites today (e.g. AVAIN in the morning, บ้านคุณบิ๊ก in the afternoon):
+  // list every site, each with its own map, team leaders and open tasks.
+  const todays = await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id)
+  if (todays.length >= 2) {
+    const rows = await loadTodaysAssignmentRows(worker.id, settings.tenant_id)
+    const [blocks, myTasks] = await Promise.all([
+      Promise.all(todays.map(async (s) => {
+        const [tasks, leaders] = await Promise.all([
+          resolveOpenTasksForSite(s.siteId, settings.tenant_id),
+          resolveTeamLeadersForSite(s.siteId, settings.tenant_id, bangkokToday()),
+        ])
+        const fac = s.atFactory ? await factoryDisplayFor(settings.tenant_id, worker.id, s.siteId, s.siteName) : null
+        const out = ['', `${shiftEmoji(s.shifts)} ${shiftLabel(s.shifts)}: ${fac ? fac.line : s.siteName}${s.nextAction === 'done' ? ' ✅' : ''}`]
+        const map = fac ? fac.map : siteMapLink(rows.find((r) => r.site_id === s.siteId)?.sites)
+        if (map) out.push(`🗺️ ${map}`)
+        if (leaders.morning || leaders.evening) {
+          const parts: string[] = []
+          if (leaders.morning) parts.push(`เช้า ${leaders.morning}`)
+          if (leaders.evening) parts.push(`บ่าย ${leaders.evening}`)
+          out.push(`⛑️ หัวหน้าทีม: ${parts.join(' · ')}`)
+        }
+        if (tasks.length) out.push('🔧 งานที่ต้องทำ (ทั้งทีม):', ...tasks.map((t) => `• ${t.name}`))
+        return out
+      })),
+      resolveOpenTasksForWorker(worker.id, settings.tenant_id),
+    ])
+    const cur = currentSite(todays)!
+    const options = todayMenuOptions({
+      hasCheckedIn: cur.nextAction !== 'check_in',
+      hasCheckedOut: todays.every((s) => s.nextAction === 'done'),
+      hasOpenTasks: myTasks.length > 0,
+      tomorrowPhrase,
+    })
+    const text = [`📍 วันนี้คุณมี ${todays.length} ไซท์`, ...blocks.flat()].join('\n')
+    await sendLineReply(settings.channel_access_token, replyToken, text, options.map((o) => ({ label: truncateLabel(o), text: o })))
+    return
+  }
+
   const site = await resolveTodaysSite(worker.id, settings.tenant_id)
   if (!site) {
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
@@ -688,8 +1025,9 @@ async function handleTodaysJobMenu(
   ])
   const checkin = checkinResult.data
 
-  const lines = [`📍 วันนี้: ${site.name}`]
-  const todayMap = siteMapLink(site)
+  const fac = todays.length === 1 && todays[0].atFactory ? await factoryDisplayFor(settings.tenant_id, worker.id, site.id, site.name) : null
+  const lines = [fac ? `📍 วันนี้: ${fac.line}` : `📍 วันนี้: ${site.name}`]
+  const todayMap = fac ? fac.map : siteMapLink(site)
   if (todayMap) lines.push(`🗺️ ${todayMap}`)
   if (leaders.morning || leaders.evening) {
     const parts: string[] = []
@@ -724,20 +1062,33 @@ async function handleSingleDayQuery(
   dayLabel: string,
 ) {
   const sites = await resolveSitesForDates(worker.id, settings.tenant_id, [dateISO])
-  const site = sites.get(dateISO)
-  if (!site) {
+  const daySites = sites.get(dateISO) ?? []
+  if (!daySites.length) {
     await sendLineReply(settings.channel_access_token, replyToken, `📅 ${dayLabel}: ไม่มีงานที่มอบหมาย`)
     return
   }
-  const tasks = await resolveOpenTasksForSite(site.id, settings.tenant_id)
-  const lines = [`📅 ${dayLabel}: ${site.name}`]
-  const dayMap = siteMapLink(site)
-  if (dayMap) lines.push(`🗺️ ${dayMap}`)
-  if (tasks.length) {
-    lines.push('', '🔧 งานที่ต้องทำ (ทั้งทีม):')
-    lines.push(...tasks.map((t) => `• ${t.name}`))
+  if (daySites.length === 1) {
+    const site = daySites[0]
+    const tasks = await resolveOpenTasksForSite(site.id, settings.tenant_id)
+    const lines = [`📅 ${dayLabel}: ${site.name}`]
+    const dayMap = siteMapLink(site)
+    if (dayMap) lines.push(`🗺️ ${dayMap}`)
+    if (tasks.length) {
+      lines.push('', '🔧 งานที่ต้องทำ (ทั้งทีม):')
+      lines.push(...tasks.map((t) => `• ${t.name}`))
+    }
+    await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
+    return
   }
-  await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
+  const blocks = await Promise.all(daySites.map(async (site) => {
+    const tasks = await resolveOpenTasksForSite(site.id, settings.tenant_id)
+    const out = ['', `${shiftEmoji(site.shifts)} ${shiftLabel(site.shifts)}: ${site.name}`]
+    const dayMap = siteMapLink(site)
+    if (dayMap) out.push(`🗺️ ${dayMap}`)
+    if (tasks.length) out.push('🔧 งานที่ต้องทำ (ทั้งทีม):', ...tasks.map((t) => `• ${t.name}`))
+    return out
+  }))
+  await sendLineReply(settings.channel_access_token, replyToken, [`📅 ${dayLabel}: ${daySites.length} ไซท์`, ...blocks.flat()].join('\n'))
 }
 
 // งานอาทิตย์นี้/งานอาทิตย์หน้า -- one line per day, no task detail (7 days
@@ -753,8 +1104,11 @@ async function handleWeekQuery(
 ) {
   const sites = await resolveSitesForDates(worker.id, settings.tenant_id, dates)
   const days: WeekDay[] = dates.map((dateISO) => {
-    const site = sites.get(dateISO)
-    return { dateLabel: formatDateTH(dateISO), sites: site ? [{ siteName: site.name, mapUrl: siteMapLink(site), morning: [], evening: [] }] : [] }
+    const daySites = sites.get(dateISO) ?? []
+    return {
+      dateLabel: formatDateTH(dateISO),
+      sites: daySites.map((site) => ({ siteName: daySites.length > 1 ? `${shiftLabel(site.shifts)} · ${site.name}` : site.name, mapUrl: siteMapLink(site), morning: [], evening: [] })),
+    }
   })
   await sendLineReply(settings.channel_access_token, replyToken, formatWeekMessage(weekLabel, days, false))
 }
@@ -830,12 +1184,7 @@ async function resolveTeamWeek(tenantId: string, dates: string[]): Promise<WeekD
 }
 
 type GroupInfoAction = 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
-function matchGroupInfoAction(text: string, commandSettings: CommandSettingsByKey): GroupInfoAction | null {
-  for (const key of SCHEDULE_COMMAND_ORDER) {
-    if (resolveEffectivePhrases(key, commandSettings).some((p) => text.includes(p))) return key as GroupInfoAction
-  }
-  return null
-}
+// matchGroupInfoAction: _shared/line-command-match.ts.
 async function handleGroupInfoQuery(
   settings: { tenant_id: string; channel_access_token: string },
   replyToken: string,
@@ -922,11 +1271,30 @@ async function handleSitePhotoFinish(
 // team." Shared by handleJobDoneStart and handleJobDonePick so the
 // prompt and its re-resolved candidate list never disagree.
 async function resolveJobDoneCandidates(workerId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
-  const site = await resolveTodaysSite(workerId, tenantId)
-  if (site && await isTeamLeaderToday(workerId, site.id, tenantId)) {
-    return resolveOpenTasksForSite(site.id, tenantId)
-  }
-  return resolveOpenTasksForWorker(workerId, tenantId)
+  // Only cards at the site the worker is at now: the open check-in, else the first site still
+  // to check in (หมู, 2026-10-19: not checked in yet at AVAIN and งานเสร็จ listed his cards at
+  // KPS-ดินแดง and another site).
+  const cur = currentSite(await loadTodaysSitesWithCheckins(workerId, tenantId))
+  if (!cur) return []
+  const tasks = await isTeamLeaderToday(workerId, cur.siteId, tenantId)
+    ? await resolveOpenTasksForSite(cur.siteId, tenantId)
+    : (await resolveOpenTasksForWorker(workerId, tenantId)).filter((t) => t.site_id === cur.siteId)
+  // Quantity cards and parent cards are not closed by a worker (PM records the quantity;
+  // a parent's status comes from its children), so they are not offered here.
+  const parentIds = await findParentIds(tasks.map((t) => t.id))
+  return tasks
+    .filter((t) => isWorkerDoneable({ progress_mode: t.progress_mode, has_children: parentIds.has(t.id) }))
+    .map((t) => ({ id: t.id, name: t.name }))
+}
+
+// Which of these cards have children (another card whose parent_task_id is theirs).
+// One cheap query; if parent_task_id does not exist yet (migration not applied) the
+// error is swallowed and nothing counts as a parent.
+async function findParentIds(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set()
+  const { data, error } = await admin.from('phase_tasks').select('parent_task_id').in('parent_task_id', ids)
+  if (error) return new Set()
+  return new Set((data ?? []).map((r: any) => r.parent_task_id as string))
 }
 
 // Starts the งานเสร็จ flow -- resolves the worker's open tasks (team-
@@ -941,7 +1309,10 @@ async function handleJobDoneStart(
 ) {
   const tasks = await resolveJobDoneCandidates(worker.id, settings.tenant_id)
   if (tasks.length === 0) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายให้คุณตอนนี้ กรุณาติดต่อแอดมิน')
+    const cur = currentSite(await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id))
+    await sendLineReply(settings.channel_access_token, replyToken, cur
+      ? `⚠️ ไม่มีงานของคุณที่ ${cur.siteName} วันนี้ กรุณาติดต่อแอดมิน`
+      : '⚠️ ไม่พบงานที่มอบหมายให้คุณตอนนี้ กรุณาติดต่อแอดมิน')
     return
   }
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
@@ -1060,6 +1431,12 @@ async function handleJobDonePhotoFinish(
   }
   const { error: statusError } = await admin.from('phase_tasks').update({ status: 'done' }).eq('id', task.id)
   if (statusError) {
+    // The DB enforces the progress rules (PLAN gate, quantity card, parent card); say why in plain words.
+    const reason = doneErrorReply(statusError.message)
+    if (reason) {
+      await sendLineReply(settings.channel_access_token, replyToken, `⚠️ ${reason}`)
+      return true // retrying cannot help -- close the pending action
+    }
     logSafeError('phase_tasks status update failed', statusError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     return false // let them retry "เสร็จแล้ว" -- already-uploaded photos are safe either way
@@ -1097,7 +1474,7 @@ async function handleAction(
       try {
         if (await isPushEnabled(admin, settings.tenant_id, 'web_push_issue_report')) {
         const [{ sendWebPushToTenantAdmins }, { issueReportPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
-        await sendWebPushToTenantAdmins(admin, settings.tenant_id, issueReportPush(worker.name, text))
+        await sendWebPushToTenantAdmins(admin, settings.tenant_id, issueReportPush(worker.name, text), 'ops')
         }
       } catch (e) { console.error('web push failed', (e as Error).message) }
       await sendLineReply(settings.channel_access_token, replyToken, '📩 รับแจ้งปัญหาแล้วครับ แอดมินจะติดตามให้')
@@ -1248,8 +1625,8 @@ Deno.serve(async (req) => {
     }
 
     if (sourceGroupId) {
-      const { data: match, error: matchError } = await admin.from('line_settings').select('tenant_id').eq('crew_group_id', sourceGroupId).maybeSingle()
-      if (matchError) { logSafeError('line_settings crew_group_id lookup failed', matchError); continue }
+      const { data: match, error: matchError } = await admin.from('line_groups').select('tenant_id').eq('group_id', sourceGroupId).maybeSingle()
+      if (matchError) { logSafeError('line_groups group_id lookup failed', matchError); continue }
       tenantId = (match?.tenant_id as string | undefined) ?? null
     } else {
       const { data: w, error: workerLookupError } = await admin.from('workers').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
@@ -1272,13 +1649,42 @@ Deno.serve(async (req) => {
         if (claimantError) { logSafeError('line_settings group_link_code lookup failed', claimantError); continue }
         if (claimant) {
           if (!(await tenantHasModuleAccess(admin, claimant.tenant_id as string, 'line_bot'))) { continue }
-          const { error } = await admin.from('line_settings').update({ crew_group_id: sourceGroupId, group_link_code: null }).eq('tenant_id', claimant.tenant_id)
-          if (error) {
-            logSafeError('line_settings group claim failed', error)
+          const claimantTenantId = claimant.tenant_id as string
+          const { data: existingRow, error: existingError } = await admin.from('line_groups').select('tenant_id').eq('group_id', sourceGroupId).maybeSingle()
+          const { count, error: countError } = await admin.from('line_groups').select('id', { count: 'exact', head: true }).eq('tenant_id', claimantTenantId)
+          const { data: canAdd, error: canAddError } = await admin.rpc('can_add_line_group', { p_tenant: claimantTenantId })
+          const lookupError = existingError ?? countError ?? canAddError
+          if (lookupError) {
+            logSafeError('line_groups claim pre-check failed', lookupError)
             await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ ตั้งกลุ่มไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
-          } else {
-            await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ ตั้งกลุ่มนี้เป็นกลุ่มทีมงานเรียบร้อยแล้ว')
+            continue
           }
+          const decision = decideGroupClaim({
+            alreadyLinkedTenantId: (existingRow?.tenant_id as string | undefined) ?? null,
+            claimingTenantId: claimantTenantId, canAdd: canAdd === true, existingCount: count ?? 0,
+          })
+          if (decision.action === 'refuse-other-tenant') {
+            // Silent, like the no-match branch -- never reveal that another tenant holds this group.
+            continue
+          }
+          if (decision.action === 'refuse-cap') {
+            // Code stays unconsumed so the owner can retry after upgrading.
+            await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ แพ็กเกจของคุณผูกกลุ่ม LINE ได้ครบจำนวนแล้ว หากต้องการเพิ่มกรุณาอัปเกรดแพ็กเกจ')
+            continue
+          }
+          if (decision.action === 'insert') {
+            const groupName = await fetchLineGroupName(LINE_CHANNEL_ACCESS_TOKEN, sourceGroupId) // null on any failure; never blocks the claim
+            const { error: insertError } = await admin.from('line_groups').insert({ tenant_id: claimantTenantId, group_id: sourceGroupId, is_notify: decision.isNotify, label: groupName })
+            if (insertError) {
+              logSafeError('line_groups group claim failed', insertError)
+              await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ ตั้งกลุ่มไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
+              continue
+            }
+          }
+          // insert succeeded, or the group was already this tenant's: consume the code.
+          const { error: clearError } = await admin.from('line_settings').update({ group_link_code: null }).eq('tenant_id', claimantTenantId)
+          if (clearError) logSafeError('line_settings group_link_code clear failed', clearError)
+          await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ ตั้งกลุ่มนี้เป็นกลุ่มทีมงานเรียบร้อยแล้ว')
         }
         // No match at all -- not a claim code (or an expired/already-used
         // one), and no way to tell the difference without revealing
@@ -1443,7 +1849,13 @@ Deno.serve(async (req) => {
         } else if (msgType === 'text' && text) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
           if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
-          const schedulePhrases = SCHEDULE_COMMAND_ORDER.flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey))
+          // The company's schedule phrases plus the salary-advance / request-menu phrases
+          // (Rich Menu "ยื่นคำขอ" / "สถานะคำขอ" buttons): an exact tap on one interrupts the wait.
+          const schedulePhrases = [
+            ...[...SCHEDULE_COMMAND_ORDER, ...ADVANCE_COMMAND_KEYS].flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey)),
+            // The built-in money phrases still interrupt after the owner renames those commands.
+            ...ADVANCE_PHRASES.advance_request, ...ADVANCE_PHRASES.advance_status, ...ADVANCE_PHRASES.payslip_request, 'ขอสลิปเงินเดือน',
+          ]
           if (isMenuButtonText(text, schedulePhrases)) {
             // A menu button, not the report: stop waiting and run the button below.
             interrupted = true
@@ -1461,14 +1873,38 @@ Deno.serve(async (req) => {
         const action = matchDMAction(text, commandSettingsByKey)
         if (action && !resolveEnabled(action, commandSettingsByKey, 'dm')) {
           await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
+        } else if (action === 'advance_request' || action === 'advance_status') {
+          // Money: linked + active worker (resolveWorker above) AND the payroll module.
+          if (!(await tenantHasModuleAccess(admin, settings.tenant_id, 'payroll'))) {
+            await sendLineReply(settings.channel_access_token, event.replyToken, ADVANCE_NOT_ALLOWED_MESSAGE)
+          } else if (action === 'advance_request') {
+            await handleAdvanceRequest(worker, settings, event.replyToken)
+          } else {
+            await handleAdvanceStatus(worker, settings, event.replyToken)
+          }
+        } else if (action === 'payslip_request') {
+          const payslipOn = (await tenantHasModuleAccess(admin, settings.tenant_id, 'payroll')) && resolveEnabled('payslip_request', commandSettingsByKey, 'dm')
+          if (!payslipOn) {
+            await sendLineReply(settings.channel_access_token, event.replyToken, 'ยังขอสลิปผ่าน LINE ไม่ได้ ติดต่อแอดมินครับ')
+          } else {
+            await handlePayslipRequest(worker, settings, event.replyToken)
+          }
+        } else if (action === 'request_menu' || action === 'request_status') {
+          // Any linked active worker; the เบิกเงิน chip / advances section need payroll.
+          const hasPayroll = await tenantHasModuleAccess(admin, settings.tenant_id, 'payroll')
+          if (action === 'request_menu') {
+            await handleRequestMenu(settings, event.replyToken, commandSettingsByKey, hasPayroll)
+          } else {
+            await handleRequestStatus(worker, settings, event.replyToken, hasPayroll && resolveEnabled('advance_status', commandSettingsByKey, 'dm'))
+          }
         } else if (action === 'time_clock') {
           await handleTimeClock(worker, settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'schedule_menu') {
           await handleScheduleMenu(settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'check_in') {
-          await handleCheckInStart(worker, settings, event.replyToken)
+          await handleCheckInStart(worker, settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'check_out') {
-          await handleCheckOutStart(worker, settings, event.replyToken)
+          await handleCheckOutStart(worker, settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'job_done_start') {
           await handleJobDoneStart(worker, settings, event.replyToken)
         } else if (action === 'today_job') {
@@ -1525,7 +1961,7 @@ Deno.serve(async (req) => {
     }
 
     // A message from the crew group -- by this point tenantId was already
-    // resolved from THIS group matching that tenant's crew_group_id (see
+    // resolved from THIS group matching a line_groups row of that tenant (see
     // above), so there's nothing further to check there.
 
     // Group-photo auto-filing (see handleGroupPhotoAutoFile) -- the one
@@ -1578,6 +2014,17 @@ Deno.serve(async (req) => {
       }
       continue
     }
+
+    // Money is private: the salary-advance phrases never run in a group. Checked BEFORE
+    // matchGroupAction so "ขอเบิกเงิน" can never open a material form here.
+    // Only for tenants with the payroll module: others fall through exactly as before.
+    let advanceInGroup = groupAdvanceHint(text, commandSettingsByKey)
+    if (advanceInGroup && !(await tenantHasModuleAccess(admin, settings.tenant_id, 'payroll'))) advanceInGroup = null
+    if (advanceInGroup === 'hint') {
+      await sendLineReply(settings.channel_access_token, event.replyToken, ADVANCE_DM_ONLY_MESSAGE)
+      continue
+    }
+    if (advanceInGroup === 'ignore') continue
 
     const action = matchGroupAction(text)
     if (action) {

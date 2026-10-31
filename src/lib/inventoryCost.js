@@ -78,12 +78,26 @@ export function estimateSheetCount(areaSqm, referenceAreaSqm) {
  * the caller loads items/balances once and re-uses this for every invoice
  * in the queue, and for live-previewing edits before confirming.
  *
- * Sourcing per category: the invoice's own site first: if its balance in
- * that category covers the target, deduct proportionally by each item's
- * value share and stop. If not, drain the site's balance in that category
- * entirely, then attempt to cover the remainder from ส่วนกลาง via a
- * transfer_out (central) + transfer_in (site) + sale_out (site) triplet
- * per item, again proportional by value share. If even that's short,
+ * Sourcing per category is FIFO by item (owner decision 2026-10-17): items
+ * are taken oldest-first by the date each was first received at that site,
+ * each drained to 0 before moving to the next, the last one only partly.
+ * (The earlier "proportional across every item" rule cut ~2,400 items for
+ * one invoice and made its deduction report unprintable.)
+ *
+ * Cost is FIFO by lot (owner decision 2026-10-26; replaces weighted-average):
+ * within an item, its lots (from inventory_lots_as_of, oldest first) are
+ * drained in order, and every lot consumed becomes its OWN step priced at
+ * that lot's unit_cost and tagged with its lotMovementId. A drained lot uses
+ * its exact qty so it lands on 0; only the last lot touched is taken partly.
+ *
+ * The invoice's own site goes first (one sale_out per lot, lotMovementId =
+ * the site lot). Whatever it can't cover comes from ส่วนกลาง: per central lot,
+ * a transfer_out (central, lotMovementId = the central lot) + transfer_in
+ * (site, lotMovementId null) + sale_out (site, lotMovementId null) triplet,
+ * same FIFO order. The triplet for one lot is ALWAYS three adjacent steps --
+ * the server links each triplet's sale_out to the transfer_in immediately
+ * before it, so a take spanning two lots is out A, in A, sale A, out B, in B,
+ * sale B, never interleaved. If even that's short,
  * deduct everything available and report the unmet amount as a shortfall
  * -- this function never fabricates stock and never throws for a
  * shortfall; it only reports it in categoryResults for the caller to warn
@@ -92,9 +106,10 @@ export function estimateSheetCount(areaSqm, referenceAreaSqm) {
  * Items with no category_id can never participate (there's nothing to
  * assign their value to) -- this is intentional, not an oversight.
  *
- * Balances with zero (or non-positive) weighted_average_cost are excluded
- * from sourcing entirely, not treated as "free" stock -- a written-down
- * leftover balance still can't fund a deduction with real invoice value.
+ * Lots with zero (or non-positive) unit_cost or qty are skipped, not treated
+ * as "free" stock -- a written-down leftover can't fund a deduction with real
+ * invoice value. inventory_lots_as_of already leaves them out; the planner
+ * re-checks defensively. An element with no lots has nothing to give.
  *
  * @param {object} params
  * @param {number} params.invoiceSubtotal - the invoice's pre-VAT amount
@@ -103,14 +118,15 @@ export function estimateSheetCount(areaSqm, referenceAreaSqm) {
  * @param {string} params.siteId - the invoice's site id
  * @param {string|null} params.centralSiteId - ส่วนกลาง's site id, or null if no such site exists yet
  * @param {Array<{id: string, category_id: string|null}>} params.items
- * @param {Array<{inventory_item_id: string, site_id: string, quantity_on_hand: number, weighted_average_cost: number}>} params.balances
+ * @param {Array<{inventory_item_id: string, site_id: string, quantity_on_hand: number, lots: Array<{movement_id: string, received_at: string, unit_cost: number, qty: number}>}>} params.balances - stock AS OF THE INVOICE DATE (inventory_lots_as_of, grouped per item+site, lots oldest first; quantity_on_hand = Σ lots qty), not today's: the cut is back-dated to that day. All pricing comes from the lots.
+ * @param {Record<string, string>} [params.firstReceivedAt] - { 'itemId|siteId': ISO timestamp of the first receipt there }; items without one go last
  * @returns {{
- *   steps: Array<{type: 'sale_out'|'transfer_out'|'transfer_in', inventoryItemId: string, siteId: string, quantity: number, unitCost: number, categoryId: string}>,
+ *   steps: Array<{type: 'sale_out'|'transfer_out'|'transfer_in', inventoryItemId: string, siteId: string, quantity: number, unitCost: number, categoryId: string, lotMovementId: string|null}>,
  *   categoryResults: Array<{categoryId: string, targetValue: number, deductedValue: number, shortfall: number}>,
  *   totalTargetValue: number, totalDeductedValue: number, totalShortfall: number,
  * }}
  */
-export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, categorySplits, siteId, centralSiteId, items, balances }) {
+export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, categorySplits, siteId, centralSiteId, items, balances, firstReceivedAt = {} }) {
   const materialValue = invoiceSubtotal * (materialPct / 100)
   const steps = []
   const categoryResults = []
@@ -123,46 +139,57 @@ export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, cate
     }
 
     const categoryItemIds = new Set(items.filter(it => it.category_id === categoryId).map(it => it.id))
-    const valueOf = (b) => b.quantity_on_hand * b.weighted_average_cost
+    const usableLots = (b) => (b.lots || []).filter(l => l.qty > 0 && l.unit_cost > 0)
+    const receivedAt = (b) => firstReceivedAt[`${b.inventory_item_id}|${b.site_id}`] || null
+    const fifo = (a, b) => {
+      const ra = receivedAt(a), rb = receivedAt(b)
+      if (ra !== rb) {
+        if (!ra) return 1
+        if (!rb) return -1
+        return ra < rb ? -1 : 1
+      }
+      return a.inventory_item_id < b.inventory_item_id ? -1 : a.inventory_item_id > b.inventory_item_id ? 1 : 0
+    }
     const inCategory = (siteFilter) => (balances || []).filter(b =>
-      b.site_id === siteFilter && categoryItemIds.has(b.inventory_item_id) && b.quantity_on_hand > 0 && b.weighted_average_cost > 0)
+      b.site_id === siteFilter && categoryItemIds.has(b.inventory_item_id) && usableLots(b).length > 0)
+      .sort(fifo)
 
-    const siteBalances = inCategory(siteId)
-    const siteTotalValue = siteBalances.reduce((s, b) => s + valueOf(b), 0)
-
-    let deductedValue = 0
-
-    if (siteTotalValue >= targetValue) {
-      for (const b of siteBalances) {
-        const share = valueOf(b) / siteTotalValue
-        const valueToTake = targetValue * share
-        steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: valueToTake / b.weighted_average_cost, unitCost: b.weighted_average_cost, categoryId })
-      }
-      deductedValue = targetValue
-    } else {
-      for (const b of siteBalances) {
-        steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: b.quantity_on_hand, unitCost: b.weighted_average_cost, categoryId })
-      }
-      deductedValue = siteTotalValue
-      const remaining = targetValue - siteTotalValue
-
-      if (remaining > 0 && centralSiteId && centralSiteId !== siteId) {
-        const centralBalances = inCategory(centralSiteId)
-        const centralTotalValue = centralBalances.reduce((s, b) => s + valueOf(b), 0)
-
-        if (centralTotalValue > 0) {
-          const transferValue = Math.min(remaining, centralTotalValue)
-          for (const b of centralBalances) {
-            const share = valueOf(b) / centralTotalValue
-            const valueToTransfer = transferValue * share
-            const qty = valueToTransfer / b.weighted_average_cost
-            steps.push({ type: 'transfer_out', inventoryItemId: b.inventory_item_id, siteId: centralSiteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
-            steps.push({ type: 'transfer_in', inventoryItemId: b.inventory_item_id, siteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
-            steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
+    // Takes from `list` item-by-item (FIFO), lot-by-lot within each item
+    // (oldest first, as the RPC returns them), until `want` baht is covered.
+    // A fully drained lot uses its exact qty so it lands on 0; push() is
+    // called once per lot consumed, at that lot's own unit_cost.
+    const take = (list, want, push) => {
+      let got = 0
+      for (const b of list) {
+        for (const lot of usableLots(b)) {
+          const remaining = want - got
+          if (remaining <= 1e-9) return got
+          const value = lot.qty * lot.unit_cost
+          if (value <= remaining + 1e-9) {
+            push(b, lot, lot.qty)
+            got += value
+          } else {
+            push(b, lot, remaining / lot.unit_cost)
+            got = want
           }
-          deductedValue += transferValue
         }
       }
+      return got
+    }
+
+    let deductedValue = take(inCategory(siteId), targetValue, (b, lot, qty) =>
+      steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: qty, unitCost: lot.unit_cost, categoryId, lotMovementId: lot.movement_id }))
+
+    const remaining = targetValue - deductedValue
+    if (remaining > 1e-9 && centralSiteId && centralSiteId !== siteId) {
+      // One strictly adjacent triplet per central lot -- the server links the
+      // sale_out to the transfer_in right before it (see doc comment).
+      deductedValue += take(inCategory(centralSiteId), remaining, (b, lot, qty) => {
+        const base = { inventoryItemId: b.inventory_item_id, quantity: qty, unitCost: lot.unit_cost, categoryId }
+        steps.push({ ...base, type: 'transfer_out', siteId: centralSiteId, lotMovementId: lot.movement_id })
+        steps.push({ ...base, type: 'transfer_in', siteId, lotMovementId: null })
+        steps.push({ ...base, type: 'sale_out', siteId, lotMovementId: null })
+      })
     }
 
     const shortfall = Math.max(0, targetValue - deductedValue)
@@ -199,15 +226,16 @@ export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, cate
  * @param {object} params
  * @param {Array<{quotationItemId: string|null, quotationNumber: string, sortOrder: number, description: string, invoiceItemLineTotal: number}>} params.billedLines
  * @param {number} params.materialPct - 0-100, the SAME %ต้นทุนวัสดุ the raw-material deduction step already uses for this invoice
+ * @param {number} [params.actualFactor=1] - scales every value, e.g. the ratio of the FIFO-priced material actually cut to the planned material value, so the finished goods carry what the cut really cost; 1 keeps value = materialPct% of the billed amount
  * @returns {{ steps: Array<{ quotationItemId: string, code: string, name: string, value: number }> }}
  */
-export function computeFinishedGoodsProductionPlan({ billedLines, materialPct }) {
+export function computeFinishedGoodsProductionPlan({ billedLines, materialPct, actualFactor = 1 }) {
   const steps = []
   for (const line of billedLines || []) {
     if (!line.quotationItemId) continue
     if (!(line.invoiceItemLineTotal > 0)) continue
     const code = `${line.quotationNumber}-${line.sortOrder + 1}`
-    const value = line.invoiceItemLineTotal * (materialPct / 100)
+    const value = line.invoiceItemLineTotal * (materialPct / 100) * actualFactor
     steps.push({ quotationItemId: line.quotationItemId, code, name: line.description, value })
   }
   return { steps }
@@ -224,7 +252,7 @@ export function computeFinishedGoodsProductionPlan({ billedLines, materialPct })
  *
  * Movement direction: purchase_in/transfer_in/sale_reversal are always
  * "in" (quantity stored positive); transfer_out/sale_out/purchase_return/
- * receipt_reversal (a supplier tax invoice taking a PO receipt back out)
+ * receipt_reversal (a supplier tax invoice, or a PO un-receive / cancel, taking a PO receipt back out)
  * are always "out" (quantity stored positive). 'adjustment' stores a SIGNED delta
  * (record_stock_movement computes p_quantity - old_qty) -- a positive
  * adjustment.quantity is "in", a negative one is "out".
@@ -286,7 +314,7 @@ export function computeStockLedgerReport({ movements, items, dateFrom, dateTo, i
     } else {
       if (d === 'in') { row.inQty += magnitude; row.inValue += magnitude * (mv.unit_cost || 0) }
       else { row.outQty += magnitude; row.outValue += magnitude * (mv.unit_cost || 0) }
-      row.movements.push({ date: mv.created_at, type: mv.movement_type, referenceType: mv.reference_type || null, referenceId: mv.reference_id || null, notes: mv.notes || null, qty: magnitude, unitCost: mv.unit_cost || 0, value: magnitude * (mv.unit_cost || 0), direction: d })
+      row.movements.push({ date: mv.created_at, type: mv.movement_type, referenceType: mv.reference_type || null, referenceId: mv.reference_id || null, stockDocumentId: mv.stock_document_id || null, notes: mv.notes || null, qty: magnitude, unitCost: mv.unit_cost || 0, value: magnitude * (mv.unit_cost || 0), direction: d })
     }
   }
 

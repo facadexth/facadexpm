@@ -12,6 +12,9 @@ import { usePlatformTenants, usePackages, useTenantStatusLog } from '../hooks/us
 import { Modal } from '../components/Modal.jsx'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import changelog from '../changelog.json'
+import CardTable from '../components/CardTable.jsx'
+const PACKAGE_MAP = { title: 'Package', amount: 'ราคา', sub: [], actions: 'last' }
+const TENANT_MAP = { title: 'บริษัท', status: 'สถานะ', sub: ['หมดอายุ'], actions: 'last' }
 
 const packagePriceLabel = (p) =>
   p.price_monthly == null ? 'Custom' : p.price_monthly === 0 ? 'ฟรี' : `${fmt(p.price_monthly, 0)}/ด.`
@@ -28,6 +31,8 @@ function QuotaModal({ pkg, onClose, onSaved }) {
   const [maxWorkers, setMaxWorkers] = useState(pkg.max_workers ?? '')
   const [maxSites, setMaxSites] = useState(pkg.max_sites ?? '')
   const [maxDocScans, setMaxDocScans] = useState(pkg.max_document_scans_per_month ?? '')
+  const [maxLineGroups, setMaxLineGroups] = useState(pkg.max_line_groups ?? '')
+  const [maxLinePush, setMaxLinePush] = useState(pkg.max_line_push_per_day ?? '')
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
@@ -38,6 +43,8 @@ function QuotaModal({ pkg, onClose, onSaved }) {
         max_workers: maxWorkers === '' ? null : parseInt(maxWorkers, 10),
         max_sites: maxSites === '' ? null : parseInt(maxSites, 10),
         max_document_scans_per_month: maxDocScans === '' ? null : parseInt(maxDocScans, 10),
+        max_line_groups: maxLineGroups === '' ? null : parseInt(maxLineGroups, 10),
+        max_line_push_per_day: maxLinePush === '' ? null : parseInt(maxLinePush, 10),
       }).eq('id', pkg.id)
       if (error) throw error
       onSaved()
@@ -71,6 +78,17 @@ function QuotaModal({ pkg, onClose, onSaved }) {
           <label className="label">สแกนเอกสาร AI สูงสุด/เดือน</label>
           <input type="number" min="0" className="input" placeholder="ไม่จำกัด"
             value={maxDocScans} onChange={e => setMaxDocScans(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">กลุ่ม LINE ที่ผูกได้สูงสุด</label>
+          <input type="number" min="0" className="input" placeholder="ไม่จำกัด"
+            value={maxLineGroups} onChange={e => setMaxLineGroups(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">LINE push สูงสุด/วัน</label>
+          <input type="number" min="0" className="input" placeholder="ค่าเริ่มต้น (400)"
+            value={maxLinePush} onChange={e => setMaxLinePush(e.target.value)} />
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>เว้นว่าง = ใช้ค่าเริ่มต้น 400/วัน (ไม่ใช่ไม่จำกัด เพราะทุก tenant ใช้บอทตัวเดียวกัน) · tenant ช่วง Trial จำกัด 40/วันเสมอ</div>
         </div>
       </div>
       <div className="modal-footer">
@@ -165,6 +183,26 @@ export default function TenantManagement() {
   const [statusTenant, setStatusTenant] = useState(null)
   const [quotaPkg, setQuotaPkg] = useState(null)
   const [toast, setToast] = useState(null)
+  const [resetTenant, setResetTenant] = useState(null)   // tenant row awaiting confirm
+  const [resetting, setResetting] = useState(false)
+
+  const handleResetDemo = async () => {
+    if (!resetTenant) return
+    setResetting(true)
+    try {
+      const { data, error } = await supabase.rpc('reset_demo_tenant', { p_tenant_id: resetTenant.id })
+      if (error) throw error
+      const seeded = data?.seeded || {}
+      setToast(`รีเซ็ตเดโม่ ${resetTenant.company_name} แล้ว: ไซท์ ${seeded.sites ?? '-'} ใบเสนอราคา ${seeded.quotations ?? '-'} ใบแจ้งหนี้ ${seeded.invoices ?? '-'} รายจ่าย ${seeded.expenses ?? '-'} ช่าง ${seeded.workers ?? '-'}`)
+      setTimeout(() => setToast(null), 5000)
+      setResetTenant(null)
+      refetch()
+    } catch (err) {
+      alert('รีเซ็ตไม่สำเร็จ: ' + (err.message || err))
+    } finally {
+      setResetting(false)
+    }
+  }
 
   // ตารางบริษัท (tenants)
   const [tenantSortCol, setTenantSortCol] = useState('company_name')
@@ -217,7 +255,7 @@ export default function TenantManagement() {
         เปลี่ยน package จะปรับ module ที่เปิดใช้งานให้ตรงกับ package นั้นทันที (เพิ่ม module ที่ขาด ปิด module ที่ไม่อยู่ใน package ใหม่)
       </p>
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={TENANT_MAP}>
           <table>
             <thead>
               <tr>
@@ -242,8 +280,11 @@ export default function TenantManagement() {
                   </td>
                   <td>{PLAN_LABELS[t.plan] || t.plan}</td>
                   <td style={{ fontSize: 12 }}>{t.plan_expires_at ? fmtDate(t.plan_expires_at) : (t.trial_ends_at ? `Trial: ${fmtDate(t.trial_ends_at)}` : '—')}</td>
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="btn btn-sm btn-ghost" onClick={() => setStatusTenant(t)}>จัดการสถานะ</button>
+                    {t.is_demo && (
+                      <button className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }} onClick={() => setResetTenant(t)}>🔄 รีเซ็ตเดโม่</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -252,7 +293,7 @@ export default function TenantManagement() {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {statusTenant && (
@@ -260,13 +301,26 @@ export default function TenantManagement() {
           onSaved={() => { setStatusTenant(null); refetch(); setToast('บันทึกแล้ว'); setTimeout(() => setToast(null), 2000) }} />
       )}
 
+      {resetTenant && (
+        <Modal title="รีเซ็ตข้อมูลเดโม่" maxWidth={480} onClose={() => !resetting && setResetTenant(null)}>
+          <div className="modal-body">
+            <p>ลบข้อมูลทั้งหมดของ <strong>{resetTenant.company_name}</strong> แล้วใส่ข้อมูลตัวอย่างชุดเดิมใหม่ ใช้เวลาไม่กี่วินาที บัญชีผู้ใช้ของ tenant นี้ไม่ถูกแตะ</p>
+            <p style={{ color: 'var(--text3)', fontSize: 12 }}>ทำได้เฉพาะ tenant ที่ติดธง is_demo_tenant เท่านั้น ฐานข้อมูลจะปฏิเสธ tenant อื่น</p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-ghost" disabled={resetting} onClick={() => setResetTenant(null)}>ยกเลิก</button>
+            <button className="btn btn-primary" disabled={resetting} onClick={handleResetDemo}>{resetting ? 'กำลังรีเซ็ต…' : 'ยืนยันรีเซ็ต'}</button>
+          </div>
+        </Modal>
+      )}
+
       <h3 style={{ margin: '28px 0 12px', fontSize: 15, fontWeight: 700 }}>Quota ต่อ Package</h3>
       <p style={{ color: 'var(--text3)', fontSize: 12, marginBottom: 16 }}>
-        จำกัดจำนวน Admin/Owner, พนักงาน, ไซท์งาน "กำลังดำเนินการ" และโควต้าสแกนเอกสาร AI ต่อเดือน ต่อ tenant ตาม package —
+        จำกัดจำนวน Admin/Owner, พนักงาน, ไซท์งาน "กำลังดำเนินการ" และโควต้าสแกนเอกสาร AI ต่อเดือน และจำนวนกลุ่ม LINE ต่อ tenant ตาม package —
         บังคับจริงที่ระดับฐานข้อมูล เปลี่ยนที่นี่มีผลทันทีกับทุก tenant ใน package นั้น
       </p>
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={PACKAGE_MAP}>
           <table>
             <thead>
               <tr>
@@ -276,6 +330,8 @@ export default function TenantManagement() {
                 <th className="sortable" onClick={() => togglePkgSort('max_workers')}>พนักงาน{psi('max_workers')}</th>
                 <th className="sortable" onClick={() => togglePkgSort('max_sites')}>ไซท์งาน (Ongoing){psi('max_sites')}</th>
                 <th className="sortable" onClick={() => togglePkgSort('max_document_scans_per_month')}>สแกนเอกสาร AI/เดือน{psi('max_document_scans_per_month')}</th>
+                <th className="sortable" onClick={() => togglePkgSort('max_line_groups')}>กลุ่ม LINE{psi('max_line_groups')}</th>
+                <th className="sortable" onClick={() => togglePkgSort('max_line_push_per_day')}>LINE push/วัน{psi('max_line_push_per_day')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -288,17 +344,19 @@ export default function TenantManagement() {
                   <td>{quotaLabel(p.max_workers)}</td>
                   <td>{quotaLabel(p.max_sites)}</td>
                   <td>{quotaLabel(p.max_document_scans_per_month)}</td>
+                  <td>{quotaLabel(p.max_line_groups)}</td>
+                  <td>{p.max_line_push_per_day ?? 'ค่าเริ่มต้น (400)'}</td>
                   <td>
                     <button className="btn btn-sm btn-ghost" onClick={() => setQuotaPkg(p)}>แก้ไข Quota</button>
                   </td>
                 </tr>
               ))}
               {!(packages || []).length && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูล</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูล</td></tr>
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {quotaPkg && (

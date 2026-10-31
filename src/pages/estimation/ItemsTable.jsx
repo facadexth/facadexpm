@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { supabase, fmt } from '../../lib/supabase.js'
 import { typeLabel } from '../../lib/typeTree.js'
 import { seriesLabelShort } from '../../lib/aluCatalog.js'
+import CardTable from '../../components/CardTable.jsx'
 import { itemStatus, unresolvedSummary, parseQuantity } from './projectDefaults.js'
 
 const mm = v => (v === null || v === undefined || v === '' ? '—' : Math.round(Number(v) * 1000))
@@ -34,7 +35,7 @@ function QuantityCell({ item, canEdit, onSaved }) {
 export default function ItemsTable({ items, costs, previewSigs, project, index, templatesById, canEdit, onOpen, onQuantitySaved }) {
   return (
     <div className="card">
-      <div className="table-wrap">
+      <CardTable>
         <table>
           <thead><tr><th>เลขช่อง</th><th>ชื่อรายการ</th><th>ประเภท</th><th>ซีรีส์</th><th>สถานะ</th><th>ขนาด</th><th>จำนวนชุด (ทั้งงาน)</th><th>ราคา/ชุด</th><th>รวม</th><th></th></tr></thead>
           <tbody>
@@ -65,7 +66,7 @@ export default function ItemsTable({ items, costs, previewSigs, project, index, 
             {!items.length && <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีช่องเปิด</td></tr>}
           </tbody>
         </table>
-      </div>
+      </CardTable>
     </div>
   )
 }

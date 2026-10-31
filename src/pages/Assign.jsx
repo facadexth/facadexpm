@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase.js'
 import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite, useCompanyHolidaysRange, useMyAssignedCheckinLocation, useSitePhases, usePhaseTasks } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { canManageSites, canManageTeams, canSeeMoney } from '../lib/roles.js'
 import { fmt } from '../lib/supabase.js'
 import { ConfirmDialog } from '../components/Modal.jsx'
 import ViewToggle from './assign/ViewToggle.jsx'
@@ -18,6 +19,8 @@ import DayView from './assign/DayView.jsx'
 import MySchedule from './assign/MySchedule.jsx'
 import LocationCheckinCard from './assign/LocationCheckinCard.jsx'
 import AssignWizard from './assign/AssignWizard.jsx'
+import TeamManager from './assign/TeamManager.jsx'
+import { useTeams } from '../hooks/useTeams.js'
 import AssignOTWizard from './assign/AssignOTWizard.jsx'
 import CellEditPopup from './assign/CellEditPopup.jsx'
 import { computeRange } from './assign/useAssignRange.js'
@@ -25,13 +28,17 @@ import { TYPE_LEGEND, TYPE_COLOR } from './assign/constants.js'
 import { buildLineText } from './assign/lineExport.js'
 
 export default function Assign({ navState, openSiteOverview }) {
-  const { isAtLeast, role, user } = useUserRole()
-  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'assign')
+  const { role, user } = useUserRole()
+  const canEdit = canManageSites(role) && canEditPage(role, 'assign')
+  const showMoney = canSeeMoney(role)
 
   const [view, setView]     = useState('week')
   const [anchor, setAnchor] = useState(new Date())
   const [wizardOpen, setWizardOpen] = useState(false)
   const [otWizardOpen, setOtWizardOpen] = useState(false)
+  const [teamMgrOpen, setTeamMgrOpen] = useState(false)
+  // useQuery swallows errors -> teams=[] until the tables exist
+  const { teams, members: teamMembers, refetch: refetchTeams } = useTeams()
   const [cellTarget, setCellTarget] = useState(null)   // { worker, date, shift, existing }
   const [saving, setSaving] = useState(false)
   const [pendingRows, setPendingRows] = useState(null) // rows waiting for conflict confirm
@@ -105,16 +112,23 @@ export default function Assign({ navState, openSiteOverview }) {
     return m
   }, [allTasks])
 
+  // hand-set short names come from the sites list (view); absent before migration 2026-10-17-03 -> automatic name
+  const shortBySite = useMemo(() => {
+    const m = {}
+    ;(sites || []).forEach(s => { m[s.id] = s.short_name })
+    return m
+  }, [sites])
+
   // cellLookup[worker_id][iso] = { morning?, evening? } each { id, type, site_id, site_number, ot, notes }
   const cellLookup = useMemo(() => {
     const m = {}
     ;(assignments || []).forEach(a => {
       const w = m[a.worker_id] || (m[a.worker_id] = {})
       const c = w[a.date] || (w[a.date] = {})
-      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, ot: a.ot_hours || 0, notes: a.notes || '', is_team_leader: !!a.is_team_leader }
+      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, site_short_name: shortBySite[a.site_id], site_is_default: !!a.sites?.is_default, ot: a.ot_hours || 0, notes: a.notes || '', is_team_leader: !!a.is_team_leader, is_repair: !!a.repair_ticket_id }
     })
     return m
-  }, [assignments])
+  }, [assignments, shortBySite])
 
   // otLookup[worker_id][iso] = { id, site_id, site_number, site_name, start_time, end_time, ot_hours, is_overnight, notes }
   const otLookup = useMemo(() => {
@@ -355,6 +369,7 @@ export default function Assign({ navState, openSiteOverview }) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => setWizardOpen(true)}>+ Assign งาน</button>}
         {canEdit && <button className="btn btn-ghost" onClick={() => setOtWizardOpen(true)}>⚡ Assign OT</button>}
+        {canManageTeams(role) && <button className="btn btn-ghost" onClick={() => setTeamMgrOpen(true)}>👥 จัดการทีม</button>}
         {(view === 'day' || view === 'week') && (
           <button className="btn btn-ghost" onClick={handleCopyLine}>{copied ? '✅ คัดลอกแล้ว!' : '📋 คัดลอกสำหรับ LINE'}</button>
         )}
@@ -384,13 +399,13 @@ export default function Assign({ navState, openSiteOverview }) {
       {!canEdit ? (
         <MySchedule from={from} to={to} days={days} view={view} />
       ) : view === 'day' ? (
-        <DayView dayIso={from} assignments={assignments} otEntries={otEntries} sites={sites} travelRate={travelRate} onEditHalf={openCell} />
+        <DayView dayIso={from} assignments={assignments} otEntries={otEntries} sites={sites} travelRate={travelRate} onEditHalf={openCell} showMoney={showMoney} />
       ) : (
-        <GridView days={days} workers={workers} cellLookup={cellLookup} otLookup={otLookup} holidayDates={holidayDates} onEditHalf={openCell} cellH={cellH} variant={view} />
+        <GridView days={days} workers={workers} cellLookup={cellLookup} otLookup={otLookup} holidayDates={holidayDates} onEditHalf={openCell} cellH={cellH} variant={view} showMoney={showMoney} />
       )}
 
-      {/* ── Labor + Travel cost per site (ADMIN+ only — reveals per-worker cost) ── */}
-      {canEdit && (
+      {/* ── Labor + Travel cost per site (money roles only — reveals per-worker cost) ── */}
+      {canEdit && showMoney && (
       <>
       <div style={{ marginBottom: 8, color: 'var(--text3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
         ค่าแรง + ค่าเดินทาง ต่อไซท์งาน (ทุกช่วงเวลา)
@@ -430,9 +445,21 @@ export default function Assign({ navState, openSiteOverview }) {
           workers={workers || []}
           sites={ongoingSites}
           initialSiteId={navState?.siteId || ''}
+          teams={teams}
+          members={teamMembers}
           onSubmit={handleWizardSubmit}
           onClose={() => setWizardOpen(false)}
           saving={saving}
+        />
+      )}
+
+      {teamMgrOpen && (
+        <TeamManager
+          workers={workers || []}
+          teams={teams}
+          members={teamMembers}
+          onChanged={refetchTeams}
+          onClose={() => setTeamMgrOpen(false)}
         />
       )}
 

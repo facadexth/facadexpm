@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
+import './mobile.css'   // phone-only rules (<= 900px); see src/mobile.css.test.js
 import { installInputGuards } from './lib/inputGuards.js'
 
 // Enter never submits a form (except data-enter-submit forms); wheel never
@@ -16,7 +17,42 @@ const signMatch = window.location.pathname.match(/^\/sign\/([^/]+)\/?$/)
 // links -- see FieldFormPage.jsx + the field-form Edge Function.
 const fieldFormMatch = window.location.pathname.match(/^\/f\/([^/]+)\/?$/)
 
+// The public link pages have no "รีเฟรชเพื่ออัปเดต" banner and no state to lose on
+// load, so a new service worker waiting (or installing) takes over at once and
+// the page reloads -- otherwise a worker who opened a form before a deploy gets
+// the old page (a payslip link once showed the leave form that way).
+// Returns true when a reload is on its way.
+async function takeWaitingWorker() {
+  if (!('serviceWorker' in navigator)) return false
+  let reg
+  try { reg = await navigator.serviceWorker.getRegistration() } catch { return false }
+  if (!reg) return false
+  // one try per visit: the reload carries ?swu=1, so a worker that refuses to
+  // activate can never cause a reload loop
+  const url = new URL(location.href)
+  if (url.searchParams.has('swu')) return false
+  url.searchParams.set('swu', '1')
+  let done = false
+  const go = () => { if (!done) { done = true; location.replace(url.toString()) } }
+  const take = (w) => {
+    navigator.serviceWorker.addEventListener('controllerchange', go, { once: true })
+    w.postMessage({ type: 'SKIP_WAITING' })
+    setTimeout(go, 2000)
+  }
+  if (reg.waiting) { take(reg.waiting); return true }
+  const w = reg.installing
+  if (!w) return false
+  // a new version is downloading right now: wait briefly for it, else carry on with this one
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(false), 3000)
+    w.addEventListener('statechange', () => {
+      if (w.state === 'installed' && navigator.serviceWorker.controller) { clearTimeout(t); take(w); resolve(true) }
+    })
+  })
+}
+
 async function boot() {
+  if ((signMatch || fieldFormMatch) && await takeWaitingWorker()) return
   const root = ReactDOM.createRoot(document.getElementById('root'))
   if (signMatch) {
     const { default: PublicSignPage } = await import('./PublicSignPage.jsx')

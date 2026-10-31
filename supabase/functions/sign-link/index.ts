@@ -24,6 +24,7 @@
 import { sendResendEmail } from '../_shared/email-sender.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { APP_URL } from '../_shared/app-url.ts'
+import { linkState, canMarkSigned } from '../_shared/delivery-report-link.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -123,6 +124,47 @@ const DOCUMENT_LOADERS: Record<string, (id: string) => Promise<Record<string, un
       notes: data.notes, bankAccount: (data.bank_accounts as BankAccount) ?? null,
     }
   },
+  // Delivery report (รายงานส่งงาน): a printable summary -- report + invoice numbers, site,
+  // this invoice's lines (= this งวด) and the card titles. A replaced/void report is refused
+  // (refuseReason) so an old link can't be signed after a newer report was issued.
+  delivery_report: async (id: string) => {
+    const { data } = await admin.from('delivery_reports')
+      .select(`
+        report_number, date, status, note, tenant_id, invoice_id,
+        sites(name),
+        delivery_report_cards(card_title, sort_order)
+      `)
+      .eq('id', id).maybeSingle()
+    const state = linkState(data)
+    if (state === 'missing' || !data) return null
+    if (state === 'replaced') return { refuseReason: 'replaced', tenant_id: data.tenant_id }
+    const { data: inv } = await admin.from('invoices')
+      .select(`
+        invoice_number, has_vat, subtotal, vat, total,
+        quotations(quotation_number, clients(name, address, tax_id)),
+        invoice_items(description, unit, draw_qty, unit_price, line_total, sort_order)
+      `)
+      .eq('id', data.invoice_id).maybeSingle()
+    const rawItems = ((inv?.invoice_items ?? []) as Array<{ description: string; unit: string | null; draw_qty: number; unit_price: number; line_total: number; sort_order: number }>)
+      .sort((a, b) => a.sort_order - b.sort_order)
+    const items: DocItem[] = rawItems.map((it) => ({
+      description: it.description, unit: it.unit, quantity: it.draw_qty, unitPrice: it.unit_price, lineTotal: it.line_total,
+    }))
+    const quotation = inv?.quotations as { quotation_number?: string; clients?: { name?: string; address?: string; tax_id?: string } } | null
+    const client = quotation?.clients
+    const cardTitles = ((data.delivery_report_cards ?? []) as Array<{ card_title: string; sort_order: number }>)
+      .sort((a, b) => a.sort_order - b.sort_order).map((c) => c.card_title)
+    return {
+      type: 'delivery_report', label: `รายงานส่งงาน ${data.report_number}`, number: data.report_number,
+      date: data.date, status: data.status, tenant_id: data.tenant_id,
+      clientName: client?.name, clientAddress: client?.address, clientTaxId: client?.tax_id,
+      siteName: (data.sites as { name?: string } | null)?.name,
+      quotationNumber: inv?.invoice_number ? `ใบแจ้งหนี้ ${inv.invoice_number}` : quotation?.quotation_number,
+      invoiceNumber: inv?.invoice_number,
+      items, hasVat: inv?.has_vat, subtotal: inv?.subtotal, vat: inv?.vat, total: inv?.total,
+      notes: data.note, cardTitles,
+    }
+  },
 }
 
 async function sendSignConfirmationEmail(to: string, doc: Record<string, unknown>, tenantName: string, signerName: string, linkId: string) {
@@ -180,6 +222,7 @@ Deno.serve(async (req) => {
   if (!loader) return json({ valid: false, reason: 'unsupported_document_type' })
   const doc = await loader(link.document_id as string)
   if (!doc) return json({ valid: false, reason: 'document_not_found' })
+  if (doc.refuseReason) return json({ valid: false, reason: doc.refuseReason })
 
   const { data: tenant } = await admin.from('tenants').select('company_name, address, tax_id, phone, logo_url').eq('id', doc.tenant_id).maybeSingle()
 
@@ -263,6 +306,19 @@ Deno.serve(async (req) => {
     // action (MarkPaidModal).
     if (link.document_type === 'quotation') {
       await admin.from('quotations').update({ status: 'accepted' }).eq('id', link.document_id).eq('status', 'sent')
+    }
+
+    // Delivery report: the customer's signature locks the report (trigger allows draft/issued -> signed).
+    if (link.document_type === 'delivery_report') {
+      const { data: dr } = await admin.from('delivery_reports').select('status').eq('id', link.document_id).maybeSingle()
+      if (canMarkSigned(dr)) {
+        const { data: upd, error: updErr } = await admin.from('delivery_reports').update({
+          status: 'signed', signed_at: new Date().toISOString(), signed_receipt_id: receipt.id,
+        }).eq('id', link.document_id).in('status', ['draft', 'issued']).select('id')
+        if (updErr || !upd?.length) console.warn('sign-link: delivery report not marked signed', { linkId, reportId: link.document_id, error: updErr?.message })
+      } else {
+        console.warn('sign-link: delivery report not draft/issued at sign time', { linkId, reportId: link.document_id, status: dr?.status })
+      }
     }
 
     await admin.from('document_receipt_links').update({ signed_at: new Date().toISOString(), receipt_id: receipt.id }).eq('id', linkId)

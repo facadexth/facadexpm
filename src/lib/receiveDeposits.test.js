@@ -84,8 +84,8 @@ describe('mapReceiveRpcError / defaultAmount', () => {
 
 describe('RPC error code table', () => {
   const codes = ['not_ordered', 'deposit_exceeds_remaining', 'deposit_exceeds_po', 'deposit_wrong_supplier', 'totals_mismatch', 'deposit_not_found',
-    'deposit_vat_exceeds_po', 'deposit_expense_needs_vat_split', 'bad_application', 'insufficient_privilege', 'po_not_found', 'po_has_deposit_applications']
-  it('covers all 12 codes', () => expect(Object.keys(RPC_ERROR_TEXT).sort()).toEqual([...codes].sort()))
+    'deposit_vat_exceeds_po', 'deposit_expense_needs_vat_split', 'bad_application', 'insufficient_privilege', 'po_not_found', 'po_has_deposit_applications', 'po_delivery_needs_receipt']
+  it('covers all 13 codes', () => expect(Object.keys(RPC_ERROR_TEXT).sort()).toEqual([...codes].sort()))
   it.each(codes)('%s maps to its own Thai text, also inside a longer message', code => {
     const text = RPC_ERROR_TEXT[code]
     expect(text).toMatch(/[\u0E00-\u0E7F]/)
@@ -158,4 +158,8 @@ describe('deposit PO un-receive guard text', () => {
   it('uses the explanation the Expenses page shows', () => {
     expect(mapReceiveRpcError({ message: 'po_has_deposit_applications' })).toBe('ใบสั่งซื้อนี้หักมัดจำแล้ว ย้อนไม่ได้จากหน้านี้ — แจ้งผู้ดูแลระบบ')
   })
+})
+
+it('legacy receive refused for a delivery PO has Thai text', () => {
+  expect(mapReceiveRpcError({ message: 'po_delivery_needs_receipt' })).toMatch(/ทีละล็อต/)
 })

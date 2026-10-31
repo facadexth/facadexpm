@@ -5,8 +5,10 @@
 // ✅ Status: ordered -> received (auto-creates expense) | cancelled
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useDocumentSigner, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock, fetchPmPurchaseOrderItems } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted, applyScanVatBasis, clearScanVatBasis, scanLinesTotalExVat } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
@@ -14,6 +16,7 @@ import { SCAN_REMINDER, SCAN_VAT_INCLUSIVE_NOTICE, showVatInclusiveNotice } from
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, computePoItemBaseQty } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { isPm, canSeeMoney, getCurrentRole } from '../lib/roles.js'
 import { useDraftForm, readDraft, saveDraft, clearDraft } from '../hooks/useDraftForm.js'
 
 // useDraftForm already survives an Android tab-discard reload for the form's
@@ -32,11 +35,14 @@ import { suggestStockLinks } from '../lib/poStockLinkSuggest.js'
 import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
-import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute, canOfferCreateDeposit, poHasMultipleBills, SWAP_MULTI_BILL_TEXT } from '../lib/poReceiptErrors.js'
+import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute, canOfferCreateDeposit, poHasMultipleBills, SWAP_MULTI_BILL_TEXT, poCancelReversesStock, PO_UNRECEIVE_STOCK_NOTE } from '../lib/poReceiptErrors.js'
+import { poModeForSupplier, poModePayload, poModeLockedText, poDeliveryDiscountWarning, deliveryPoBadge, receiptTaxInvoiceStatus, invoiceHandoff } from '../lib/deliveryTaxInvoice.js'
+import { PO_MODE_LOCKED_TEXT } from '../lib/deliveryTaxInvoiceText.js'
 import CreatePoDepositModal from '../components/CreatePoDepositModal.jsx'
 import ReceivePoLinesModal from '../components/ReceivePoLinesModal.jsx'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
 import { mapReceiveRpcError, canConfirmReceive } from '../lib/receiveDeposits.js'
+import { centralStockSiteId, CENTRAL_SITE_MISSING_TEXT } from '../lib/poReceiptErrors.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -49,6 +55,8 @@ import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import PendingMark from '../components/PendingMark.jsx'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
 import { isPoDraft } from '../lib/pendingRules.js'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -63,10 +71,10 @@ const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้�
 const BILL_STATUS_LABELS = { awaiting_billing: '🧾 รอวางบิล', pending: '⏳ ค้างจ่าย', check_issued: '📄 ออกเช็ค', check_cleared: '🏦 เช็คผ่าน', paid: '✅ จ่ายแล้ว' }
 
 // linked = blue, awaiting = amber (existing badge colours)
-const TAX_BADGE_CLASS = { linked: 'badge-check_cleared', awaiting: 'badge-pending' }
+const TAX_BADGE_CLASS = { linked: 'badge-check_cleared', awaiting: 'badge-pending', delivery: 'badge-po-ordered' }
 
 const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', discount_pct: '0', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
-const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', deposit_deductions: [], stock_from_invoice: false, items: [{ ...EMPTY_ITEM }] }
+const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', deposit_deductions: [], stock_from_invoice: false, tax_invoice_mode: 'po', items: [{ ...EMPTY_ITEM }] }
 
 const receiveTotals = po => { const { subtotal, vat } = calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat); return { subtotal, vat } }
 
@@ -181,10 +189,21 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
   )
 }
 
-function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated, inventoryItems, onInventoryItemCreated, aluminumProfiles, pastPoItems }) {
+function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, showModeChoice = false, modeLocked = false, initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated, inventoryItems, onInventoryItemCreated, aluminumProfiles, pastPoItems }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('purchase-order-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  // A new PO takes the supplier's remembered mode (owner Q1) until the user picks one by hand. The "picked by hand" flag
+  // lives IN the form state (tax_invoice_mode_touched), so the useDraftForm restore after an Android reload keeps it.
+  // An inline-created supplier is not in `suppliers` yet: poModeForSupplier gives 'po', its column default.
+  const pickSupplier = id => setForm(f => ({ ...f, supplier_id: id,
+    ...(showModeChoice ? { tax_invoice_mode: poModeForSupplier(f, (suppliers || []).find(s => s.id === id)) } : {}) }))
+  // readiness can arrive after a supplier was picked (or after a draft restore): apply the default once, if untouched
+  useEffect(() => {
+    if (!isAdd || !showModeChoice || !form.supplier_id || form.tax_invoice_mode_touched) return
+    const next = poModeForSupplier(form, (suppliers || []).find(s => s.id === form.supplier_id))
+    if (next !== form.tax_invoice_mode) set('tax_invoice_mode', next)
+  }, [isAdd, showModeChoice, form.supplier_id, suppliers]) // eslint-disable-line react-hooks/exhaustive-deps
   const formRef = useRef(form)
   formRef.current = form
 
@@ -314,7 +333,7 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
           </div>
           <div>
             <label className="label">Supplier ★</label>
-            <QuickAddSelect required value={form.supplier_id} onChange={id => set('supplier_id', id)}
+            <QuickAddSelect required value={form.supplier_id} onChange={pickSupplier}
               placeholder="— เลือก Supplier —" options={supplierOpts(suppliers)}
               table="suppliers" namePlaceholder="ชื่อ Supplier ใหม่" onCreated={onSupplierCreated} />
           </div>
@@ -374,6 +393,21 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
               </span>
             </label>
           )}
+          {showModeChoice && (
+            <div style={{ fontSize: 13, marginBottom: 8 }}>
+              <div style={{ marginBottom: 4 }}>🧾 ใบกำกับภาษีของใบสั่งซื้อนี้</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                {[['po', '1 ใบต่อใบสั่งซื้อ (ปกติ)'], ['delivery', '1 ใบต่อการส่งของ (ส่งเป็นล็อต แต่ละล็อตมีใบกำกับของตัวเอง)']].map(([v, label]) => (
+                  <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: modeLocked ? 'not-allowed' : 'pointer', minWidth: 0 }}>
+                    <input type="radio" name="po-tax-invoice-mode" aria-label={label} disabled={modeLocked} checked={(form.tax_invoice_mode || 'po') === v}
+                      onChange={() => setForm(f => ({ ...f, tax_invoice_mode: v, tax_invoice_mode_touched: true }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              {modeLocked && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{PO_MODE_LOCKED_TEXT}</div>}
+            </div>
+          )}
           {(form.deposit_deductions || []).map((d, i) => (
             <div key={i} style={{ fontSize: 12, color: '#b45309' }}>อ่านพบการหักมัดจำ {d.ref} {fmt(d.amount)}</div>
           ))}
@@ -415,7 +449,57 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
   )
 }
 
-function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
+// PM view of one PO: what was ordered and its status, never a price, total, VAT,
+// deposit or bill. Lines come from pm_purchase_order_items (PM cannot read the table).
+function PmPODetailModal({ po, onClose }) {
+  const [items, setItems] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetchPmPurchaseOrderItems(po.id).then(rows => { if (alive) setItems(rows) }, () => { if (alive) setItems([]) })
+    return () => { alive = false }
+  }, [po.id])
+  const cell = { padding: '4px 6px', borderBottom: '1px solid var(--border)' }
+  return (
+    <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={640}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtDate(po.date)}</span>
+          {po.received_date && <span style={{ fontSize: 12, color: 'var(--green)' }}>รับของ {fmtDate(po.received_date)}</span>}
+        </div>
+        <div className="form-grid-2" style={{ fontSize: 13 }}>
+          <div><strong>ไซท์งาน:</strong> {po.sites?.name || '—'}</div>
+          <div><strong>Supplier:</strong> {po.suppliers?.name || '—'}</div>
+        </div>
+        {po.ordered_by && <div style={{ fontSize: 13 }}><strong>ชื่อผู้สั่ง:</strong> {po.ordered_by}</div>}
+        {po.notes && <div style={{ fontSize: 13 }}><strong>หมายเหตุ:</strong> {po.notes}</div>}
+        <div>
+          <label className="label">รายการสินค้า</label>
+          <CardTable>
+            <table style={{ fontSize: 12.5 }}>
+              <thead><tr><th>รายการ</th><th>จำนวน</th></tr></thead>
+              <tbody>
+                {(items || []).map(it => (
+                  <tr key={it.id}>
+                    <td style={cell}>{it.description}</td>
+                    <td style={cell}>{it.quantity} {it.unit || ''}</td>
+                  </tr>
+                ))}
+                {items && !items.length && <tr><td colSpan={2} style={{ ...cell, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ</td></tr>}
+                {!items && <tr><td colSpan={2} style={{ ...cell, textAlign: 'center', color: 'var(--text3)' }}>⏳ กำลังโหลด...</td></tr>}
+              </tbody>
+            </table>
+          </CardTable>
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+      </div>
+    </Modal>
+  )
+}
+
+function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receiptLinks = null, onStartInvoice = null }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
   const { data: ledger } = usePoLedger(po.id)          // null while loading or before the migration: sections hide
@@ -443,7 +527,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
         )}
         <div>
           <label className="label">รายการสินค้า</label>
-          <div className="table-wrap">
+          <CardTable>
             <table style={{ fontSize: 12.5 }}>
               <thead><tr><th>รายการ</th><th>สั่ง</th><th>รับ</th><th style={{ textAlign: 'right' }}>มูลค่า</th></tr></thead>
               <tbody>
@@ -463,7 +547,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </CardTable>
           <div style={{ marginTop: 8, textAlign: 'right', fontSize: 13 }}>
             <div>รวมก่อน VAT: <span className="font-mono">{fmt(subtotal)}</span></div>
             {po.has_vat && <div>VAT (7%): <span className="font-mono">{fmt(vat)}</span></div>}
@@ -474,7 +558,17 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
           <div style={{ fontSize: 13 }}>
             <label className="label">การรับของ</label>
             {s.receipts.map(r => (
-              <div key={r.id}>R{r.seq} · {fmtDate(r.received_date)} · ก่อน VAT <span className="font-mono">{fmt(r.goods_subtotal)}</span> · VAT <span className="font-mono">{fmt(r.goods_vat)}</span></div>
+              <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>R{r.seq} · {fmtDate(r.received_date)} · ก่อน VAT <span className="font-mono">{fmt(r.goods_subtotal)}</span> · VAT <span className="font-mono">{fmt(r.goods_vat)}</span></span>
+                {po.tax_invoice_mode === 'delivery' && (() => {
+                  const st = receiptTaxInvoiceStatus(r.id, receiptLinks)
+                  if (!st.kind) return null
+                  return <>
+                    <span className={`badge ${TAX_BADGE_CLASS[st.kind]}`}>{st.text}</span>
+                    {st.kind === 'awaiting' && onStartInvoice && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onStartInvoice(r.id)}>🧾 ลงใบกำกับ</button>}
+                  </>
+                })()}
+              </div>
             ))}
           </div>
         )}
@@ -501,7 +595,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
           </div>
         )}
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'grid', gap: 8 }}>
-          <div><button type="button" className="btn btn-sm btn-ghost" onClick={() => onViewDocument(po)}>📄 ดู PO</button></div>
+          <div><button type="button" className="btn btn-sm btn-ghost" onClick={() => onViewDocument(po)}>📄 Preview</button></div>
           {tenantId && <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={po.id} tenantId={tenantId} />}
         </div>
       </div>
@@ -518,8 +612,9 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
 function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
+  const signer = useDocumentSigner(po.created_by ?? null)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
 
   const fileBase = `${po.po_number}${po.sites?.name ? '-' + po.sites.name : ''}`
   useEffect(() => {
@@ -570,6 +665,7 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
             <thead>
               <tr>
+                <th style={{ textAlign: 'center', padding: '9px 4px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff', width: 30 }}>ที่</th>
                 <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
                 <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
                 <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
@@ -577,8 +673,9 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
               </tr>
             </thead>
             <tbody>
-              {items.map(it => (
+              {items.map((it, idx) => (
                 <tr key={it.id}>
+                  <td style={{ textAlign: 'center', padding: '9px 4px', borderBottom: '1px solid #eee', color: '#6a6f85' }}>{idx + 1}</td>
                   <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>
                     {it.description}
                     {it.aluminum_profiles?.name && (
@@ -631,7 +728,10 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
                 <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
               )}
             </div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8, alignSelf: 'end' }}>ผู้อนุมัติ</div>
+            <div>
+              <div style={{ height: 40 }} />
+              <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้อนุมัติ</div>
+            </div>
           </div>
         </div>
       </div>
@@ -792,6 +892,13 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
 export default function PurchaseOrders({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'purchase_orders')
+  // PM: read-only, PO rows from pm_purchase_orders (no items/sites embeds), no money anywhere
+  const pm = isPm(role)
+  // SiteOverviewModal is money-only (renders nothing for PM), so PM opens the site page instead
+  const openSite = po => pm
+    ? navigateTo('site_detail', { siteId: po.site_id, siteName: po.sites?.name })
+    : openSiteOverview(po.site_id)
+  const showMoney = canSeeMoney(role)
   const { tenant } = useTenant()
   const today = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
@@ -801,19 +908,24 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [dateTo,   setDateTo]   = useState(ytdTo)
   const [siteId,     setSiteId]     = useState('')
   const [supplierId, setSupplierId] = useState('')
-  const [status,      setStatus]    = useState('')
+  const [status,      setStatus]    = useState(navState?.pending === 'po_draft' ? 'draft' : '')
+  const draftFocus = usePendingFocus(navState, 'po_draft')
   const [search,  setSearch]  = useState('')
   const [sortCol, setSortCol] = useState('date')
   const [sortDir, setSortDir] = useState('desc')
   const [showAdd, setShowAdd] = useState(false)
   const [editRow, setEditRow] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const unreceiveReversesStock = usePoUnreceiveReversesStock()   // 2026-10-09-06 live: cancel of a received PO reverses its stock
   const [docRow, setDocRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [receiveRow, setReceiveRow] = useState(null)
   const [receiveKind, setReceiveKind] = useState(null)   // 'new' (ReceivePoLinesModal) | 'old' (receive_po_with_deposits)
   const [depositPo, setDepositPo] = useState(null)
   const [swapInvoiceRow, setSwapInvoiceRow] = useState(null)
+  const [modeRow, setModeRow] = useState(null)
+  const [modeSaving, setModeSaving] = useState(false)
+  const deliveryReady = useDeliveryTaxInvoiceReady()
   const [receiving, setReceiving] = useState(false)
   const [depositSel, setDepositSel] = useState(null)
   useEffect(() => { if (!receiveRow) setDepositSel(null) }, [receiveRow])
@@ -821,8 +933,15 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [toast, setToast] = useState(null)
 
   const filters = { from: dateFrom, to: dateTo, siteId, supplierId, status }
-  const { data: pos, refetch } = usePurchaseOrders(filters)
+  const { data: rawPos, refetch } = usePurchaseOrders(filters)
   const { data: sites, refetch: refetchSites }      = useSites()
+  // PM rows carry no sites(...) embed: attach the name from the PM site list (pm_sites)
+  const pos = useMemo(() => {
+    if (!pm || !rawPos) return rawPos
+    const byId = new Map((sites || []).map(x => [x.id, { name: x.name, site_number: x.site_number }]))
+    return rawPos.map(po => ({ ...po, sites: byId.get(po.site_id) ?? null }))
+  }, [pm, rawPos, sites])
+  const centralSiteId = centralStockSiteId(sites)
   const { data: categories } = useCategories()
   const { data: suppliers, refetch: refetchSuppliers }  = useSuppliers()
   const { data: inventoryItems, refetch: refetchInventoryItems } = useInventoryItems()
@@ -834,7 +953,12 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   // data is null while loading or before the tax invoice migrations are applied: then no badges and no locks (page works as before)
   const { data: taxInvoiceLinks, refetch: refetchLinks } = useActiveTaxInvoiceLinks()
   const { data: moneyIndex, refetch: refetchMoney } = usePoMoneyIndex()
-  const refetchAll = () => { refetch(); refetchLinks(); refetchMoney() }
+  // per-delivery lots: null until the migration is live ({ ready: false } before), so nothing delivery-related shows early
+  const { data: receiptLinkData, refetch: refetchReceiptLinks } = useActiveReceiptTaxInvoiceLinks()
+  const receiptLinks = receiptLinkData?.ready ? receiptLinkData.map : null
+  const refetchAll = () => { refetch(); refetchLinks(); refetchMoney(); refetchReceiptLinks() }
+  // hand-off to the tax invoice form (the form reads navState.newForReceipt)
+  const startInvoiceForReceipt = (po, receiptId) => { const st = invoiceHandoff(po, receiptId); if (st) navigateTo('supplier_tax_invoices', st) }
   // One call for the receive / deposit / split dialogs (Tasks 8-10) after any mutation: PO list, links, money index,
   // stock balances, and the open popup's ledger (the popup is re-keyed so usePoLedger refetches).
   const [poDataVersion, setPoDataVersion] = useState(0)
@@ -878,6 +1002,12 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     if (navState?.poId) { setDateFrom(''); setDateTo('') }
   }, [navState?.poId])
 
+  // Bell/push "PO drafts": every draft, whatever its date (the YTD range would hide old ones).
+  useEffect(() => {
+    if (draftFocus.active) { setStatus('draft'); setDateFrom(''); setDateTo(''); setSiteId(''); setSupplierId(''); setSearch('') }
+  }, [draftFocus.active])
+  const endDraftFocus = () => { draftFocus.clear(); setStatus(''); setDateFrom(ytdFrom); setDateTo(ytdTo) }
+
   useEffect(() => {
     if (navState?.poId && pos) {
       const match = pos.find(p => p.id === navState.poId)
@@ -899,13 +1029,17 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   // done anything, so a mid-scan Android reload lands back in the form with
   // the draft restored instead of on the bare list.
   useEffect(() => {
-    if (readDraft(ADD_FORM_OPEN_KEY)) { setEditRow(null); setShowAdd(true) }
+    // global role too: this runs once, and a hook instance's role can still be null here
+    if (!pm && !isPm(getCurrentRole()) && readDraft(ADD_FORM_OPEN_KEY)) { setEditRow(null); setShowAdd(true) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleSave = async (form, opts) => {
     setSaving(true)
     try {
+      // delivery mode + a discount (negative) line: that PO cannot be received through the lot-by-lot path
+      const discWarn = deliveryReady === true ? poDeliveryDiscountWarning(form, lineTotal) : ''
+      if (discWarn && !window.confirm(discWarn)) return
       const poPayload = {
         site_id: form.site_id, supplier_id: form.supplier_id, category_id: form.category_id,
         date: form.date, has_vat: form.has_vat,
@@ -916,6 +1050,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       // Only when the scan read deductions, so saving still works before the deposit migration.
       // Only when ticked / already on the row, so saving still works before the stock-from-invoice migration.
       Object.assign(poPayload, buildPoPayloadFlag(form, editRow))
+      Object.assign(poPayload, poModePayload(form, editRow, deliveryReady))
       if ((form.deposit_deductions || []).length) poPayload.deposit_hint = form.deposit_deductions.map(d => ({ ref: d.ref, amount_no_vat: d.amount }))
       // A 'draft' PO (created hands-off from a LINE เบิกของ request, no
       // supplier yet -- see field-form Edge Function) graduates to a real
@@ -1017,6 +1152,10 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
 
   const handleReceive = async () => {
     if (!receiveRow || receiving || !canConfirmReceive(depositSel)) return
+    // Stock is kept centrally: a PO that posts stock needs the tenant's "ส่วนกลาง" site (checked before any write).
+    if (!receiveRow.stock_from_invoice && receiveStockPlan(receiveRow).length > 0 && !centralSiteId) {
+      alert(CENTRAL_SITE_MISSING_TEXT); return
+    }
     setReceiving(true)
     const { subtotal, vat } = calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat)
     const depositApps = depositSel?.valid ? depositSel.applications : []
@@ -1039,7 +1178,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       if (!receiveRow.stock_from_invoice) {
         for (const plan of receiveStockPlan(receiveRow)) {
           const { error: moveErr } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: plan.inventoryItemId, p_site_id: receiveRow.site_id, p_movement_type: 'purchase_in',
+            p_inventory_item_id: plan.inventoryItemId, p_site_id: centralSiteId, p_movement_type: 'purchase_in',
             p_quantity: plan.baseQty, p_unit_cost: plan.unitCostPerBase,
             p_reference_type: 'purchase_order', p_reference_id: receiveRow.id, p_notes: null,
           })
@@ -1084,6 +1223,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       date: editRow.date, has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false,
       ordered_by: editRow.ordered_by || '', notes: editRow.notes || '',
       stock_from_invoice: !!editRow.stock_from_invoice,
+      tax_invoice_mode: editRow.tax_invoice_mode === 'delivery' ? 'delivery' : 'po', tax_invoice_mode_touched: !(editRow.status === 'draft' && !editRow.supplier_id),   // a LINE draft without a supplier still takes the picked supplier's remembered mode
       items: (editRow.purchase_order_items?.length ? editRow.purchase_order_items : [{ ...EMPTY_ITEM }])
         .map(it => ({
           description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price),
@@ -1114,6 +1254,21 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     navigateTo('supplier_credit_notes', {})
   }
 
+  const handleModeChange = async () => {
+    if (!modeRow || modeSaving) return
+    const next = modeRow.tax_invoice_mode === 'delivery' ? 'po' : 'delivery'
+    setModeSaving(true)
+    try {
+      const { error } = await supabase.from('purchase_orders').update({ tax_invoice_mode: next }).eq('id', modeRow.id)
+      if (error) throw error
+      await auditLog('purchase_orders', modeRow.id, 'UPDATE', { tax_invoice_mode: modeRow.tax_invoice_mode }, { tax_invoice_mode: next })
+      setModeRow(null); refetchAll()
+      showToast(next === 'delivery' ? 'ตั้งเป็นใบกำกับต่อการส่งของแล้ว' : 'ตั้งเป็นใบกำกับต่อใบสั่งซื้อแล้ว')
+    } catch (e) {
+      setModeRow(null); refetchAll(); alert(mapPoReceiptRpcError(e))
+    } finally { setModeSaving(false) }
+  }
+
   const poMenuItems = (po) => {
     const lock = poEditLockedText(po, taxInvoiceLinks) || poMoneyLockText(po, moneyIndex)
     const items = []
@@ -1134,12 +1289,13 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       items.push({ label: '✏️ แก้ไข', disabled: !!lock, disabledTitle: lock || undefined, onClick: () => { clearDraft(ADD_FORM_OPEN_KEY); setEditRow(po); setShowAdd(true) } })
       items.push({ label: '🗑️ ยกเลิกใบสั่งซื้อ', danger: true, disabled: !!lock, disabledTitle: lock || undefined, onClick: () => setDeleteId(po.id) })
     }
-    items.push({ label: '👁️ ดูตัวอย่างก่อนพิมพ์', onClick: () => setDocRow({ po, action: null }) })
-    items.push({ label: '🖨️ พิมพ์', onClick: () => setDocRow({ po, action: 'print' }) })
-    items.push({ label: '📄 ดาวน์โหลด PDF', onClick: () => setDocRow({ po, action: 'pdf' }) })
-    items.push({ label: '🖼️ ดาวน์โหลด JPEG', onClick: () => setDocRow({ po, action: 'jpg' }) })
+    if (canEdit && deliveryReady === true && ['draft', 'ordered'].includes(po.status) && Object.prototype.hasOwnProperty.call(po, 'tax_invoice_mode')) {
+      const modeLock = poModeLockedText(po, moneyIndex, taxInvoiceLinks)
+      items.push({ label: po.tax_invoice_mode === 'delivery' ? '🧾 เปลี่ยนเป็นใบกำกับต่อใบสั่งซื้อ' : '🧾 เปลี่ยนเป็นใบกำกับต่อการส่งของ',
+        disabled: !!modeLock, disabledTitle: modeLock || undefined, onClick: () => setModeRow(po) })
+    }
     if (canEdit && po.status === 'received') {
-      if (po.expense_id && !taxInvoiceLinks?.get(po.id)) {
+      if (po.expense_id && !taxInvoiceLinks?.get(po.id) && po.tax_invoice_mode !== 'delivery') {
         // A PO with several bills (several receipts, or a bill split by จ่ายบางส่วน) has no single bill to swap the tax invoice on.
         const multiBill = poHasMultipleBills(po, moneyIndex)
         items.push(multiBill
@@ -1151,7 +1307,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     return items
   }
 
-  if (showAdd) {
+  if (showAdd && !pm) {
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -1161,6 +1317,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
           <PurchaseOrderForm
             showStockFlag={taxInvoiceLinks !== null} stockFlagLocked={editRow?.status === 'received'}
+            showModeChoice={deliveryReady === true} modeLocked={!!editRow && !!poModeLockedText(editRow, moneyIndex, taxInvoiceLinks)}
             initial={editFormInitial || EMPTY_FORM}
             sites={sites} categories={categories} suppliers={suppliers || []}
             onSave={handleSave} onCancel={() => { clearDraft(ADD_FORM_OPEN_KEY); setShowAdd(false); setEditRow(null) }} loading={saving}
@@ -1190,27 +1347,40 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { saveDraft(ADD_FORM_OPEN_KEY, true); setEditRow(null); setShowAdd(true) }}>+ เพิ่มใบสั่งซื้อ</button>}
         <div style={{ flex: 1 }} />
+        <PhoneFilters title="ช่วงวันที่" count={dateFrom || dateTo ? 1 : 0}
+          summary={dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []}
+          onClear={() => { setDateFrom(''); setDateTo('') }}>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </PhoneFilters>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <PhoneFilters count={[siteId, supplierId, status].filter(Boolean).length}
+          summary={[
+            ...(siteId ? [{ label: 'ไซท์งาน', onRemove: () => setSiteId('') }] : []),
+            ...(supplierId ? [{ label: 'Supplier', onRemove: () => setSupplierId('') }] : []),
+            ...(status ? [{ label: PO_STATUS_LABELS[status] || 'สถานะ', onRemove: () => { draftFocus.clear(); setStatus('') } }] : []),
+          ]}
+          onClear={() => { draftFocus.clear(); setSiteId(''); setSupplierId(''); setStatus('') }}>
         <div style={{ minWidth: 200 }}>
           <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
         </div>
         <div style={{ minWidth: 190 }}>
           <SearchableSelect value={supplierId} onChange={setSupplierId} placeholder="ทุก Supplier" options={supplierOpts(suppliers)} />
         </div>
-        <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => { draftFocus.clear(); setStatus(e.target.value) }}>
           <option value="">ทุกสถานะ</option>
           {PO_STATUSES.map(s => <option key={s} value={s}>{PO_STATUS_LABELS[s]}</option>)}
         </select>
+        </PhoneFilters>
+        <PendingFocusChip focus={{ ...draftFocus, clear: endDraftFocus }} pendingKey="po_draft" />
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาเลขที่ / ไซท์งาน / Supplier..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -1218,16 +1388,16 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                 <th className="sortable" onClick={() => toggleSort('date')}>วันที่{si('date')}</th>
                 <th className="sortable" onClick={() => toggleSort('site')}>ไซท์งาน{si('site')}</th>
                 <th className="sortable" onClick={() => toggleSort('supplier')}>Supplier{si('supplier')}</th>
-                <th>รายการ</th>
-                <th className="sortable" onClick={() => toggleSort('total')}>ยอดรวม{si('total')}</th>
+                {showMoney && <th>รายการ</th>}
+                {showMoney && <th className="sortable" onClick={() => toggleSort('total')}>ยอดรวม{si('total')}</th>}
                 <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {sortedPos.map(po => {
-                const { total } = calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat)
-                const taxBadge = poTaxInvoiceBadge(po, taxInvoiceLinks)
+                const { total } = showMoney ? calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat) : {}
+                const taxBadge = showMoney ? poTaxInvoiceBadge(po, taxInvoiceLinks) : {}
                 return (
                   <tr key={po.id}>
                     <td className="font-mono" style={{ fontSize: 12 }}>
@@ -1237,39 +1407,46 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                     </td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(po.date)}</td>
                     <td style={{ fontSize: 11, color: 'var(--accent)', cursor: po.site_id ? 'pointer' : 'default' }}
-                      onClick={() => po.site_id && openSiteOverview(po.site_id)}>{po.sites?.name || '—'}</td>
+                      onClick={() => po.site_id && openSite(po)}>{po.sites?.name || '—'}</td>
                     <td style={{ fontSize: 12 }}>{po.suppliers?.name || '—'}</td>
-                    <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(po.purchase_order_items || []).length} รายการ</td>
-                    <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>
+                    {showMoney && <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(po.purchase_order_items || []).length} รายการ</td>}
+                    {showMoney && <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>}
                     <td>
                       <span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span>
                       {taxBadge.kind && <span className={`badge ${TAX_BADGE_CLASS[taxBadge.kind]}`} style={{ marginLeft: 4 }}>{taxBadge.text}</span>}
+                      {showMoney && (() => { const d = deliveryPoBadge(po, moneyIndex, receiptLinks); return d.kind ? <span className={`badge ${TAX_BADGE_CLASS[d.kind]}`} style={{ marginLeft: 4 }}>{d.text}</span> : null })()}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
                         <button className="btn btn-sm btn-ghost" title="ดูใบสั่งซื้อ / เอกสาร" aria-label="📄 ดูใบสั่งซื้อ / เอกสาร" onClick={() => setDetailRow(po)}>📄</button>
-                        <RowActionsMenu items={poMenuItems(po)} />
+                        {!pm && <RowActionsMenu items={poMenuItems(po)} />}
                       </div>
                     </td>
                   </tr>
                 )
               })}
               {!sortedPos.length && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบใบสั่งซื้อในช่วงเวลานี้</td></tr>
+                <tr><td colSpan={showMoney ? 8 : 6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบใบสั่งซื้อในช่วงเวลานี้</td></tr>
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {deleteId && (
-        <ConfirmDialog title="ยกเลิกใบสั่งซื้อ" message="ยืนยันการยกเลิกใบสั่งซื้อนี้?" onConfirm={handleCancel} onCancel={() => setDeleteId(null)} danger />
+        <ConfirmDialog title="ยกเลิกใบสั่งซื้อ"
+          message={poCancelReversesStock((pos || []).find(p => p.id === deleteId), unreceiveReversesStock)
+            ? <>ยืนยันการยกเลิกใบสั่งซื้อนี้?<br />{PO_UNRECEIVE_STOCK_NOTE}</>
+            : 'ยืนยันการยกเลิกใบสั่งซื้อนี้?'}
+          onConfirm={handleCancel} onCancel={() => setDeleteId(null)} danger />
       )}
 
       {docRow && <PODocumentModal po={docRow.po} autoAction={docRow.action} tenant={tenant} onClose={() => setDocRow(null)} />}
 
-      {detailRow && <PODetailModal key={`${detailRow.id}:${poDataVersion}`} po={detailRow} taxBadge={poTaxInvoiceBadge(detailRow, taxInvoiceLinks)} tenantId={tenant?.id}
+      {detailRow && pm && <PmPODetailModal key={detailRow.id} po={detailRow} onClose={() => setDetailRow(null)} />}
+      {detailRow && !pm && <PODetailModal key={`${detailRow.id}:${poDataVersion}`} po={detailRow} taxBadge={poTaxInvoiceBadge(detailRow, taxInvoiceLinks)} tenantId={tenant?.id}
         onClose={() => setDetailRow(null)}
+        receiptLinks={receiptLinks} onStartInvoice={canEdit ? rid => { const p = detailRow; setDetailRow(null); startInvoiceForReceipt(p, rid) } : null}
         onViewDocument={po => { setDetailRow(null); setDocRow({ po, action: null }) }} />}
 
       {depositPo && (
@@ -1280,9 +1457,10 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           }} />
       )}
       {receiveRow && receiveKind === 'new' && (
-        <ReceivePoLinesModal key={receiveRow.id} po={receiveRow} stockPlanFor={receiveStockPlan} stockBalances={stockBalances}
+        <ReceivePoLinesModal key={receiveRow.id} po={receiveRow} stockPlanFor={receiveStockPlan} stockBalances={stockBalances} stockSiteId={centralSiteId}
           onClose={() => setReceiveRow(null)}
-          onDone={async res => {
+          offerInvoiceNext={receiveRow.tax_invoice_mode === 'delivery' && deliveryReady === true}
+          onDone={async (res, opts) => {
             const po = receiveRow
             setReceiveRow(null)
             try {
@@ -1292,6 +1470,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
               // the receipt is saved whatever the audit did: always refresh and confirm
               refreshPoData(); refetchInventoryItems()
               showToast('รับของแล้ว' + (res.receipt_no ? ` (${res.receipt_no}) ` : ' ') + (res.expense_id ? 'สร้างบิลแล้ว' : 'หักมัดจำครบ ไม่สร้างบิล') + (po.stock_from_invoice ? ' · สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษี' : ''))
+              if (opts?.openInvoice && res.receipt_id) startInvoiceForReceipt(po, res.receipt_id)
             }
           }} />
       )}
@@ -1330,14 +1509,14 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                         </div>
                       )
                     }
-                    const bal = (stockBalances || []).find(b => b.inventory_item_id === plan.inventoryItemId && b.site_id === receiveRow.site_id)
+                    const bal = (stockBalances || []).find(b => b.inventory_item_id === plan.inventoryItemId && b.site_id === centralSiteId)
                     const oldQty = bal?.quantity_on_hand || 0
                     const oldWac = bal?.weighted_average_cost || 0
                     const newQty = oldQty + plan.baseQty
                     const newWac = computeWeightedAverageCost(oldQty, oldWac, plan.baseQty, plan.unitCostPerBase)
                     return (
                       <div key={i} style={{ marginTop: 4 }}>
-                        📦 {plan.name}: +{fmt(plan.baseQty)} {plan.baseUnit} → คงเหลือ {fmt(newQty)} {plan.baseUnit} @ เฉลี่ย {fmt(newWac)}/{plan.baseUnit}
+                        📦 {plan.name}: +{fmt(plan.baseQty)} {plan.baseUnit} → คงเหลือ {fmt(newQty)} {plan.baseUnit} @ ต้นทุน/หน่วย {fmt(newWac)}/{plan.baseUnit}
                       </div>
                     )
                   })}
@@ -1351,6 +1530,14 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         />
       )}
 
+      {modeRow && (
+        <ConfirmDialog title="วิธีออกใบกำกับภาษี"
+          message={modeRow.tax_invoice_mode === 'delivery'
+            ? `เปลี่ยน ${modeRow.po_number} เป็น "1 ใบกำกับต่อใบสั่งซื้อ"? (จับคู่ใบกำกับได้เมื่อรับของครบ)`
+            : `เปลี่ยน ${modeRow.po_number} เป็น "1 ใบกำกับต่อการส่งของ"? แต่ละล็อตที่รับจะลงใบกำกับของตัวเอง — เปลี่ยนกลับไม่ได้หลังรับของล็อตแรก`}
+          onConfirm={handleModeChange} confirmDisabled={modeSaving}
+          onCancel={() => { if (modeSaving) return false; setModeRow(null) }} />
+      )}
       {swapInvoiceRow && (
         <SwapTaxInvoiceModal
           po={swapInvoiceRow}

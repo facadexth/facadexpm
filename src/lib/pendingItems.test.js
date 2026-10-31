@@ -23,6 +23,10 @@ describe('visiblePendingItems', () => {
     expect(admin[0].tab).toBe('sites')
     expect(visiblePendingItems({ issues_open: 2 }, () => false)).toEqual([])
   })
+  it('hides the advance requests bell item from anyone who cannot open HR', () => {
+    expect(visiblePendingItems({ advances_pending: 2 }, tab => tab !== 'hr')).toEqual([])
+    expect(visiblePendingItems({ advances_pending: 2 }, all).map(i => i.key)).toEqual(['advances_pending'])
+  })
   it('ignores missing, null and non-numeric counts', () => {
     expect(visiblePendingItems({ leave_pending: null, po_draft: 'x', cheques_due: undefined }, all)).toEqual([])
   })
@@ -63,5 +67,48 @@ describe('formatBadge', () => {
     expect(formatBadge(7)).toBe('7')
     expect(formatBadge(99)).toBe('99')
     expect(formatBadge(100)).toBe('99+')
+  })
+})
+
+describe('customer LINE requests', () => {
+  it('has a bell entry for customer LINE requests', () => {
+    expect(PENDING_ITEMS.find(i => i.key === 'customer_requests_open')).toMatchObject({ label: 'ลูกค้าทักทาง LINE' })
+  })
+})
+
+describe('warranty_followup bell item', () => {
+  it('is listed, points at the Sites list page, and shows when something is due', () => {
+    const item = PENDING_ITEMS.find(i => i.key === 'warranty_followup')
+    expect(item).toMatchObject({ icon: '🛡️', label: 'ประกันใกล้หมด — ทักลูกค้า', tab: 'sites' })
+    const shown = visiblePendingItems({ warranty_followup: 3 }, all)
+    expect(shown.map(i => [i.key, i.count, i.tab])).toEqual([['warranty_followup', 3, 'sites']])
+  })
+})
+
+describe('repair_pending bell item', () => {
+  it('is listed, lands on the งานซ่อม tab, and hides from anyone who cannot open it', () => {
+    const item = PENDING_ITEMS.find(i => i.key === 'repair_pending')
+    expect(item).toEqual({ key: 'repair_pending', icon: '🔧', label: 'งานซ่อมรอพิจารณา', tab: 'repairs' })
+    const shown = visiblePendingItems({ repair_pending: 2 }, all)
+    expect(shown.map(i => [i.key, i.count, i.tab])).toEqual([['repair_pending', 2, 'repairs']])
+    expect(visiblePendingItems({ repair_pending: 2 }, tab => tab !== 'repairs')).toEqual([])
+  })
+})
+
+describe('repair_customer_update bell item', () => {
+  it('is listed right after repair_pending, lands on งานซ่อม, hides from anyone who cannot open it', () => {
+    const item = PENDING_ITEMS.find(i => i.key === 'repair_customer_update')
+    expect(item).toEqual({ key: 'repair_customer_update', icon: '🆕', label: 'ลูกค้าเพิ่มข้อมูลงานซ่อม', tab: 'repairs' })
+    const keys = PENDING_ITEMS.map(i => i.key)
+    expect(keys.indexOf('repair_customer_update')).toBe(keys.indexOf('repair_pending') + 1)
+    const shown = visiblePendingItems({ repair_pending: 1, repair_customer_update: 2 }, all)
+    expect(shown.map(i => [i.key, i.count, i.tab])).toEqual([['repair_pending', 1, 'repairs'], ['repair_customer_update', 2, 'repairs']])
+    expect(badgeByTab(shown)).toEqual({ repairs: 3 })
+    expect(visiblePendingItems({ repair_customer_update: 2 }, tab => tab !== 'repairs')).toEqual([])
+  })
+
+  it('shows signed delivery reports on the invoices page', () => {
+    const item = PENDING_ITEMS.find(i => i.key === 'delivery_report_signed')
+    expect(item).toEqual({ key: 'delivery_report_signed', icon: '✍️', label: 'ลูกค้าเซ็นรับงานแล้ว', tab: 'invoices' })
   })
 })

@@ -1,6 +1,6 @@
 // ============================================================
 // Retention — สรุปสถานะเงินประกันผลงาน (client retention) ต่อไซท์งาน
-// ✅ วันครบกำหนด = sites.end_date + default_retention_period_days
+// ✅ วันครบกำหนด = วันหมดประกัน = sites.handover_date + warranty_months (เดือน)
 // ✅ บันทึกว่าคืนแล้ว (ทั้งก้อนต่อไซท์ ไม่แยกตามใบแจ้งหนี้)
 // ============================================================
 import { useState, useMemo } from 'react'
@@ -8,7 +8,8 @@ import { supabase } from '../lib/supabase.js'
 import { useSiteRetentionSummary } from '../hooks/useSupabase.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
-import { retentionStatusFor } from '../lib/retentionStatus.js'
+import { retentionStatusFor, retentionDueText } from '../lib/retentionStatus.js'
+import CardTable from '../components/CardTable.jsx'
 
 function ReleaseDialog({ row, onClose, onSaved }) {
   const [releaseDate, setReleaseDate] = useState(new Date().toISOString().slice(0, 10))
@@ -73,7 +74,7 @@ export default function Retention({ openSiteOverview }) {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -93,7 +94,7 @@ export default function Retention({ openSiteOverview }) {
                     <td style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => openSiteOverview(row.site_id)}>{row.name}</td>
                     <td style={{ fontSize: 12 }}>{row.end_date ? fmtDate(row.end_date) : 'รอจบงาน'}</td>
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(row.total_retention)}</td>
-                    <td style={{ fontSize: 12 }}>{!row.end_date ? 'รอจบงาน' : (row.due_date ? fmtDate(row.due_date) : '—')}</td>
+                    <td style={{ fontSize: 12 }}>{retentionDueText(row, fmtDate)}</td>
                     <td><span className={`badge ${status.cls}`}>{status.label}</span></td>
                     <td>
                       {row.retention_released ? (
@@ -110,7 +111,7 @@ export default function Retention({ openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {releaseRow && (

@@ -1,0 +1,289 @@
+// Delivery report (DR) maths. Pure functions only.
+// Spec docs/superpowers/specs/2026-10-22-delivery-report-design.md, plan B task 2.
+// The table is a contract view: every BOQ line x every phase in its splits (this = 0 when the
+// invoice bills nothing there), plus one row per invoice item whose quotation item has no BOQ.
+import { round2 } from './depositCalc.js'
+import { doneQty, checkLine } from './progressBilling.js'
+
+export const MARK_PREV = '#16a34a'
+export const MARK_THIS = '#f97316'
+export const MARK_REMAINING = '#9ca3af'
+
+const num = v => Number(v) || 0
+
+function sortedSplits(splits, phases) {
+  const order = new Map((phases || []).map((p, i) => [p.id, i]))
+  return [...(splits || [])].sort((a, b) => (order.get(a.phase_id) ?? 1e9) - (order.get(b.phase_id) ?? 1e9))
+}
+
+// Contract value per phase: qty x price x pct / 100, rounded; remainder on the last phase so the
+// phase values add up to the rounded line value.
+function phaseValues(qty, price, splits) {
+  const vals = splits.map(s => round2(qty * price * num(s.pct) / 100))
+  if (vals.length) {
+    const totalPct = round2(splits.reduce((s, r) => s + num(r.pct), 0))
+    const lineValue = round2(qty * price * totalPct / 100)
+    const diff = round2(lineValue - vals.reduce((a, b) => a + b, 0))
+    vals[vals.length - 1] = round2(vals[vals.length - 1] + diff)
+  }
+  return vals
+}
+
+// Split an amount across phases by weight (remainder on the last one).
+function splitByWeight(amount, splits) {
+  const total = splits.reduce((s, r) => s + num(r.pct), 0)
+  if (!splits.length || total <= 0) return []
+  const parts = splits.map(s => round2(amount * num(s.pct) / total))
+  const diff = round2(amount - parts.reduce((a, b) => a + b, 0))
+  parts[parts.length - 1] = round2(parts[parts.length - 1] + diff)
+  return parts
+}
+
+function phaseHasDone(cards, boqId, phaseId) {
+  const d = doneQty(cards, boqId, phaseId)
+  if (d != null) return d > 0
+  // cards without quantity: count as done when any matching card is marked done
+  return (cards || []).some(c => c.boq_item_id === boqId && c.phase_id === phaseId
+    && c.status === 'done')
+}
+
+// amounts per (boqId|phaseId) and per no-BOQ quotation item, for a set of invoice items
+// Legacy split: fill each target phase's unbilled room (value - already billed) in proportion to
+// that room; any excess beyond total room is spread by weight. Remainder on the last phase.
+function splitByRoom(amount, splits, rooms) {
+  const totalRoom = rooms.reduce((a, b) => a + b, 0)
+  if (totalRoom <= 0) return splitByWeight(amount, splits)
+  let parts
+  if (amount <= totalRoom) {
+    parts = rooms.map(r => round2(amount * r / totalRoom))
+  } else {
+    const extra = splitByWeight(round2(amount - totalRoom), splits)
+    parts = rooms.map((r, i) => round2(r + (extra[i] || 0)))
+  }
+  const diff = round2(amount - parts.reduce((a, b) => a + b, 0))
+  parts[parts.length - 1] = round2(parts[parts.length - 1] + diff)
+  return parts
+}
+
+// billed: running Map key -> amount billed so far (shared across earlier then current items)
+function allocate(items, phaseRows, boqByQi, splitsByBoq, phases, cards, valueMap, billed) {
+  const byPhase = new Map() // key -> { amount, qty }
+  const noBoq = new Map()   // quotation item id (or item id) -> { item, amount }
+  const rowsByItem = new Map()
+  for (const r of phaseRows || []) {
+    if (!rowsByItem.has(r.invoice_item_id)) rowsByItem.set(r.invoice_item_id, [])
+    rowsByItem.get(r.invoice_item_id).push(r)
+  }
+  const add = (key, amount, qty) => {
+    const cur = byPhase.get(key) || { amount: 0, qty: 0, hasQty: false }
+    cur.amount = round2(cur.amount + amount)
+    billed.set(key, round2((billed.get(key) || 0) + amount))
+    if (qty != null) { cur.qty = round2(cur.qty + num(qty)); cur.hasQty = true }
+    byPhase.set(key, cur)
+  }
+  for (const it of items || []) {
+    const own = rowsByItem.get(it.id)
+    if (own && own.length) {
+      for (const r of own) add(`${r.boq_item_id}|${r.phase_id}`, num(r.amount), r.qty)
+      continue
+    }
+    const boq = boqByQi?.[it.quotation_item_id]
+    const amount = num(it.line_total)
+    if (!boq) {
+      const k = it.quotation_item_id ?? it.id
+      const cur = noBoq.get(k) || { item: it, amount: 0 }
+      cur.amount = round2(cur.amount + amount)
+      noBoq.set(k, cur)
+      continue
+    }
+    const splits = sortedSplits(splitsByBoq?.[boq.id], phases)
+    const roomOf = s => {
+      const k = `${boq.id}|${s.phase_id}`
+      return Math.max(0, round2((valueMap.get(k) || 0) - (billed.get(k) || 0)))
+    }
+    let target = splits.filter(s => phaseHasDone(cards, boq.id, s.phase_id))
+    if (!target.length) target = splits
+    const rooms = target.map(roomOf)
+    const targetRoom = round2(rooms.reduce((a, b) => a + b, 0))
+    // More than the done phases can take: fill them, then the other phases in phase order,
+    // so the bill is not piled onto one phase beyond its value.
+    if (target.length < splits.length && targetRoom > 0 && amount > targetRoom) {
+      let left = round2(amount - targetRoom)
+      const parts = new Map(target.map((s, i) => [s, rooms[i]]))
+      for (const s of splits) {
+        if (left <= 0) break
+        if (parts.has(s)) continue
+        const take = Math.min(left, roomOf(s))
+        if (take > 0) { parts.set(s, take); left = round2(left - take) }
+      }
+      if (left > 0) {
+        const last = [...parts.keys()].pop()
+        parts.set(last, round2(parts.get(last) + left))
+      }
+      for (const s of splits) if (parts.has(s)) add(`${boq.id}|${s.phase_id}`, parts.get(s), null)
+      continue
+    }
+    const parts = splitByRoom(amount, target, rooms)
+    target.forEach((s, i) => add(`${boq.id}|${s.phase_id}`, parts[i], null))
+  }
+  return { byPhase, noBoq }
+}
+
+export function buildReportRows({ invoice, invoiceItems, itemPhases, earlierItems, earlierItemPhases,
+  boqByQuotationItem, splitsByBoq, phases, cards }) {
+  void invoice
+  const phaseName = new Map((phases || []).map(p => [p.id, p.name]))
+
+  const itemByQi = new Map()
+  for (const it of [...(invoiceItems || []), ...(earlierItems || [])]) {
+    if (it.quotation_item_id != null && !itemByQi.has(it.quotation_item_id)) itemByQi.set(it.quotation_item_id, it)
+  }
+  const thisItemByQi = new Map((invoiceItems || []).map(it => [it.quotation_item_id, it]))
+
+  const boqEntries = Object.entries(boqByQuotationItem || {})
+    .sort(([, a], [, b]) => String(a.code ?? '').localeCompare(String(b.code ?? ''), undefined, { numeric: true }))
+
+  const lineInfo = new Map()
+  const valueMap = new Map()
+  for (const [qiId, boq] of boqEntries) {
+    const item = thisItemByQi.get(qiId) || itemByQi.get(qiId)
+    // quotation price first: a progress invoice line carries price x phase weight, not the unit price
+    const unitPrice = num(boq.unit_price) || num(item?.unit_price)
+    const qty = num(boq.planned_qty)
+    const splits = sortedSplits(splitsByBoq?.[boq.id], phases)
+    const vals = phaseValues(qty, unitPrice, splits)
+    splits.forEach((s, i) => valueMap.set(`${boq.id}|${s.phase_id}`, vals[i]))
+    lineInfo.set(qiId, { item, unitPrice, qty, splits, vals })
+  }
+  const billed = new Map()
+  const prev = allocate(earlierItems, earlierItemPhases, boqByQuotationItem, splitsByBoq, phases, cards, valueMap, billed)
+  const cur = allocate(invoiceItems, itemPhases, boqByQuotationItem, splitsByBoq, phases, cards, valueMap, billed)
+
+  const rows = []
+  const finish = row => {
+    let remaining = round2(row.value - row.prev - row.this)
+    if (remaining < 0) { remaining = 0; row.reasons.push('over_billed') }
+    row.remaining = remaining
+    if (row.reasons.length && row.check === 'ok') row.check = 'warn'
+    rows.push(row)
+  }
+
+  for (const [qiId, boq] of boqEntries) {
+    const { item, unitPrice, qty, splits, vals } = lineInfo.get(qiId)
+    splits.forEach((s, i) => {
+      const key = `${boq.id}|${s.phase_id}`
+      const c = cur.byPhase.get(key)
+      const p = prev.byPhase.get(key)
+      let check = 'ok'
+      let reasons = []
+      if (c && c.hasQty) {
+        const done = doneQty(cards, boq.id, s.phase_id)
+        const available = done == null ? null : round2(done - (p?.qty || 0))
+        const billedPct = qty && unitPrice && c.qty ? round2(c.amount / (c.qty * unitPrice) * 100) : num(s.pct)
+        const res = checkLine({ unit: boq.unit ?? item?.unit, qty: c.qty, unitPrice, boqQty: boq.planned_qty,
+          boqUnitPrice: null, priceMultiplier: null, billedPct, phaseWeightPct: num(s.pct), cardDoneQty: available })
+        check = res.level
+        reasons = [...res.reasons]
+      }
+      finish({
+        key, boqId: boq.id, boqCode: boq.code ?? null, description: boq.description ?? item?.description ?? '',
+        phaseId: s.phase_id, phaseName: phaseName.get(s.phase_id) ?? '', unit: boq.unit ?? item?.unit ?? null,
+        qty, unitPrice, weightPct: num(s.pct), value: vals[i],
+        prev: p ? p.amount : 0, this: c ? c.amount : 0, remaining: 0, check, reasons,
+      })
+    })
+  }
+
+  const noBoqKeys = new Set([...cur.noBoq.keys(), ...prev.noBoq.keys()])
+  for (const k of noBoqKeys) {
+    const c = cur.noBoq.get(k)
+    const p = prev.noBoq.get(k)
+    const it = (c || p).item
+    const thisAmt = c ? c.amount : 0
+    const prevAmt = p ? p.amount : 0
+    finish({
+      key: `item|${k}`, boqCode: null, description: it.description ?? '', phaseId: null, phaseName: '',
+      unit: it.unit ?? null, qty: num(it.draw_qty ?? it.qty), unitPrice: num(it.unit_price), weightPct: null,
+      value: round2(thisAmt + prevAmt), prev: prevAmt, this: thisAmt, remaining: 0, check: 'ok', reasons: [],
+    })
+  }
+
+  const sum = f => round2(rows.reduce((s, r) => s + r[f], 0))
+  const totals = { contract: sum('value'), prev: sum('prev'), this: sum('this'), remaining: sum('remaining') }
+  totals.pctDone = totals.contract ? round2((totals.prev + totals.this) / totals.contract * 100) : 0
+  return { rows, totals }
+}
+
+// ---- Compact mode (แบบย่อ): one row per BOQ item, site phases as columns ----
+export const COMPACT_DEFAULT_THRESHOLD = 30
+
+const itemKeyOf = r => (r.phaseId == null ? r.key : (r.boqId ?? String(r.key).split('|')[0]))
+
+// Detailed mode lists item x phase; count distinct items to pick the default mode.
+export function countReportItems(rows) {
+  return new Set((rows || []).filter(r => r.value || r.prev || r.this || r.remaining).map(itemKeyOf)).size
+}
+
+export function defaultReportMode(rows) {
+  return countReportItems(rows) > COMPACT_DEFAULT_THRESHOLD ? 'compact' : 'detailed'
+}
+
+// Pivot buildReportRows output. Phase qty is derived from money: qty x amount / phase value,
+// so the baht columns are the detailed rows' own numbers summed (totals match exactly).
+// cells[phaseId] = null when the item has no weight in that phase (shown "—").
+// Phases with 0 weight across every item (and nothing billed) are dropped as columns.
+// showAll=false keeps only items with something this งวด.
+export function buildCompactRows(rows, phases, { showAll = false } = {}) {
+  const order = new Map((phases || []).map((p, i) => [p.id, i]))
+  const phaseName = new Map((phases || []).map(p => [p.id, p.name]))
+  const colIds = new Set()
+  for (const r of rows || []) {
+    if (r.phaseId == null) continue
+    if (num(r.weightPct) > 0 || r.value || r.prev || r.this) colIds.add(r.phaseId)
+  }
+  const columns = [...colIds]
+    .sort((a, b) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9))
+    .map(id => ({ id, name: phaseName.get(id) ?? (rows.find(r => r.phaseId === id)?.phaseName || '') }))
+
+  const items = new Map()
+  for (const r of rows || []) {
+    const k = itemKeyOf(r)
+    if (!items.has(k)) {
+      items.set(k, { key: k, boqCode: r.boqCode, description: r.description, unit: r.unit, qty: r.qty,
+        unitPrice: r.unitPrice, weights: [], cells: {}, value: 0, prev: 0, this: 0, cumulative: 0, remaining: 0 })
+    }
+    const it = items.get(k)
+    it.value = round2(it.value + num(r.value))
+    it.prev = round2(it.prev + num(r.prev))
+    it.this = round2(it.this + num(r.this))
+    it.remaining = round2(it.remaining + num(r.remaining))
+    if (r.phaseId != null && colIds.has(r.phaseId) && (num(r.weightPct) > 0 || r.value || r.prev || r.this)) {
+      const total = num(r.qty)
+      const toQty = amt => (r.value ? round2(total * num(amt) / num(r.value)) : 0)
+      const thisQty = toQty(r.this)
+      it.cells[r.phaseId] = { this: thisQty, cumulative: round2(toQty(r.prev) + thisQty), total }
+      it.weights.push({ phaseId: r.phaseId, pct: num(r.weightPct) })
+    }
+  }
+  const out = []
+  for (const it of items.values()) {
+    it.cumulative = round2(it.prev + it.this)
+    it.cumulativePct = it.value ? round2(it.cumulative / it.value * 100) : 0
+    for (const c of columns) if (!(c.id in it.cells)) it.cells[c.id] = null
+    it.weights.sort((a, b) => (order.get(a.phaseId) ?? 1e9) - (order.get(b.phaseId) ?? 1e9))
+    it.hasMovement = it.this > 0 || Object.values(it.cells).some(c => c && c.this > 0)
+    if (showAll ? (it.value || it.prev || it.this || it.remaining) : it.hasMovement) out.push(it)
+  }
+  const thisSum = round2(out.reduce((s, r) => s + r.this, 0))
+  return { columns, rows: out, thisSum }
+}
+
+export function markColour(taskId, { prevTaskIds, thisTaskIds } = {}) {
+  if (thisTaskIds?.has(taskId)) return MARK_THIS
+  if (prevTaskIds?.has(taskId)) return MARK_PREV
+  return MARK_REMAINING
+}
+
+export function nextReportStatusOnEdit(report) {
+  return report?.status === 'signed' ? 'reissue' : 'edit-in-place'
+}

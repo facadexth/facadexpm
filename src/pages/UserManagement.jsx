@@ -7,12 +7,17 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useSeatStatus, useCheckinLocations } from '../hooks/useSupabase.js'
 import { linkHint, linkHintMessage } from '../lib/userLinkHint.js'
 import { friendlyUserError } from '../lib/userErrors.js'
+import CardTable from '../components/CardTable.jsx'
+import { ROLE_OPTIONS, ROLE_LABELS } from '../lib/roles.js'
+const USER_MAP = { title: 'ชื่อ', status: 'Role', sub: ['Email', 'เพิ่มเมื่อ'], actions: 'last' }
 
-const ROLES = ['OWNER', 'ADMIN', 'WORKER']
+const ROLES = ROLE_OPTIONS
 // WORKER stays a valid role in the database (lowest access, and the default for
 // anyone invited), but crew use LINE, not the web app, so it is not offered
 // when creating a login. Existing WORKER rows can still be edited.
-const CREATE_ROLES = ['ADMIN', 'OWNER']
+const CREATE_ROLES = ['ADMIN', 'PM', 'OWNER'].filter(r => ROLE_OPTIONS.includes(r))
+// Admin seats: PM counts like ADMIN (tenant_under_seat_limit('admins')).
+const SEAT_ROLES = ['OWNER', 'ADMIN', 'PM']
 const EMPTY_FORM = { email: '', password: '', display_name: '', role: 'ADMIN', assigned_checkin_location_id: '' }
 
 export default function UserManagement() {
@@ -166,7 +171,7 @@ export default function UserManagement() {
   // เตือนก่อนกดบันทึกถ้ากำลังจะเพิ่ม Admin/Owner คนใหม่ขณะเต็ม quota แล้ว
   // (การบังคับจริงอยู่ที่ RLS -- นี่แค่กันเสียเวลากรอกฟอร์มแล้วโดน error)
   const isPromotingToAdmin =
-    ['OWNER', 'ADMIN'].includes(form.role) && (!editItem || !['OWNER', 'ADMIN'].includes(editItem.role))
+    SEAT_ROLES.includes(form.role) && (!editItem || !SEAT_ROLES.includes(editItem.role))
   const adminsFull = seat?.admins?.max != null && seat.admins.used >= seat.admins.max
   const showAdminLimitWarning = isPromotingToAdmin && adminsFull
 
@@ -212,7 +217,7 @@ export default function UserManagement() {
         </div>
       ) : (
         <div className="card">
-          <div className="table-wrap">
+          <CardTable map={USER_MAP}>
             <table>
               <thead>
                 <tr>
@@ -237,12 +242,16 @@ export default function UserManagement() {
                               ? 'rgba(var(--red-rgb), 0.2)'
                               : u.role === 'ADMIN'
                               ? 'rgba(var(--accent-rgb), 0.2)'
+                              : u.role === 'PM'
+                              ? 'color-mix(in srgb, var(--blue) 20%, transparent)'
                               : 'rgba(var(--green-rgb), 0.2)',
                           color:
                             u.role === 'OWNER'
                               ? 'var(--red)'
                               : u.role === 'ADMIN'
                               ? 'var(--accent)'
+                              : u.role === 'PM'
+                              ? 'var(--blue)'
                               : 'var(--green)',
                         }}
                       >
@@ -278,7 +287,7 @@ export default function UserManagement() {
                 )}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         </div>
       )}
 
@@ -346,12 +355,12 @@ export default function UserManagement() {
                 >
                   {(editItem ? ROLES : CREATE_ROLES).map(r => (
                     <option key={r} value={r}>
-                      {r}
+                      {r === 'PM' ? ROLE_LABELS.PM : r}
                     </option>
                   ))}
                 </select>
               </div>
-              {editItem && (form.role === 'ADMIN' || form.role === 'OWNER') && (
+              {editItem && SEAT_ROLES.includes(form.role) && (
                 <div>
                   <label className="label">ตำแหน่งเช็คอินที่กำหนด</label>
                   <select
@@ -384,6 +393,9 @@ export default function UserManagement() {
                   </li>
                   <li>
                     <strong>ADMIN:</strong> เพิ่ม/แก้/ลบ ข้อมูล
+                  </li>
+                  <li>
+                    <strong>PM:</strong> จัดการไซท์งาน แผนงาน จ่ายงานช่าง ทีม และอนุมัติลา ไม่เห็นข้อมูลเงิน
                   </li>
                   {editItem?.role === 'WORKER' && (
                     <li>

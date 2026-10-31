@@ -15,6 +15,7 @@ import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import UnitSelect from '../components/UnitSelect.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 const EMPTY_FORM = { name: '', unit: '', default_unit_price: '', description: '', active: true }
 
@@ -130,7 +131,7 @@ export default function CatalogItems() {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -163,7 +164,7 @@ export default function CatalogItems() {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {showForm && (

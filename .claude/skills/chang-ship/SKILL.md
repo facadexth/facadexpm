@@ -12,21 +12,29 @@ Live site https://changpm.app (Cloudflare Workers). Backend: Supabase project **
 2. `npm run deploy` = build, `verify-bundle` (must contain the CHANG ref, must not contain the Tokyo one), `smoke-boot` (Playwright: app starts, login renders), then `wrangler deploy`. Never run bare `wrangler deploy`.
 3. `git push` is harmless: Cloudflare's Git auto-build is disconnected on purpose (it used to overwrite manual deploys and cause stale-chunk blank pages).
 4. "No deploy targets" printed by wrangler is normal (the custom domain is attached in the dashboard).
+5. A fresh git worktree has no `.env` (untracked), so `verify-bundle` stops the deploy with "bundle does not reference the CHANG project". Copy `.env` from the main checkout into the worktree first (check its `VITE_SUPABASE_URL` is the CHANG ref), then rerun `npm run deploy`.
 
 ## 2. Edge functions
 `npx supabase functions deploy <name> --project-ref kntspldhvcjeaubtqtkn --use-api` (no Docker needed).
+If `--use-api` returns 500 "internal error" (seen on the big line-webhook), retry WITHOUT it (local Docker bundle, ~7 min the first time). Worktrees are not `supabase link`ed, so for SQL use the Supabase MCP `execute_sql`/`apply_migration` with project `kntspldhvcjeaubtqtkn`.
 Add `--no-verify-jwt` for line-webhook, field-form, sign-link, omise-webhook. Cron-called functions keep JWT on and check `x-cron-secret` via `verify_cron_secret()`. Shared code lives in `supabase/functions/_shared/`; keep new pure logic there so vitest can import it (`import ... from '../../supabase/functions/_shared/x.ts'`). Secrets are set by the owner in the Supabase dashboard; never ask for them in chat and never print rows that contain them (select named columns only).
+
+Every web deploy: bump `package.json` version and prepend a Thai entry to `src/changelog.json` first, or the update popup shows stale notes. Order for a change that needs all three: migration, then edge functions, then web. All LINE pushes are currently off (`LINE_PUSH_ENABLED` in `_shared/line.ts`); re-enabling means redeploying every function that imports it.
 
 ## 3. SQL / migrations
 - Write `supabase/migrations/YYYY-MM-DD-NN-name.sql`, apply with `npx supabase db query --linked -f <file>` (history table is not updated; the file in git is the record). A migration is live the moment it runs.
 - Every new SECURITY DEFINER function: `REVOKE ALL ... FROM PUBLIC, anon` then `GRANT` only what is needed. A restore once silently lost every REVOKE.
 - A view's `x.*` column list freezes at creation; re-create views after adding columns.
 - `upsert` `onConflict` must name the real unique index; PostgREST embeds need exact FK names when there are FKs both ways.
+- Dry-run a migration by sending it plus a final `DO $$ ... RAISE EXCEPTION 'RESULT %' ... $$` in one `execute_sql` call (rolls back, shows the result), then `apply_migration`, then check ACLs with `has_function_privilege`. Never apply without the owner's go.
 - Test DB logic in a transaction that ends with `RAISE EXCEPTION 'RESULT ...'` (nothing persists). To act as a user: `SET LOCAL ROLE authenticated` plus `set_config('request.jwt.claims', json_build_object('email', ..., 'role','authenticated','sub', ...)::text, true)`.
 - The Supabase MCP `execute_sql` shows only the LAST statement's result; run checks one at a time.
 
 ## 4. Verify on the live site (Chrome tool)
 - The app is a PWA in `prompt` mode: after a deploy the open tab keeps the old bundle. `registration.update()`, wait (install can take 10-20 s), click the "รีเฟรชเพื่ออัปเดต" banner and then the "🔄 รีเฟรชเพื่ออัปเดต" button in the modal; compare the loaded `index-*.js` against `fetch('/?x='+Date.now(), {cache:'no-store'})`. Repeat if a newer deploy landed meanwhile.
+- Faster from the console: `reg.update()`, poll until `reg.waiting` exists (10-25 s), `reg.waiting.postMessage({type:'SKIP_WAITING'})`, wait ~8 s (the app may reload itself on controllerchange), then reload. Sending SKIP_WAITING while still `installing` does nothing.
+- Changing `location.hash` alone does not re-run mount-time hash handling; set the hash and `location.reload()`.
+- UI trap: a smooth `scrollIntoView` is cancelled when the page grows underneath it (sections loading) -- use `behavior:'auto'`, re-check a few times, and give the target `scrollMarginTop` for the sticky header.
 - Use the tab group the tool gives you; the logged-in profile is the owner's, so only read and click through screens, never enter credentials or change data you were not asked to.
 - Call an edge function from the page with the user's own session: `localStorage` key `sb-*-auth-token` → `access_token` → `fetch(.../functions/v1/<fn>, {headers:{Authorization:'Bearer '+t}})`; do not print the token.
 - State plainly what was verified live and what was only tested in the database or by unit tests.
@@ -35,3 +43,6 @@ Add `--no-verify-jwt` for line-webhook, field-form, sign-link, omise-webhook. Cr
 - A mistyped date (year 82026) stretched charts and would have been written into `sites.end_date`; chart code now ignores dates outside 2000-2100. Check data when a chart looks wrong.
 - `useExpenses/useIncomes` are paged (1000 rows); use `fetchAllRows` for totals.
 - Thai text in generated images: render with headless Chromium, not PIL.
+- In zsh (the Bash tool), `echo == x` aborts with "= not found"; don't use `==` as a bare word.
+- html2canvas drops inline-SVG strokes in PDFs; draw ticks/shapes with CSS borders. To view a PDF: `sips -s format png -Z 3508 in.pdf --out out.png`, composite on white with PIL; `pypdf` gives form-field rectangles.
+- Verify live DB state before warning that a migration is unapplied; memory notes go stale.

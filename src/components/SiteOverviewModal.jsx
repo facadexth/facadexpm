@@ -3,20 +3,21 @@
 // มัดจำ (deposit) + retention, opened by clicking a site name in most of
 // the app (Sites.jsx itself now navigates to a full SiteDetail page
 // instead -- see src/pages/SiteDetail.jsx). Read-only; no edit actions.
-// ADMIN+ only -- see App.jsx, this is never wired into WORKER-visible
+// OWNER/ADMIN only (canSeeMoney) -- see App.jsx, this is never wired into WORKER-visible
 // site-name displays.
 // ============================================================
 import { Modal } from './Modal.jsx'
 import { useSiteOverview } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canSeeMoney } from '../lib/roles.js'
 import SiteOverviewContent from './SiteOverviewContent.jsx'
 
 export default function SiteOverviewModal({ siteId, onClose }) {
-  const { isAtLeast } = useUserRole()
-  const isAdmin = isAtLeast('ADMIN')
-  const { data: site } = useSiteOverview(isAdmin ? siteId : null)
+  const { role } = useUserRole()
+  const showMoney = canSeeMoney(role)
+  const { data: site } = useSiteOverview(showMoney ? siteId : null)
 
-  if (!isAdmin) return null
+  if (!showMoney) return null
 
   return (
     <Modal title={site ? `${site.site_number} · ${site.name}` : 'ไซท์งาน'} onClose={onClose} maxWidth={560}>

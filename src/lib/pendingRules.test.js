@@ -66,3 +66,22 @@ describe('isQuotationExpiring', () => {
     expect(isQuotationExpiring(q({ status: 'accepted' }), '2026-10-04')).toBe(false)
   })
 })
+
+import { isOffboardedInGroup } from './pendingRules.js'
+describe('isOffboardedInGroup', () => {
+  const base = { status: 'inactive', line_offboarding_alerted_at: '2026-10-13T02:00:00Z', line_group_removed_at: null }
+  it('counts an inactive worker the bot noticed and nobody has removed', () => {
+    expect(isOffboardedInGroup(base)).toBe(true)
+  })
+  it('stops counting once marked removed after the notice', () => {
+    expect(isOffboardedInGroup({ ...base, line_group_removed_at: '2026-10-13T05:00:00Z' })).toBe(false)
+  })
+  it('counts again if the bot notices them after an earlier removal', () => {
+    expect(isOffboardedInGroup({ ...base, line_group_removed_at: '2026-10-12T05:00:00Z' })).toBe(true)
+  })
+  it('ignores active workers and workers never noticed', () => {
+    expect(isOffboardedInGroup({ ...base, status: 'active' })).toBe(false)
+    expect(isOffboardedInGroup({ ...base, line_offboarding_alerted_at: null })).toBe(false)
+    expect(isOffboardedInGroup(null)).toBe(false)
+  })
+})

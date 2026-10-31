@@ -46,7 +46,9 @@ Deno.serve(async (req) => {
   // imported tenantHasModuleAccess at all. See tenant-access.ts's header.
   if (!(await tenantHasModuleAccess(admin, worker.tenant_id as string, 'line_bot'))) return json({ ok: true, skipped: 'line_bot module not enabled for this tenant' })
 
-  if (!(await isPushEnabled(admin, worker.tenant_id as string, 'line_push_offboarding'))) return json({ ok: true, skipped: 'push_disabled' })
+  const lineOn = await isPushEnabled(admin, worker.tenant_id as string, 'line_push_offboarding')
+  const webOn = await isPushEnabled(admin, worker.tenant_id as string, 'web_push_worker_offboarded')
+  if (!lineOn && !webOn) return json({ ok: true, skipped: 'push_disabled' })
 
   // Alert at most once per 24h per worker. Claim the window with one atomic
   // UPDATE BEFORE sending: previously the timestamp was only written after
@@ -60,12 +62,19 @@ Deno.serve(async (req) => {
     .select('id')
   if (!claimed?.length) return json({ ok: true, skipped: 'alerted_recently' })
 
-  const { data: owners } = await admin
+  const { data: owners } = lineOn ? await admin
     .from('user_roles')
     .select('line_user_id')
     .eq('tenant_id', worker.tenant_id)
     .eq('role', 'OWNER')
-    .not('line_user_id', 'is', null)
+    .not('line_user_id', 'is', null) : { data: [] as Array<{ line_user_id: string }> }
+
+  if (webOn) {
+    try {
+      const [{ sendWebPushToTenantAdmins }, { workerOffboardedPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
+      await sendWebPushToTenantAdmins(admin, worker.tenant_id as string, workerOffboardedPush(worker.name as string), 'ops')
+    } catch (e) { console.error('web push failed', (e as Error).message) }
+  }
 
   for (const owner of owners ?? []) {
     await withPushBudget(admin, worker.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, owner.line_user_id as string, `⚠️ ${worker.name} ถูกเปลี่ยนสถานะเป็นพ้นสภาพพนักงาน กรุณาลบออกจากกลุ่มทีมงานใน LINE ด้วยครับ`))

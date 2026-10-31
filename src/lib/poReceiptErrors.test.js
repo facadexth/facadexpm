@@ -1,12 +1,13 @@
 // src/lib/poReceiptErrors.test.js
 import { describe, it, expect } from 'vitest'
-import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills } from './poReceiptErrors.js'
+import { centralStockSiteId, mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills, isMissingEmbedError, poCancelReversesStock } from './poReceiptErrors.js'
+import { RECEIVE_DELIVERY_DISCOUNT_TEXT } from './deliveryTaxInvoiceText.js'
 import { readFileSync } from 'node:fs'
 
 describe('mapPoReceiptRpcError', () => {
   it('maps every new code to Thai and never shows the raw code', () => {
     for (const code of ['line_already_received', 'po_not_receivable', 'received_date_in_future', 'bad_received_date', 'deposit_exceeds_receipt',
-      'deposit_vat_exceeds_receipt', 'bad_stock_plan', 'stock_cost_mismatch', 'po_has_deposit', 'po_has_receipts', 'deposit_invoice_no_taken',
+      'deposit_vat_exceeds_receipt', 'bad_stock_plan', 'stock_cost_mismatch', 'po_has_deposit', 'po_has_receipts', 'deposit_invoice_no_taken', 'central_site_missing',
       'deposit_invoice_no_required', 'bill_not_pending', 'bad_split_amount', 'expense_is_receipt_bill', 'expense_is_split_part', 'po_status_rpc_only',
       'totals_mismatch', 'deposit_exceeds_remaining', 'po_tax_invoiced', 'insufficient_privilege',
       'deposit_other_po', 'deposit_linked_to_po', 'bill_changed', 'bad_lines', 'deposit_in_use', 'cross_tenant_reference', 'deposit_expense_is_po_generated',
@@ -104,7 +105,7 @@ describe('error text reads details and hint', () => {
 describe('every RAISE EXCEPTION literal in the migrations has Thai text', () => {
   // none intentionally unmapped; add here with a comment if one ever must be
   const ALLOW = []
-  for (const f of ['2026-10-09-01-po-receipts.sql', '2026-10-09-02-po-receipt-rpcs.sql']) {
+  for (const f of ['2026-10-09-01-po-receipts.sql', '2026-10-09-02-po-receipt-rpcs.sql', '2026-10-09-04-delivery-tax-invoice.sql']) {
     it(f, () => {
       const sql = readFileSync(new URL('../../supabase/migrations/' + f, import.meta.url), 'utf8')
       const codes = [...new Set([...sql.matchAll(/RAISE EXCEPTION '([a-z_0-9]+)'/g)].map(m => m[1]))].filter(c => !ALLOW.includes(c))
@@ -112,6 +113,27 @@ describe('every RAISE EXCEPTION literal in the migrations has Thai text', () => 
       for (const c of codes) expect(PO_RECEIPT_ERROR_TEXT[c], c).toBeTruthy()
     })
   }
+})
+
+describe('PO un-receive stock reversal (2026-10-09-06)', () => {
+  it('every RAISE EXCEPTION literal of the migration has Thai text', () => {
+    const sql = readFileSync(new URL('../../supabase/migrations/2026-10-09-06-po-unreceive-stock-reversal.sql', import.meta.url), 'utf8')
+    const codes = [...new Set([...sql.matchAll(/RAISE EXCEPTION '([a-z_0-9]+)'/g)].map(m => m[1]))]
+    expect(codes).toEqual(['po_unreceive_stock_insufficient'])
+    for (const c of codes) expect(PO_RECEIPT_ERROR_TEXT[c], c).toBeTruthy()
+  })
+  it('maps the trigger error to Thai (message, or details only)', () => {
+    const err = { code: 'P0001', message: 'po_unreceive_stock_insufficient', details: 'po=PO1 item=x site=y on_hand=2 to_reverse=6' }
+    expect(mapPoReceiptRpcError(err)).toBe('หักสต็อกคืนไม่ได้ — ยอดคงเหลือไม่พอ (ของถูกใช้ไปแล้ว) ปรับสต็อกก่อนแล้วลองใหม่')
+    expect(mapPoReceiptRpcError({ message: 'x', details: 'po_unreceive_stock_insufficient' })).toBe(PO_RECEIPT_ERROR_TEXT.po_unreceive_stock_insufficient)
+  })
+  it('poCancelReversesStock: only a received, non-invoice-stock PO once the probe is live', () => {
+    expect(poCancelReversesStock({ status: 'received', stock_from_invoice: false }, true)).toBe(true)
+    expect(poCancelReversesStock({ status: 'received', stock_from_invoice: false }, false)).toBe(false)
+    expect(poCancelReversesStock({ status: 'received', stock_from_invoice: true }, true)).toBe(false)
+    expect(poCancelReversesStock({ status: 'ordered' }, true)).toBe(false)
+    expect(poCancelReversesStock(null, true)).toBe(false)
+  })
 })
 
 describe('buildPoMoneyIndex schemaReady (Task 9 routing)', () => {
@@ -198,5 +220,58 @@ describe('poHasMultipleBills (swap-invoice lock, Task 10)', () => {
     expect(poHasMultipleBills({ id: 'C' }, idx)).toBe(true)
     expect(poHasMultipleBills({ id: 'Z' }, idx)).toBe(false)
     expect(poHasMultipleBills({ id: 'A' }, null)).toBe(false)
+  })
+})
+
+describe('receiveRoute for delivery-mode POs (never the old whole-PO receive)', () => {
+  const item = (o = {}) => ({ id: 'i1', line_total: 100, ...o })
+  const dpo = (status, items = [item()]) => ({ id: 'P', status, tax_invoice_mode: 'delivery', purchase_order_items: items })
+  const ready = buildPoMoneyIndex({ receiptItems: [], deposits: [] })
+  const pre = buildPoMoneyIndex({ receiptItems: [], deposits: [], schemaReady: false })
+  it('new dialog when the schema is ready', () => {
+    expect(receiveRoute(dpo('ordered'), ready)).toEqual({ kind: 'new' })
+    expect(receiveRoute(dpo('partially_received'), ready)).toEqual({ kind: 'new' })
+  })
+  it('disabled (not old) before the schema and with a discount line', () => {
+    expect(receiveRoute(dpo('ordered'), pre)).toEqual({ kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT })
+    expect(receiveRoute(dpo('ordered', [item(), item({ id: 'i2', line_total: -5 })]), ready)).toEqual({ kind: 'disabled', reason: RECEIVE_DELIVERY_DISCOUNT_TEXT })
+  })
+})
+describe('isMissingEmbedError', () => {
+  it('PGRST200 naming the table only', () => {
+    expect(isMissingEmbedError({ code: 'PGRST200', message: "Could not find a relationship between 'supplier_tax_invoices' and 'supplier_tax_invoice_receipts' in the schema cache" }, 'supplier_tax_invoice_receipts')).toBe(true)
+    expect(isMissingEmbedError({ code: 'PGRST200', message: "... 'suppliers' ..." }, 'supplier_tax_invoice_receipts')).toBe(false)
+    expect(isMissingEmbedError({ code: '42501', message: 'supplier_tax_invoice_receipts' }, 'supplier_tax_invoice_receipts')).toBe(false)
+    expect(isMissingEmbedError(null, 'x')).toBe(false)
+  })
+})
+
+describe('PO page texts for the mode guards', () => {
+  it('mode locked / legacy receive refused', () => {
+    expect(mapPoReceiptRpcError({ message: 'po_mode_locked' })).toMatch(/เปลี่ยนวิธีออกใบกำกับภาษีไม่ได้/)
+    expect(mapPoReceiptRpcError({ message: 'po_delivery_needs_receipt' })).toMatch(/ทีละล็อต/)
+    // the PO form save path (handleSave -> mapPoReceiptRpcError) shows Thai for every code 04 can raise
+    for (const c of ['po_mode_locked', 'po_delivery_needs_receipt', 'invoice_mixed_links']) expect(mapPoReceiptRpcError({ message: c })).not.toBe(c)
+  })
+})
+
+describe('receiveRoute for po-mode POs is unchanged by the delivery work', () => {
+  const item = (o = {}) => ({ id: 'i1', line_total: 100, ...o })
+  const pre = buildPoMoneyIndex({ receiptItems: [], deposits: [], schemaReady: false })
+  for (const m of [undefined, 'po']) {
+    it(`tax_invoice_mode ${m}: schema not ready -> old for ordered, disabled for partial`, () => {
+      const po = status => ({ id: 'P', status, tax_invoice_mode: m, purchase_order_items: [item()] })
+      expect(receiveRoute(po('ordered'), pre)).toEqual({ kind: 'old' })
+      expect(receiveRoute(po('partially_received'), pre)).toEqual({ kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT })
+    })
+  }
+})
+
+describe('centralStockSiteId', () => {
+  it('is_default first, then the name ส่วนกลาง, else empty', () => {
+    expect(centralStockSiteId([{ id: 'D', name: 'คลังหลัก', is_default: true }, { id: 'C', name: ' ส่วนกลาง ' }])).toBe('D')
+    expect(centralStockSiteId([{ id: 'J', name: 'site' }, { id: 'C', name: ' ส่วนกลาง ' }])).toBe('C')
+    expect(centralStockSiteId([{ id: 'J', name: 'site' }])).toBe('')
+    expect(centralStockSiteId(undefined)).toBe('')
   })
 })

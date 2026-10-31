@@ -40,7 +40,7 @@ if (!rawAccessToken || !rawChannelSecret) {
 export const LINE_CHANNEL_ACCESS_TOKEN = rawAccessToken.replace(/\s+/g, '')
 export const LINE_CHANNEL_SECRET = rawChannelSecret.replace(/\s+/g, '')
 export const LINE_BOT_USER_ID = 'Uc21ab4c845be0f5d3b90e0daa1f5cf72'
-export const LINE_BASIC_ID = '302yljzw'
+export const LINE_BASIC_ID = 'changpm'
 
 export async function verifyLineSignature(channelSecret: string, rawBody: string, signatureHeader: string | null): Promise<boolean> {
   if (!signatureHeader) return false
@@ -50,6 +50,29 @@ export async function verifyLineSignature(channelSecret: string, rawBody: string
   return timingSafeEqual(expected, signatureHeader)
 }
 
+// Best-effort group name via LINE's group summary API. Returns null on ANY
+// failure (non-200, timeout, bot not in group) -- callers must never block on it.
+export async function fetchLineGroupName(accessToken: string, groupId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return typeof data.groupName === 'string' && data.groupName.trim() ? data.groupName.trim() : null
+  } catch {
+    return null
+  }
+}
+
+// MASTER SWITCH (owner order 2026-10-13): every LINE *push* is off until the
+// quota problem is solved (LINE bills pushes per recipient, all tenants share
+// one monthly quota). Replies (sendLineReply) are free and unaffected. Set
+// to true and redeploy every function that imports this file to turn pushes
+// back on; the per-tenant budget in push-budget.ts still applies after that.
+export const LINE_PUSH_ENABLED = false
+
 // quickReplyItems works exactly as in sendLineReply: tappable chips under the
 // message, each sending `text` back as if the user typed it.
 export async function sendLinePush(
@@ -58,6 +81,7 @@ export async function sendLinePush(
   text: string,
   quickReplyItems?: Array<{ label: string; text: string }>,
 ): Promise<{ ok: boolean; status: number }> {
+  if (!LINE_PUSH_ENABLED) return { ok: false, status: 503 }
   const message: Record<string, unknown> = { type: 'text', text }
   if (quickReplyItems && quickReplyItems.length > 0) {
     message.quickReply = {

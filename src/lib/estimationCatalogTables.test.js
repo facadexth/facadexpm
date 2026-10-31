@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { ESTIMATION_CATALOG_TABLES } from './estimationCatalogTables.js'
 
 const migrations = readdirSync('supabase/migrations')
-  .filter(f => /^2026-10-10-0[123]-/.test(f))
+  .filter(f => /^2026-10-10-0[123]-alu-catalog-/.test(f))
   .map(f => readFileSync(`supabase/migrations/${f}`, 'utf8'))
   .join('\n')
 

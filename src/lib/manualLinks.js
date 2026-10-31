@@ -19,7 +19,7 @@ export const MANUAL_ANCHORS = {
   retention:           'page-retention',
   expenses:            'ch-expense-step1',
   purchase_orders:     'ch-expense-step1',
-  inventory:           'ch-expense-step2',
+  inventory:           'page-inventory',
   cheques:             'page-cheques',
   income:              'ch-income-step2',
   sales_report:        'page-salesreport',
@@ -35,6 +35,7 @@ export const MANUAL_ANCHORS = {
   user_management:     'page-users',
   tenant_management:   'page-tenant',
   communication_center: 'page-line-bot',
+  repairs:             'page-repairs',
 }
 
 // role/isPlatformAdmin/theme are all optional -- omitted (e.g. a plain

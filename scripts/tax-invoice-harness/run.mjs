@@ -15,10 +15,20 @@ const item = { id: 'it1', sort_order: 0, description: 'Steel', qty: 10, unit: 'k
 const inv = (id, status, o = {}) => ({ id, supplier_id: S1, invoice_no: 'INV-' + id, invoice_date: '2026-10-05', net_before_vat: 1000, vat: 70, grand_total: 1070, match_diff: status === 'draft' ? null : 0, match_note: '', status, post_result: null,
   suppliers: { name: 'Supplier One' }, supplier_tax_invoice_items: [item], supplier_tax_invoice_pos: [link(id)], ...o })
 const inv8 = id => inv(id, 'draft', { supplier_tax_invoice_items: Array.from({ length: 8 }, (_, k) => ({ ...item, id: 'it8' + k, sort_order: k, description: 'Steel ' + k, qty: 1, unit_price: 125, amount: 125, base_qty: 1 })) })
+const S2 = '22222222-2222-2222-2222-222222222222'
+const rcpt = (id, seq, date, sub, vat, o = {}, po = {}) => ({ id, po_id: 'PD', seq, received_date: date, goods_subtotal: sub, goods_vat: vat, expense_id: 'e' + id,
+  purchase_orders: { id: 'PD', po_number: 'PO-1', supplier_id: S1, site_id: SITE, tax_invoice_mode: 'delivery', stock_from_invoice: false, has_vat: true, price_includes_vat: false, ...po }, po_receipt_items: [], ...o })
 const data = {
   suppliers: [{ id: S1, name: 'Supplier One' }], sites: [{ id: SITE, name: 'Site A' }], categories: [],
   items: [{ id: 'I1', name: 'Steel', base_unit: 'kg', unit_conversion_mode: 'plain', active: true }],
-  factors: [], links: [], pos: [PO], deposits: [],
+  factors: [], links: [], pos: [PO, { ...PO, id: 'PD', po_number: 'PO-DEL', tax_invoice_mode: 'delivery' }], deposits: [],
+  deliveryReceipts: [
+    rcpt('rA', 1, '2026-10-04', 600, 42, { po_receipt_items: [{ quantity: 2, base_qty: 2, purchase_order_items: { description: 'Steel', unit: 'kg', quantity: 2, unit_price: 300, discount_pct: 0, inventory_item_id: 'I1' } }] }),
+    rcpt('rB', 2, '2026-10-02', 400, 28),
+    rcpt('rC', 3, '2026-10-03', 300, 21),
+    rcpt('rX', 1, '2026-10-01', 500, 35, {}, { supplier_id: S2, po_number: 'PO-9' }),
+  ],
+  receiptLinks: [['rC', { invoice_id: 'X', invoice_no: 'INV-X', status: 'posted' }]],
 }
 const browser = await chromium.launch()
 const page = await browser.newPage()
@@ -31,7 +41,7 @@ await page.route('**/*', r => { const u = r.request().url(); if (u.startsWith('d
 // scenarios need a clean module state)
 const boot = async () => {
   await page.setContent('<div id="root"></div>')
-  await page.evaluate(d => { window.__data = d }, data)
+  await page.evaluate(d => { window.__data = d; window.__deliveryReady = false }, data)
   await page.evaluate(c => { const st = document.createElement('style'); st.textContent = c.replace(/@import[^;]*;/g, ''); document.head.appendChild(st) }, css)  // the REAL app css
   await page.addScriptTag({ content: js })
 }
@@ -280,6 +290,174 @@ await btn('✅ บันทึกใบกำกับ (ลงสต็อก)')
 await page.getByRole('checkbox', { name: /ฉันรับทราบ/ }).check()
 await page.getByRole('button', { name: '✅ ยืนยันบันทึก' }).click(); await wait(500)
 ok('stale_preview shows the Thai text', (alerts.at(-1) || '') === 'ใบกำกับถูกแก้ไขหลังจากดูตัวอย่าง กรุณาดูตัวอย่างใหม่', alerts.at(-1))
+
+console.log('=== D1 form: link kind switch and receipt picker')
+await boot()
+await set('__invoices', []); await render()
+await page.getByRole('button', { name: '+ เพิ่มใบกำกับภาษีผู้ขาย' }).click(); await wait(300)
+ok('not ready: no switch', !(await text()).includes('ผูกกับ:'))
+await page.getByRole('button', { name: 'ยกเลิก' }).first().click(); await wait(200)
+await page.evaluate(() => { window.__deliveryReady = true; window.__log = [] }); await render()
+await page.getByRole('button', { name: '+ เพิ่มใบกำกับภาษีผู้ขาย' }).click(); await wait(300)
+const pickSupplier = async () => {
+  await page.getByRole('button', { name: '— เลือก Supplier —' }).click(); await wait(100)
+  await page.locator('div[style*="z-index: 9999"]').getByText('Supplier One', { exact: true }).click(); await wait(400)
+}
+const fillHead = async (net, vat) => {
+  await page.locator('label:has-text("เลขที่ใบกำกับภาษี") + input').fill('INV-NEW')
+  await page.locator('input[type=number]').nth(0).fill(String(net))
+  await page.locator('input[type=number]').nth(1).fill(String(vat))
+  await wait(150)
+}
+const boxText = () => page.locator('.modal-body').innerText()
+await pickSupplier()
+ok('ready: switch shown, default ใบสั่งซื้อ', (await text()).includes('ผูกกับ:') && await page.getByRole('radio', { name: 'ใบสั่งซื้อ' }).isChecked())
+ok('PO kind: delivery PO PO-DEL is not listed', !(await text()).includes('PO-DEL') && (await text()).includes('PO-001'), await text())
+await page.getByRole('radio', { name: 'การส่งของ' }).check(); await wait(300)
+t = await text()
+const iB = t.indexOf('PO-1-R2'), iA = t.indexOf('PO-1-R1')
+ok('picker lists receipts oldest first (rB before rA)', iB > 0 && iA > iB, t)
+ok('rC disabled with link text, other supplier absent', await page.getByRole('checkbox', { name: /PO-1-R3/ }).isDisabled() && t.includes('ผูกกับใบกำกับ INV-X') && !(await boxText()).includes('PO-9'))
+ok('PO picker hidden in delivery kind', !t.includes('ใบสั่งซื้อที่รวมอยู่ในใบกำกับนี้'))
+await page.getByRole('checkbox', { name: /PO-1-R2/ }).check()
+await page.getByRole('checkbox', { name: /PO-1-R1/ }).check()
+ok('running sum shown before any amount is typed', (await page.getByTestId('receipt-sum').innerText()).includes('เลือก 2 ใบรับของ รวม 1,000.00 (รวม VAT 1,070.00)'), await boxText())
+ok('invalid-match text mentions deliveries, not POs', (await boxText()).includes('เทียบกับการส่งของ') && !(await boxText()).includes('เทียบกับใบสั่งซื้อ'))
+await fillHead(1000, 70)
+ok('matched on goods value 1,000.00', (await boxText()).includes('มูลค่าสินค้าที่รับ 1,000.00'), await boxText())
+await fillHead(990, 80)
+ok('incl basis shown', (await boxText()).includes('ตรงเมื่อเทียบรวม VAT'), await boxText())
+await page.evaluate(() => { window.__log = [] })
+await btn('💾 บันทึกร่าง').click(); await wait(500)
+let calls = await page.evaluate(() => window.__log.filter(x => x[0] === 'rpc'))
+ok('delivery draft calls saveReceipts with ids in tick order', calls.some(c => c[1] === 'saveReceipts' && JSON.stringify(JSON.parse(c[2])[3]) === '["rB","rA"]'), JSON.stringify(calls))
+ok('delivery draft does not call save', !calls.some(c => c[1] === 'save'), JSON.stringify(calls))
+await page.getByRole('radio', { name: 'ใบสั่งซื้อ' }).check(); await wait(200)
+ok('delivery -> po: receipt ticks gone, running sum hidden', (await page.getByTestId('receipt-sum').count()) === 0)
+await page.getByRole('checkbox', { name: /PO-001/ }).check()
+await page.getByRole('radio', { name: 'การส่งของ' }).check(); await wait(200)
+await page.getByRole('radio', { name: 'ใบสั่งซื้อ' }).check(); await wait(200)
+ok('po -> delivery -> po: PO ticks cleared on switch', !(await page.getByRole('checkbox', { name: /PO-001/ }).isChecked()))
+await page.getByRole('radio', { name: 'การส่งของ' }).check(); await wait(200)
+ok('switching kind clears the ticks', !(await page.getByRole('checkbox', { name: /PO-1-R2/ }).isChecked()) && !(await page.getByRole('checkbox', { name: /PO-1-R1/ }).isChecked()))
+await page.evaluate(() => { window.__log = [] })
+const nAl = alerts.length
+await btn('💾 บันทึกร่าง').click(); await wait(300)
+ok('empty delivery selection: NO_RECEIPTS_TEXT alert, no RPC', alerts.length === nAl + 1 && alerts.at(-1) === 'ยังไม่ได้เลือกการส่งของ (ล็อต) — เลือกอย่างน้อย 1 ล็อต' && (await rpcLog()).length === 0, alerts.at(-1) + JSON.stringify(await rpcLog()))
+await page.getByRole('checkbox', { name: /PO-1-R1/ }).check()
+await page.evaluate(() => { window.__extract = () => ({ ok: true, data: { reference_no_guess: 'SCAN-1', document_date_guess: null, prices_include_vat: true,
+  line_items: [{ description: 'Steel', quantity: 1, unit: 'kg', unit_price: 107, discount_pct: 0 }, { description: 'Bolt', quantity: 1, unit: 'ea', unit_price: 107, discount_pct: 0 }] } }) })
+await page.locator('input[type=file]').setInputFiles({ name: 'a.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF') }); await wait(600)
+t = await text()
+ok('scan keeps delivery kind, ticks only rA, no proposal list', await page.getByRole('radio', { name: 'การส่งของ' }).isChecked()
+  && await page.getByRole('checkbox', { name: /PO-1-R1/ }).isChecked() && !(await page.getByRole('checkbox', { name: /PO-1-R2/ }).isChecked())
+  && !t.includes('ยังไม่ได้รวม') && !t.includes('PO-001'), t)
+ok('scan lines ex-VAT 100', await page.locator('input[type=number][step="0.01"][min="0"]').evaluateAll(els => els.filter(e => e.value === '100').length) >= 2)
+ok('scan fills net only if blank (kept 990)', await page.locator('input[type=number]').nth(0).inputValue() === '990')
+await page.setViewportSize({ width: 375, height: 740 }); await wait(200)
+ok('375px: no horizontal page scroll with the picker', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && document.body.scrollWidth <= window.innerWidth + 1), JSON.stringify(await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])))
+ok('375px: running sum inside the viewport', await page.getByTestId('receipt-sum').evaluate(el => el.getBoundingClientRect().right <= window.innerWidth + 1))
+ok('375px: picker row inside the viewport', await page.getByRole('checkbox', { name: /PO-1-R1/ }).evaluate(el => el.closest('label').getBoundingClientRect().right <= window.innerWidth + 1))
+await page.setViewportSize({ width: 1280, height: 800 })
+await page.getByRole('button', { name: 'ยกเลิก' }).first().click(); await wait(300)
+
+console.log('=== D1 stale draft holding a delivery PO')
+const staleInv = inv('DS', 'draft', { supplier_tax_invoice_pos: [link('DS', { po_id: 'PD', purchase_orders: { id: 'PD', po_number: 'PO-DEL' } })] })
+await set('__invoices', [staleInv]); await render()
+await setRpc(`({ save: (id) => id || 'NEW' })`)
+await rowMenu(/INV-DS/, '✏️ แก้ไข'); await wait(700)
+t = await text()
+const DEL_TXT = 'ใบสั่งซื้อนี้ตั้งเป็นใบกำกับต่อการส่งของ จึงผูกทั้งใบไม่ได้ — เอาออก แล้วเลือก "ผูกกับ: การส่งของ"'
+ok('stale delivery PO: not in picker, amber notice with remove button', t.includes('PO-DEL — ' + DEL_TXT) && !(await page.getByRole('checkbox', { name: /PO-DEL/ }).count()) && await page.getByRole('button', { name: 'เอาออก', exact: true }).count() === 1, t)
+ok('stale delivery PO excluded from the match sum', !(await boxText()).includes('มูลค่าสินค้าใบสั่งซื้อ 1,000.00'), await boxText())
+const nAl2 = alerts.length
+await page.evaluate(() => { window.__log = [] })
+await btn('💾 บันทึกร่าง').click(); await wait(300)
+ok('save blocked with the delivery-PO text, no save call', alerts.length === nAl2 + 1 && alerts.at(-1) === DEL_TXT && !(await rpcLog()).includes('save'), alerts.at(-1) + JSON.stringify(await rpcLog()))
+await page.getByRole('button', { name: 'เอาออก', exact: true }).click(); await wait(200)
+await btn('💾 บันทึกร่าง').click(); await wait(400)
+calls = await page.evaluate(() => window.__log.filter(x => x[0] === 'rpc'))
+ok('after เอาออก save calls save without PD', calls.some(c => c[1] === 'save' && !JSON.parse(c[2])[3].includes('PD')), JSON.stringify(calls))
+await page.getByRole('button', { name: 'ยกเลิก' }).first().click(); await wait(300)
+
+console.log('=== D2 page: awaiting list, hand-off, save by kind, list and view of delivery invoices')
+await boot()
+const rlink = (id, rid, seq, date, sub, vat, active = true) => ({ id, receipt_id: rid, active, goods_subtotal: sub, goods_vat: vat, po_receipts: { seq, received_date: date, purchase_orders: { po_number: 'PO-1' } } })
+const dInv = inv('DL', 'posted', { supplier_tax_invoice_pos: [], net_before_vat: 1070, vat: 75, grand_total: 1145,
+  post_result: { checks: [{ code: 'match_vat_inclusive', blocking: false }, { code: 'po_no_receipt_movements', blocking: false, receipt_no: 'PO-1-R2' }] },
+  supplier_tax_invoice_receipts: [rlink('l1', 'rA', 1, '2026-10-04', 600, 42), rlink('l2', 'rB', 2, '2026-10-02', 400, 28), rlink('l3', 'rZ', 9, '2026-09-01', 50, 3, false)] })
+await set('__invoices', [dInv, inv('P', 'posted')])
+await page.evaluate(() => { window.__deliveryReady = true; window.__nav = []; window.__navState = {} }); await render()
+t = await text()
+const card = page.locator('.card', { hasText: '📦 ใบรับของที่รอใบกำกับ' })
+const cardTxt = await card.innerText()
+ok('awaiting: rows rB then rA, rC excluded', /ใบรับของที่รอใบกำกับ \(3\)/.test(cardTxt) && cardTxt.indexOf('PO-1-R2') > 0 && cardTxt.indexOf('PO-1-R1') > cardTxt.indexOf('PO-1-R2') && !cardTxt.includes('PO-1-R3') && cardTxt.includes('Supplier One'), cardTxt)
+await set('__invoices', [dInv, inv('P', 'posted')]); await set('__navState', {})
+await page.getByRole('combobox').first().selectOption(S1).catch(() => {}); await wait(300)
+const cardTxt1 = await card.innerText()
+ok('awaiting (supplier filter Supplier One): count 2 (other supplier hidden)', /ใบรับของที่รอใบกำกับ \(2\)/.test(cardTxt1) && !cardTxt1.includes('PO-9') && cardTxt1.indexOf('PO-1-R2') < cardTxt1.indexOf('PO-1-R1'), cardTxt1)
+await page.locator('div', { hasText: /^PO-1-R1/ }).getByRole('button', { name: '🧾 ลงใบกำกับ' }).last().click(); await wait(500)
+const formState = async () => page.evaluate(() => ({
+  nums: [...document.querySelectorAll('.modal-body input[type=number]')].map(i => i.value),
+  vals: [...document.querySelectorAll('.modal-body input, .modal-body textarea')].map(i => i.value),
+}))
+let fs = await formState()
+ok('click on rA opens delivery form: kind checked, rA ticked, net 600', await page.getByRole('radio', { name: 'การส่งของ' }).isChecked() && await page.getByRole('checkbox', { name: /PO-1-R1/ }).isChecked() && fs.nums[0] === '600', JSON.stringify(fs))
+ok('prefilled line Steel qty 2 unit price 300', fs.vals.includes('Steel') && fs.vals.includes('2') && fs.vals.includes('300'), JSON.stringify(fs.vals))
+await page.getByRole('button', { name: 'ยกเลิก' }).first().click(); await wait(300)
+// hand-off consumed once
+await page.evaluate(() => { window.__nav = []; window.__navState = { newForReceipt: { receiptId: 'rA' } }; window.__log = []; window.__render() }); await wait(700)
+fs = await formState()
+ok('hand-off opens the same form by itself', await page.getByRole('radio', { name: 'การส่งของ' }).isChecked() && fs.nums[0] === '600')
+ok('hand-off consumed: navigateTo(supplier_tax_invoices, {}) once, one form only', JSON.stringify(await page.evaluate(() => window.__nav)) === '[["supplier_tax_invoices",{}]]' && await page.locator('.modal-body').count() === 1, JSON.stringify(await page.evaluate(() => window.__nav)))
+await page.getByRole('button', { name: 'ยกเลิก' }).first().click(); await wait(300)
+await page.evaluate(() => { window.__nav = []; window.__navState = { newForReceipt: { receiptId: 'nope' } }; window.__render() }); await wait(700)
+ok('unknown receipt: HANDOFF_RECEIPT_NOT_FOUND_TEXT alert, no form', alerts.at(-1) === 'ไม่พบการรับของนี้ในรายการ — เปิดจากหน้าใบกำกับภาษีผู้ขาย (ใบรับของที่รอใบกำกับ) แทน' && await page.locator('.modal-body').count() === 0, alerts.at(-1))
+await page.evaluate(() => { window.__navState = {}; window.__deliveryReady = false; window.__render() }); await wait(500)
+ok('not ready: no awaiting card, no crash', !(await text()).includes('ใบรับของที่รอใบกำกับ'))
+await page.evaluate(() => { window.__navState = { newForReceipt: { receiptId: 'rA' } }; window.__render() }); await wait(700)
+ok('not ready hand-off: DELIVERY_NOT_READY_TEXT alert, no form', alerts.at(-1) === 'ใบกำกับต่อการส่งของยังไม่พร้อมใช้งาน' && await page.locator('.modal-body').count() === 0, alerts.at(-1))
+await page.evaluate(() => { window.__navState = {}; window.__deliveryReady = true; window.__render() }); await wait(500)
+// delivery save from the hand-off form goes through saveReceipts; po save through save
+await setRpc(`({ saveReceipts: () => 'NEWD', save: () => 'NEWP' })`)
+await card.getByRole('button', { name: '🧾 ลงใบกำกับ' }).last().click().catch(() => {}); await wait(400)
+await page.locator('label:has-text("เลขที่ใบกำกับภาษี") + input').fill('INV-H'); await wait(100)
+await page.evaluate(() => { window.__log = [] })
+await btn('💾 บันทึกร่าง').click(); await wait(500)
+calls = await page.evaluate(() => window.__log.filter(x => x[0] === 'rpc'))
+ok('hand-off form saves via saveReceipts only', calls.length === 1 && calls[0][1] === 'saveReceipts' && JSON.parse(calls[0][2])[3].length === 1, JSON.stringify(calls))
+await page.getByRole('button', { name: 'ยกเลิก' }).first().click(); await wait(300)
+// rejected delivery read: consumed + told
+await page.evaluate(() => { window.__nav = []; window.__deliveryError = true; window.__navState = { newForReceipt: { receiptId: 'rA' } }; window.__render() }); await wait(700)
+ok('rejected delivery read: consumed once, load-error alert, no form', alerts.at(-1).startsWith('โหลดรายการรับของไม่สำเร็จ') && JSON.stringify(await page.evaluate(() => window.__nav)) === '[["supplier_tax_invoices",{}]]' && await page.locator('.modal-body').count() === 0, alerts.at(-1))
+await page.evaluate(() => { window.__deliveryError = false; window.__nav = []; window.__navState = { newForReceipt: { receiptId: 'rC' } }; window.__render() }); await wait(700)
+ok('already-linked receipt: alert + consumed, no form', alerts.at(-1) === 'การรับของนี้มีใบกำกับผูกอยู่แล้ว — ไม่เปิดใบกำกับใหม่' && (await page.evaluate(() => window.__nav)).length === 1 && await page.locator('.modal-body').count() === 0, alerts.at(-1))
+await page.evaluate(() => { window.__role = 'VIEWER'; window.__nav = []; window.__navState = { newForReceipt: { receiptId: 'rA' } }; window.__render() }); await wait(700)
+ok('no edit permission: alert + consumed, no form', alerts.at(-1) === 'คุณไม่มีสิทธิ์ลงใบกำกับภาษีผู้ขาย' && (await page.evaluate(() => window.__nav)).length === 1 && await page.locator('.modal-body').count() === 0, alerts.at(-1))
+await page.evaluate(() => { window.__role = undefined; window.__navState = {}; window.__render() }); await wait(500)
+// red diff on a mismatching delivery invoice
+await set('__invoices', [{ ...dInv, match_diff: 120, post_result: { checks: [] } }, inv('P', 'posted')]); await render()
+ok('mismatching delivery invoice shows a red diff', await page.getByRole('row', { name: /INV-DL/ }).locator('td').nth(5).evaluate(el => el.style.color !== ''))
+await set('__invoices', [dInv, inv('P', 'posted')]); await render()
+// list + view
+t = await text()
+const rowDL = page.getByRole('row', { name: /INV-DL/ })
+const rowP = page.getByRole('row', { name: /INV-P/ })
+ok('delivery invoice row: 2 ล็อต (voided link not counted)', (await rowDL.innerText()).includes('2 ล็อต') && !(await rowDL.innerText()).includes('3 ล็อต'), await rowDL.innerText())
+ok('po invoice row unchanged: count 1, no ล็อต', (await rowP.locator('td').nth(4).innerText()) === '1', await rowP.innerText())
+ok('no red diff on the matched delivery invoice', await rowDL.locator('td').nth(5).evaluate(el => !el.style.color))
+await rowMenu(/INV-DL/, '👁️ ดูรายละเอียด'); await wait(500)
+t = await text()
+ok('view lists receipts with goods value, not the PO section', t.includes('การส่งของที่ผูก') && t.includes('PO-1-R1') && t.includes('PO-1-R2') && !t.includes('PO-1-R9') && t.includes('600.00') && t.includes('400.00') && !t.includes('ใบสั่งซื้อที่ผูก') && t.includes('ต่างจากมูลค่าที่รับ'), t)
+ok('view check text carries the receipt no', t.includes('หากเดือนนี้ลงสต็อกย้อนหลังไว้แล้ว จะนับซ้ำ (PO-1-R2)'), t)
+await page.setViewportSize({ width: 375, height: 740 }); await wait(200)
+ok('375px: view modal inside the viewport', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
+await page.getByRole('button', { name: 'ปิด' }).first().click(); await wait(200)
+ok('375px: awaiting card fits', await card.evaluate(el => el.getBoundingClientRect().right <= window.innerWidth + 1 && el.getBoundingClientRect().left >= 0) && await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), '')
+await card.getByRole('button', { name: '🧾 ลงใบกำกับ' }).last().click(); await wait(400)
+ok('375px: delivery form fits', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && document.body.scrollWidth <= window.innerWidth + 1), '')
+await page.setViewportSize({ width: 1280, height: 800 })
+await page.getByRole('button', { name: 'ยกเลิก' }).first().click(); await wait(300)
 
 ok('no React errors', (await page.evaluate(() => window.__errors)).length === 0, JSON.stringify(await page.evaluate(() => window.__errors)))
 await browser.close()

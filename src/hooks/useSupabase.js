@@ -2,16 +2,50 @@
 // Custom hook สำหรับ fetch ข้อมูลจาก Supabase
 // รองรับ loading / error state และ refetch
 // ============================================================
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { fetchAllRows } from '../lib/fetchAllRows.js'
 import { buildDepositMap } from '../lib/depositMath.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
-import { buildActiveLinkMap, saveDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
+import { buildActiveLinkMap, saveDraftArgs, saveReceiptDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
 import { isTaxInvoiceNotReady } from '../lib/supplierTaxInvoice.js'
-import { buildPoMoneyIndex, isMissingColumnError, isMissingRelationError } from '../lib/poReceiptErrors.js'
+import { buildPoMoneyIndex, isMissingColumnError, isMissingRelationError, isMissingEmbedError } from '../lib/poReceiptErrors.js'
+import { buildActiveReceiptLinkMap } from '../lib/deliveryTaxInvoice.js'
+import { getCurrentRole } from '../lib/roles.js'
+
+// PM never reads money: the DB denies PM on sites/workers/PO/inventory base
+// tables, so PM goes through SECURITY DEFINER pm_* RPCs (migration 2026-10-17-05).
+const isPm = () => getCurrentRole() === 'PM'
+// Paged with .range() like fetchAllRows: PostgREST's max-rows cap applies to RPC results too.
+// No-arg calls share one in-flight request: a PM page mounts several hooks that
+// each ask for pm_workers/pm_sites in the same tick. Settled calls are not cached.
+const pmRpcInFlight = new Map()
+function pmRpc(name, args) {
+  if (args) return fetchAllRows(() => supabase.rpc(name, args))
+  const pending = pmRpcInFlight.get(name)
+  if (pending) return pending
+  const p = fetchAllRows(() => supabase.rpc(name)).finally(() => pmRpcInFlight.delete(name))
+  pmRpcInFlight.set(name, p)
+  return p
+}
+// Attach the worker/site names a PM cannot embed (workers/sites are not readable by PM).
+async function attachPmNames(rows, { siteShape }) {
+  const [workers, sites] = await Promise.all([pmRpc('pm_workers'), pmRpc('pm_sites')])
+  const wById = new Map(workers.map(w => [w.id, { name: w.name, nickname: w.nickname, position: w.position }]))
+  const sById = new Map(sites.map(x => [x.id, siteShape(x)]))
+  return (rows || []).map(r => ({ ...r, workers: wById.get(r.worker_id) ?? null, sites: sById.get(r.site_id) ?? null }))
+}
+
+// Attach worker names to rows whose `workers(...)` embed is null for a PM.
+// Non-PM rows are returned untouched (their embed already works).
+export async function attachPmWorkerNames(rows) {
+  if (!isPm()) return rows || []
+  const workers = await pmRpc('pm_workers')
+  const byId = new Map(workers.map(w => [w.id, { name: w.name, nickname: w.nickname }]))
+  return (rows || []).map(r => ({ ...r, workers: byId.get(r.worker_id) ?? r.workers ?? null }))
+}
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -41,6 +75,10 @@ export function useQuery(queryFn, deps = []) {
 
 export function useSites() {
   return useQuery(async () => {
+    if (isPm()) {
+      const rows = await pmRpc('pm_sites')
+      return [...rows].sort((a, b) => String(a.site_number ?? '').localeCompare(String(b.site_number ?? '')))
+    }
     const { data, error } = await supabase
       .from('site_financial_summary')  // ใช้ view ที่รวม income/expense แล้ว
       .select('*')
@@ -53,6 +91,11 @@ export function useSites() {
 export function useSite(id) {
   return useQuery(async () => {
     if (!id) return null
+    if (isPm()) {
+      const { data, error } = await supabase.rpc('pm_sites').eq('id', id).single()
+      if (error) throw error
+      return data
+    }
     const { data, error } = await supabase
       .from('sites').select('*').eq('id', id).single()
     if (error) throw error
@@ -69,22 +112,32 @@ export function useCheckinLocations() {
 }
 
 /**
- * site_retention_summary: one row per site with end_date/
- * default_retention_period_days/retention_released state and the summed
- * retention amount held. Sorted unreleased-first (retention_released
+ * site_retention_summary: one row per site with end_date, due_date (warranty
+ * end = handover_date + warranty_months), retention_released state and the
+ * summed retention amount held, plus status/handover_date merged from sites. Sorted unreleased-first (retention_released
  * ascending puts false before true), then soonest due date first within
  * each group (nulls last, since a site with no period set has nothing
  * useful to sort by).
  */
 export function useSiteRetentionSummary() {
   return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('site_retention_summary')
-      .select('*')
-      .order('retention_released', { ascending: true })
-      .order('due_date', { ascending: true, nullsFirst: false })
+    // The view has no status/handover columns; merge them from sites so retentionStatusFor can tell
+    // "รอจบงาน" from "ไม่มีระยะประกัน" (handed over with warranty 0).
+    const [{ data, error }, sites] = await Promise.all([
+      supabase
+        .from('site_retention_summary')
+        .select('*')
+        .order('retention_released', { ascending: true })
+        .order('due_date', { ascending: true, nullsFirst: false }),
+      fetchAllRows(() => supabase.from('sites').select('id, status, handover_date').order('id')),
+    ])
     if (error) throw error
-    return data
+    const byId = new Map(sites.map(s => [s.id, s]))
+    return (data || []).map(r => ({
+      ...r,
+      status: byId.get(r.site_id)?.status ?? null,
+      handover_date: byId.get(r.site_id)?.handover_date ?? null,
+    }))
   })
 }
 
@@ -121,15 +174,23 @@ export function useSiteDepositBalance(siteId) {
 export function useSiteOverview(siteId) {
   return useQuery(async () => {
     if (!siteId) return null
-    const [siteRes, depositRes, retentionRes] = await Promise.all([
+    if (isPm()) {
+      const { data, error } = await supabase.rpc('pm_sites').eq('id', siteId).single()
+      if (error) throw error
+      return { ...data, deposit: null, retention: null }
+    }
+    const [siteRes, depositRes, retentionRes, handoverRes] = await Promise.all([
       supabase.from('site_financial_summary').select('*').eq('id', siteId).single(),
       supabase.from('site_deposit_summary').select('*').eq('site_id', siteId).single(),
       supabase.from('site_retention_summary').select('*').eq('site_id', siteId).single(),
+      supabase.from('sites').select('status, handover_date').eq('id', siteId).single(),
     ])
     if (siteRes.error) throw siteRes.error
     if (depositRes.error) throw depositRes.error
     if (retentionRes.error) throw retentionRes.error
-    return { ...siteRes.data, deposit: depositRes.data, retention: retentionRes.data }
+    if (handoverRes.error) throw handoverRes.error
+    // status/handover_date let retentionStatusFor tell "รอจบงาน" from "ไม่มีระยะประกัน"
+    return { ...siteRes.data, deposit: depositRes.data, retention: { ...retentionRes.data, ...handoverRes.data } }
   }, [siteId])
 }
 
@@ -146,7 +207,7 @@ export function useSiteOverview(siteId) {
  */
 export function useSiteExpensesByCategory(siteId) {
   return useQuery(async () => {
-    if (!siteId) return []
+    if (!siteId || isPm()) return []
     const [expensesRes, summaryRes] = await Promise.all([
       supabase.from('expenses_view').select('category_name, amount').eq('site_id', siteId),
       supabase.from('site_financial_summary').select('worker_labor_cost').eq('id', siteId).single(),
@@ -196,6 +257,17 @@ const PO_LIST_SELECT = '*, sites(name, site_number), suppliers(name, supplier_nu
 
 export function usePurchaseOrders(filters = {}) {
   return useQuery(async () => {
+    if (isPm()) {
+      const rows = await pmRpc('pm_purchase_orders')
+      return rows
+        .filter(r => (!filters.siteId || r.site_id === filters.siteId)
+          && (!filters.supplierId || r.supplier_id === filters.supplierId)
+          && (!filters.status || r.status === filters.status)
+          && (!filters.from || r.date >= filters.from)
+          && (!filters.to || r.date <= filters.to))
+        .map(r => ({ ...r, suppliers: { name: r.supplier_name } }))
+        .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')) || String(b.id).localeCompare(String(a.id)))
+    }
     const buildQuery = () => {
       let q = supabase
         .from('purchase_orders')
@@ -240,10 +312,24 @@ export function useCreditNoteExpenseIds() {
   }, [])
 }
 
+/** PM only: on-hand rows (item code/name/unit, site, quantity) for every site; no cost. */
+export function usePmStockOnHand() {
+  return useQuery(async () => (isPm() ? pmRpc('pm_inventory_on_hand', { p_site_id: null }) : []), [])
+}
+
+/** PM only: one PO's lines without prices (pm_purchase_order_items). */
+export function fetchPmPurchaseOrderItems(poId) {
+  return pmRpc('pm_purchase_order_items', { p_po_id: poId })
+}
+
 /** Quantity on hand per inventory item at one site (for the return shortfall check). */
 export function useInventoryOnHand(siteId) {
   return useQuery(async () => {
     if (!siteId) return {}
+    if (isPm()) {
+      const rows = await pmRpc('pm_inventory_on_hand', { p_site_id: siteId ?? null })
+      return Object.fromEntries(rows.map(r => [r.inventory_item_id, Number(r.quantity_on_hand)]))
+    }
     // a big site has > 1000 balance rows: paginate or on-hand silently reads 0 for dropped items
     const data = await fetchAllRows(() => supabase
       .from('inventory_stock_balances')
@@ -328,7 +414,9 @@ export async function ensureQuotationItemUnits(quotationItems) {
   if (!toSeed.length) return
 
   const rows = toSeed.flatMap(buildUnitSeedRows)
-  const { error: insertError } = await supabase.from('quotation_item_units').insert(rows)
+  // Two loads of the same screen can race past the check above; skip rows the other one already inserted
+  const { error: insertError } = await supabase.from('quotation_item_units')
+    .upsert(rows, { onConflict: 'quotation_item_id,unit_index', ignoreDuplicates: true })
   if (insertError) throw insertError
 }
 
@@ -506,10 +594,10 @@ export function useMyAssignedCheckinLocation() {
       .maybeSingle()
     if (error) throw error
     if (data?.checkin_locations) return data.checkin_locations
-    // No personal assignment -- an ADMIN/OWNER can still check in at the
+    // No personal assignment -- an ADMIN/OWNER/PM can still check in at the
     // tenant's one role='office' location with no per-user setup (mirrors
     // the perform_location_checkin RPC's own fallback, added 2026-10-02).
-    if (data?.role === 'ADMIN' || data?.role === 'OWNER') {
+    if (data?.role === 'ADMIN' || data?.role === 'OWNER' || data?.role === 'PM') {
       const { data: office, error: officeError } = await supabase
         .from('checkin_locations')
         .select('id, name')
@@ -592,6 +680,41 @@ export function useMySignatureUrl() {
     return () => { cancelled = true }
   }, [signature])
   return signature && url ? { url } : null
+}
+
+// ลายเซ็น + ชื่อของ "ผู้จัดทำเอกสาร" (owner 2026-10-16: เอกสารต้องมีลายเซ็นของคนทำ ไม่ใช่ของคนที่เปิด/export)
+// email: undefined = ผู้ใช้ที่ล็อกอินอยู่ (ตัวอย่าง/พรีวิวเอกสารที่ยังไม่บันทึก), null = ไม่ทราบผู้ทำ (เว้นว่าง),
+// string = อีเมลผู้ทำจาก created_by ของเอกสาร อ่านลายเซ็นคนอื่นในบริษัทเดียวกันได้ตาม policy ใน migration
+// 2026-10-17-01 ชื่อใต้ลายเซ็นมาจาก document_signer_name() คืน { url, name } หรือ null
+export async function loadDocumentSigner(email) {
+  let who = email
+  if (who === undefined) {
+    const { data: { session } } = await supabase.auth.getSession()
+    who = session?.user?.email || null
+  }
+  if (!who) return null
+  const [{ data: sig }, { data: name }] = await Promise.all([
+    supabase.from('user_signatures').select('signature_path').eq('user_email', who).maybeSingle(),
+    supabase.rpc('document_signer_name', { p_email: who }),
+  ])
+  let url = null
+  if (sig?.signature_path) {
+    const { data } = await supabase.storage.from('user-signatures').createSignedUrl(sig.signature_path, 300)
+    url = data?.signedUrl || null
+  }
+  return url || name ? { url, name: name || null } : null
+}
+
+export function useDocumentSigner(email) {
+  const [signer, setSigner] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    loadDocumentSigner(email)
+      .then(v => { if (!cancelled) setSigner(v) })
+      .catch(() => { if (!cancelled) setSigner(null) })
+    return () => { cancelled = true }
+  }, [email])
+  return signer
 }
 
 // ชื่อพนักงานที่ผูกกับ user ที่ล็อกอินอยู่ตอนนี้ (workers.email = session
@@ -696,6 +819,7 @@ export function useIncomes(filters = {}) {
 
 export function useWorkers() {
   return useQuery(async () => {
+    if (isPm()) return (await pmRpc('pm_workers')).filter(w => w.status === 'active' && w.show_in_assign === true)
     const { data, error } = await supabase
       .from('workers_with_rate')
       .select('*')
@@ -712,6 +836,7 @@ export function useWorkers() {
 // schedule even if an admin has hidden them from the Assign roster.
 export function useAllActiveWorkers() {
   return useQuery(async () => {
+    if (isPm()) return (await pmRpc('pm_workers')).filter(w => w.status === 'active')
     const { data, error } = await supabase
       .from('workers_with_rate')
       .select('*')
@@ -729,6 +854,16 @@ export function useAssignments(month, year) {
     if (!month || !year) return []
     const from = `${year}-${String(month).padStart(2,'0')}-01`
     const to   = new Date(year, month, 0).toISOString().slice(0,10)
+    if (isPm()) {
+      const { data, error } = await supabase
+        .from('worker_assignments')
+        .select('*')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date')
+      if (error) throw error
+      return attachPmNames(data, { siteShape: x => ({ name: x.name, site_number: x.site_number }) })
+    }
     const { data, error } = await supabase
       .from('worker_assignments')
       .select('*, workers(name, nickname, position, monthly_salary, monthly_contribution, has_social_security), sites(name, site_number)')
@@ -742,17 +877,30 @@ export function useAssignments(month, year) {
 
 /** Assignments ในช่วงวันที่ (รวม shift) — ใช้กับมุมมอง Day/Week/Month */
 export function useAssignmentsRange(from, to) {
-  return useQuery(async () => {
+  return useQuery(() => loadAssignmentsRange(from, to), [from, to])
+}
+
+/** The loader behind useAssignmentsRange (PM-safe: names via pm_workers/pm_sites). */
+export async function loadAssignmentsRange(from, to) {
     if (!from || !to) return []
+    if (isPm()) {
+      const { data, error } = await supabase
+        .from('worker_assignments')
+        .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, repair_ticket_id')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date')
+      if (error) throw error
+      return attachPmNames(data, { siteShape: x => ({ name: x.name, site_number: x.site_number, is_default: x.is_default }) })
+    }
     const { data, error } = await supabase
       .from('worker_assignments')
-      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, workers(name, nickname, monthly_salary), sites(name, site_number)')
+      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, repair_ticket_id, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number, is_default)')
       .gte('date', from)
       .lte('date', to)
       .order('date')
     if (error) throw error
     return data
-  }, [from, to])
 }
 
 /** ค่าแรงช่างต่อไซท์ */
@@ -778,6 +926,95 @@ export function useSitePhases({ includeIssues = false } = {}) {
     .order('sort_order', { ascending: true })))
   const visible = useMemo(() => (data && !includeIssues ? data.filter(p => !p.is_issue_phase) : data), [data, includeIssues])
   return { data: visible, loading, error, refetch }
+}
+
+/** PLAN versions of one site (immutable snapshots, newest first) + their items by plan id.
+ *  Fails soft: before the migration is applied (or on any error) `plans` is [] and
+ *  `error` is set, so callers can tell "no PLAN yet" (error null) from "could not load". */
+export function useSitePlans(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return { plans: [], items: {} }
+    const { data: plans, error: pErr } = await supabase
+      .from('site_plans')
+      .select('id, version, note, is_auto, created_by, created_at')
+      .eq('site_id', siteId)
+      .order('version', { ascending: false })
+    if (pErr) throw pErr
+    const items = {}
+    if (plans.length) {
+      const { data: rows, error: iErr } = await supabase
+        .from('site_plan_items').select('*').in('plan_id', plans.map(p => p.id))
+      if (iErr) throw iErr
+      ;(rows || []).forEach(r => { (items[r.plan_id] ||= []).push(r) })
+    }
+    return { plans, items }
+  }, [siteId])
+  return { plans: data?.plans ?? [], items: data?.items ?? {}, loading, error, reload: refetch }
+}
+
+/** Whether the site has a saved PLAN (any site_plans row): true / false, or null while
+ *  loading, on error, or before migration 07 (no table). Light: one id, no items.
+ *  The Kanban uses it to start new cards as not_started before PLAN v1 (DB gate). */
+export function useSiteHasPlan(siteId) {
+  const { data, error, refetch } = useQuery(async () => {
+    if (!siteId) return null
+    const { data: rows, error: err } = await supabase
+      .from('site_plans').select('id').eq('site_id', siteId).limit(1)
+    if (err) throw err
+    return (rows || []).length > 0
+  }, [siteId])
+  return { hasPlan: error ? null : (data ?? null), reload: refetch }
+}
+
+/** Daily % ตามสัญญา snapshots of one site (site_progress_daily: day, contract_pct),
+ *  oldest first -- the S-curve's งานจริง line. No money here (% รวม VO lives in the
+ *  OWNER/ADMIN-only site_progress_daily_money). Fails soft like useBoqItems. */
+export function useSiteProgressDaily(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return []
+    return fetchAllRows(() => supabase
+      .from('site_progress_daily')
+      .select('day, contract_pct')
+      .eq('site_id', siteId)
+      .order('day', { ascending: true }))
+  }, [siteId])
+  return { data: data ?? [], loading, error, refetch }
+}
+
+/** BOQ lines of one site (boq_items, sort_order). Fails soft: before the migration
+ *  is applied (or on any error) `data` is [] so the Kanban keeps working. */
+export function useBoqItems(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return []
+    const { data: rows, error: err } = await supabase
+      .from('boq_items')
+      .select('id, code, description, unit, planned_qty, sort_order')
+      .eq('site_id', siteId)
+      .order('sort_order', { ascending: true })
+    if (err) throw err
+    // Rows read in รหัส order (1, 2, …, 10, 11), natural sort; no code -> last, then sort_order.
+    return (rows || []).slice().sort((x, y) => {
+      if (!x.code !== !y.code) return x.code ? -1 : 1
+      return String(x.code ?? '').localeCompare(String(y.code ?? ''), 'th', { numeric: true }) || (x.sort_order ?? 0) - (y.sort_order ?? 0)
+    })
+  }, [siteId])
+  return { data: data ?? [], loading, error, refetch }
+}
+
+/** Quantity entries of one card (progress_reports), newest first, cancelled rows
+ *  included (shown struck through). Fails soft like useBoqItems. */
+export function useProgressReports(taskId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!taskId) return []
+    const { data: rows, error: err } = await supabase
+      .from('progress_reports')
+      .select('id, qty, work_date, note, created_by, created_at, cancelled_at, cancelled_by')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false })
+    if (err) throw err
+    return rows || []
+  }, [taskId])
+  return { data: data ?? [], loading, error, refetch }
 }
 
 /** ขั้นตอนย่อย (Subtask) ทุกไซท์ ทุกชั้น -- ซ้อนกันได้ไม่จำกัดชั้นผ่าน
@@ -808,9 +1045,19 @@ export function usePhaseTasks() {
 export function useWorkerOTRange(from, to) {
   return useQuery(async () => {
     if (!from || !to) return []
+    if (isPm()) {
+      const { data, error } = await supabase
+        .from('worker_ot')
+        .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date')
+      if (error) throw error
+      return attachPmNames(data, { siteShape: x => ({ name: x.name, site_number: x.site_number }) })
+    }
     const { data, error } = await supabase
       .from('worker_ot')
-      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, workers(name, nickname, monthly_salary), sites(name, site_number)')
+      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number)')
       .gte('date', from)
       .lte('date', to)
       .order('date')
@@ -939,6 +1186,7 @@ export function useSickLeaveQuotaUsage(year) {
  *  useMySiteNames() ด้านล่างสำหรับ path ที่ WORKER ใช้ได้จริง */
 export function useSitesProgress() {
   return useQuery(async () => {
+    if (isPm()) return []
     const { data, error } = await supabase
       .from('sites_progress')
       .select('id, site_number, name, status, start_date, end_date, billing_pct')
@@ -1078,37 +1326,6 @@ export function useCheques() {
     if (error) throw error
     return data
   })
-}
-
-// ── Salary ───────────────────────────────────────────────────
-
-export function useSalary(month, year) {
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('salary_records')
-      .select('*, workers(name, nickname, position, email)')
-      .eq('month', month)
-      .eq('year', year)
-      .order('workers(name)')
-    if (error) throw error
-    return data
-  }, [month, year])
-}
-
-/** เดือนก่อนหน้า — ใช้สำหรับ copy previous month ใน payroll */
-export function usePreviousMonthSalaries(month, year) {
-  const prevMonth = month === 1 ? 12 : month - 1
-  const prevYear  = month === 1 ? year - 1 : year
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('salary_records')
-      .select('*, workers(id, name, nickname, position, monthly_salary, monthly_contribution, has_social_security)')
-      .eq('month', prevMonth)
-      .eq('year', prevYear)
-      .order('workers(name)')
-    if (error) throw error
-    return data
-  }, [month, year])
 }
 
 // ── Clients ──────────────────────────────────────────────────
@@ -1295,15 +1512,60 @@ export function useAllLaborPayments(filters = {}) {
  * security boundary is the platform_admins check inside
  * platform_list_tenants()/platform_set_tenant_package() themselves.
  */
+/**
+ * Is the CURRENT session's email in platform_admins? Reads the session
+ * fresh every call so a logout -> login as another account in the same
+ * tab re-evaluates (the old useQuery(..., []) version checked once per
+ * page load and kept showing the platform-admin tabs to a non-admin).
+ */
+export async function checkPlatformAdmin() {
+  const { data: { session } } = await supabase.auth.getSession()
+  const email = session?.user?.email
+  if (!email) return false
+  const { data, error } = await supabase
+    .from('platform_admins').select('user_email').eq('user_email', email).maybeSingle()
+  if (error) throw error
+  return !!data
+}
+
 export function usePlatformAdmin() {
-  return useQuery(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user?.email) return false
-    const { data, error } = await supabase
-      .from('platform_admins').select('user_email').eq('user_email', user.email).maybeSingle()
-    if (error) throw error
-    return !!data
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  // Same pattern as useUserRole: re-check on every auth change, but only
+  // the FIRST check shows as loading -- ProtectedPage unmounts its
+  // children while a gate is loading, and onAuthStateChange also fires
+  // on routine token refresh / tab refocus.
+  // Overlapping checks (mount + token refresh, or logout then login) may resolve out of
+  // order; only the newest one may write, so an old account's answer never lands on the new one.
+  const seq = useRef(0)
+  const fetch = useCallback(async () => {
+    const mine = ++seq.current
+    try {
+      const ok = await checkPlatformAdmin()
+      if (mine !== seq.current) return
+      setData(ok)
+      setError(null)
+    } catch (err) {
+      if (mine !== seq.current) return
+      setError(err.message)
+    } finally {
+      if (mine === seq.current) setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetch()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'INITIAL_SESSION') return // the mount fetch above covers it
+      if (event === 'SIGNED_OUT') { seq.current++; setData(false); return }
+      fetch()
+    })
+    return () => subscription.unsubscribe()
+  }, [fetch])
+
+  return { data, loading, error, refetch: fetch }
 }
 
 export function usePlatformTenants() {
@@ -1541,6 +1803,14 @@ export function useStockBalances() {
     .from('inventory_stock_balances')
     .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm, category_id, expense_categories(name)), sites(name, site_number)')
     .order('inventory_item_id')))
+}
+
+/** DP (finished goods) / DM (raw material) documents issued by invoice stock deduction. */
+export function useStockDocuments() {
+  return useQuery(async () => fetchAllRows(() => supabase
+    .from('stock_documents')
+    .select('id, doc_type, doc_number, doc_date, invoice_id, parent_document_id, target_total, target_splits')
+    .order('doc_number')))
 }
 
 /** Append-only stock ledger, newest first -- the stock card. */
@@ -1796,6 +2066,91 @@ export function useSplitPaymentReady() {
   return data
 }
 
+// ── Invoice deposit choice (2026-10-09-07) ─────────
+// invoices.deposit_deduction_amount exists only once that migration is live. Selecting the column fails with 42703
+// before then, so "no error" means the create-invoice form may show the deposit box and write the column. One call per
+// session; a failed call is not cached so the next form retries.
+let invoiceDepositChoiceProbe = null
+/** Test helper: forget the cached probe. */
+export function resetInvoiceDepositChoiceProbe() { invoiceDepositChoiceProbe = null }
+export function invoiceDepositChoiceReadyProbe() {
+  if (!invoiceDepositChoiceProbe) {
+    invoiceDepositChoiceProbe = Promise.resolve()
+      .then(() => supabase.from('invoices').select('deposit_deduction_amount').limit(1))
+      .then(({ error }) => {
+        if (error) { invoiceDepositChoiceProbe = null; return false }
+        return true
+      })
+      .catch(() => { invoiceDepositChoiceProbe = null; return false })
+  }
+  return invoiceDepositChoiceProbe
+}
+/**
+ * Deposit already promised by this site's UNPAID invoices (invoices.deposit_deduction_amount). The deposit balance
+ * view only drops when an invoice is marked paid, so without this a second invoice could promise the same deposit again.
+ * Only call with a siteId once the deposit-choice columns exist (see useInvoiceDepositChoiceReady). Returns
+ * { total, invoices: [{ invoice_number, amount }] }.
+ */
+export function useSiteReservedDeposit(siteId) {
+  return useQuery(async () => {
+    if (!siteId) return { total: 0, invoices: [] }
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('invoice_number, status, is_deposit, deposit_deduction_amount')
+      .eq('site_id', siteId)
+      .eq('status', 'unpaid')
+      .eq('is_deposit', false)
+      .gt('deposit_deduction_amount', 0)
+    if (error) throw error
+    const rows = data || []
+    return {
+      total: Math.round(rows.reduce((s, r) => s + (Number(r.deposit_deduction_amount) || 0), 0) * 100) / 100,
+      invoices: rows.map(r => ({ invoice_number: r.invoice_number, amount: Number(r.deposit_deduction_amount) || 0 })),
+    }
+  }, [siteId])
+}
+
+/** true = the invoice deposit-choice columns exist; false = not live / unknown. */
+export function useInvoiceDepositChoiceReady() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let alive = true
+    invoiceDepositChoiceReadyProbe().then(v => { if (alive) setReady(v) })
+    return () => { alive = false }
+  }, [])
+  return ready
+}
+
+// ── PO un-receive reverses stock (2026-10-09-06) ─────────
+// po_unreceive_reverses_stock() exists only once that migration is live. Only the confirm-dialog sentence depends on
+// it, so every failure means "don't show it" (false) and never throws. One call per session (cached promise); a
+// failed call is not cached so the next dialog retries.
+let unreceiveProbePromise = null
+/** Test helper: forget the cached probe. */
+export function resetUnreceiveProbeCache() { unreceiveProbePromise = null }
+export function poUnreceiveReversesStockProbe() {
+  if (!unreceiveProbePromise) {
+    unreceiveProbePromise = Promise.resolve()
+      .then(() => supabase.rpc('po_unreceive_reverses_stock'))
+      .then(({ data, error }) => {
+        if (error) { unreceiveProbePromise = null; return false }   // PGRST202 / 42883 = not live yet; anything else = unknown
+        return data === true
+      })
+      .catch(() => { unreceiveProbePromise = null; return false })
+  }
+  return unreceiveProbePromise
+}
+/** true = un-receive / cancel of a legacy received PO reverses its stock on the server; false = not live / unknown. */
+export function usePoUnreceiveReversesStock() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let alive = true
+    poUnreceiveReversesStockProbe().then(v => { if (alive) setReady(v) })
+    return () => { alive = false }
+  }, [])
+  return ready
+}
+
 /** One PO's receipts, own deposit (with all its applications), applications to this PO, bills. */
 export function usePoLedger(poId) {
   return useQuery(() => fetchPoLedger(poId), [poId])
@@ -1866,16 +2221,23 @@ export async function splitPayment({ expenseId, amount, paidDate, method }) {
 
 // List: item columns narrowed to what a list needs. The edit form loads one invoice with all item
 // columns through useSupplierTaxInvoice(id). `notReady` = the migration is not applied yet.
+const STI_LIST_SELECT = '*, suppliers!sti_supplier_fk(name, supplier_number), supplier_tax_invoice_items!stii_invoice_fk(id, sort_order, description, amount), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no, purchase_orders!stip_po_fk(id, po_number, date, site_id, supplier_id, status))'
+const STI_ONE_SELECT = '*, supplier_tax_invoice_items!stii_invoice_fk(*), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no)'
+// per-delivery links (2026-10-09-04); before the migration the relationship is missing: retry without it
+const STI_RECEIPTS_EMBED = ', supplier_tax_invoice_receipts!stirc_invoice_fk(id, receipt_id, po_id, active, goods_subtotal, goods_vat, po_receipts!stirc_receipt_fk(seq, received_date, purchase_orders!po_receipts_po_fk(po_number)))'
+const withReceiptsFallback = async run => {
+  try { return await run(STI_RECEIPTS_EMBED) } catch (e) { if (isMissingEmbedError(e, 'supplier_tax_invoice_receipts')) return run(''); throw e }
+}
+
 export function useSupplierTaxInvoices(filters = {}) {
-  const r = useQuery(async () => fetchAllRows(() => {
-    let q = supabase.from('supplier_tax_invoices')
-      .select('*, suppliers!sti_supplier_fk(name, supplier_number), supplier_tax_invoice_items!stii_invoice_fk(id, sort_order, description, amount), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no, purchase_orders!stip_po_fk(id, po_number, date, site_id, supplier_id, status))')
+  const r = useQuery(async () => withReceiptsFallback(extra => fetchAllRows(() => {
+    let q = supabase.from('supplier_tax_invoices').select(STI_LIST_SELECT + extra)
       .order('invoice_date', { ascending: false })
       .order('id', { ascending: false })
     if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
     if (filters.status) q = q.eq('status', filters.status)
     return q
-  }), [JSON.stringify(filters)])
+  })), [JSON.stringify(filters)])
   return { ...r, notReady: isTaxInvoiceNotReady(r.error) }
 }
 
@@ -1883,11 +2245,11 @@ export function useSupplierTaxInvoices(filters = {}) {
 export function useSupplierTaxInvoice(id) {
   const r = useQuery(async () => {
     if (!id) return null
-    const { data, error } = await supabase.from('supplier_tax_invoices')
-      .select('*, supplier_tax_invoice_items!stii_invoice_fk(*), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no)')
-      .eq('id', id).maybeSingle()
-    if (error) throw error
-    return data
+    return withReceiptsFallback(async extra => {
+      const { data, error } = await supabase.from('supplier_tax_invoices').select(STI_ONE_SELECT + extra).eq('id', id).maybeSingle()
+      if (error) throw error
+      return data
+    })
   }, [id])
   return { ...r, notReady: isTaxInvoiceNotReady(r.error) }
 }
@@ -1913,6 +2275,70 @@ export const deleteSupplierTaxInvoiceDraft = id => rpcOrThrow(TAX_INVOICE_RPCS.d
 export const previewSupplierTaxInvoice = id => rpcOrThrow(TAX_INVOICE_RPCS.preview, idArgs(id))
 export const postSupplierTaxInvoice = (id, expectedRevision) => rpcOrThrow(TAX_INVOICE_RPCS.post, postArgs(id, expectedRevision))
 export const voidSupplierTaxInvoice = (id, reason) => rpcOrThrow(TAX_INVOICE_RPCS.void, voidArgs(id, reason))
+export const saveSupplierTaxInvoiceReceiptDraft = (id, header, items, receiptIds) => rpcOrThrow(TAX_INVOICE_RPCS.saveReceipts, saveReceiptDraftArgs(id, header, items, receiptIds))
+
+// ── Supplier tax invoice per delivery (2026-10-09-04..05) ─────────
+// Before the migration the link table / mode column do not exist: these return { ready: false, ... } and never
+// throw for that case, so the PO page, the receive dialog and the tax invoice page behave as today.
+
+/** Keyed on delivery_tax_invoice_ready(), created by 2026-10-09-05 (NOT on 04's table): false until BOTH are live. */
+let deliveryReadyCached = false
+/** Test helper: forget the per-session cached TRUE. */
+export function resetDeliveryReadyCache() { deliveryReadyCached = false }
+export async function deliveryReadyProbe() {
+  if (deliveryReadyCached) return true
+  const { data, error } = await supabase.rpc('delivery_tax_invoice_ready')
+  if (error) {
+    // only "function missing" means the migration is not live; network / auth / 5xx must surface (hook error + refetch),
+    // never a silent false that sticks for the whole session
+    if (error.code === 'PGRST202' || error.code === '42883' || /could not find the function/i.test(String(error.message || ''))) return false
+    throw error
+  }
+  if (data === true) deliveryReadyCached = true
+  return data === true
+}
+/** true = the per-delivery migrations are live; false = not yet; null while loading or when the probe failed (unknown). */
+export function useDeliveryTaxInvoiceReady() {
+  return useQuery(deliveryReadyProbe, []).data
+}
+
+const DELIVERY_RECEIPT_SELECT = 'id, po_id, seq, received_date, goods_subtotal, goods_vat, expense_id, '
+  + 'purchase_orders!po_receipts_po_fk!inner(id, po_number, supplier_id, site_id, tax_invoice_mode, stock_from_invoice, has_vat, price_includes_vat), '
+  + 'po_receipt_items!po_receipt_items_receipt_fk(id, po_item_id, quantity, line_total, base_qty, unit_cost, stock_movement_id, '
+  + 'purchase_order_items!po_receipt_items_item_fk(description, unit, quantity, unit_price, discount_pct, line_total, inventory_item_id))'
+
+/** Receipts of 'delivery' POs (every supplier of the tenant). data = { ready, rows } | null while loading. */
+export function useDeliveryReceipts() {
+  return useQuery(fetchDeliveryReceipts, [])
+}
+export async function fetchDeliveryReceipts() {
+  if (!(await deliveryReadyProbe())) return { ready: false, rows: [] }
+  try {
+    const rows = await fetchAllRows(() => supabase.from('po_receipts').select(DELIVERY_RECEIPT_SELECT)
+      .eq('purchase_orders.tax_invoice_mode', 'delivery').order('id'))
+    return { ready: true, rows }
+  } catch (e) {
+    if (isMissingRelationError(e) || isMissingColumnError(e, 'tax_invoice_mode')) return { ready: false, rows: [] }
+    throw e
+  }
+}
+
+/** data = { ready, map: Map<receipt_id, {invoice_id, invoice_no, status}> } | null while loading. */
+export function useActiveReceiptTaxInvoiceLinks() {
+  return useQuery(fetchActiveReceiptLinks, [])
+}
+export async function fetchActiveReceiptLinks() {
+  if (!(await deliveryReadyProbe())) return { ready: false, map: new Map() }
+  try {
+    const rows = await fetchAllRows(() => supabase.from('supplier_tax_invoice_receipts')
+      .select('receipt_id, invoice_id, active, supplier_tax_invoices!stirc_invoice_fk(invoice_no, status)')
+      .eq('active', true).order('id'))
+    return { ready: true, map: buildActiveReceiptLinkMap(rows) }
+  } catch (e) {
+    if (isMissingRelationError(e)) return { ready: false, map: new Map() }
+    throw e
+  }
+}
 
 /** Received POs of one supplier, tagged with the supplier they were fetched for.
  *  useQuery keeps the previous data while a new fetch runs, so a consumer must compare

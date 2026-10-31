@@ -2,10 +2,20 @@
 // PhaseManageModal — เพิ่ม/แก้/ลบขั้นตอนงานของไซท์เดียว
 // status ยังตั้งเองได้ตรงๆ ในเฟสนี้ (จะกลายเป็นค่าคำนวณจาก phase_tasks
 // ในแผนถัดไปตอนทำ Kanban -- ดู docs/superpowers/specs/2026-09-17-site-gantt-kanban-design.md)
+//
+// VO: a phase can be marked VO (site_phases.is_vo, optional vo_ref; its
+// billing_weight_pct is forced to 0). The VO baht value is money: it is shown
+// only to roles that canSeeMoney and saved to phase_vo_values (OWNER/ADMIN
+// RLS), never to site_phases. Before migration 07 the rows have no is_vo
+// column, so the VO fields are neither shown nor sent.
 // ============================================================
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal } from '../../components/Modal.jsx'
+import { useUserRole } from '../../hooks/useUserRole.js'
+import { canSeeMoney } from '../../lib/roles.js'
+import { useProgressSchemaReady } from '../../lib/progressSchema.js'
+import { withVoColumns, loadPhaseVoValues, savePhaseVoValues } from './phaseVo.js'
 
 const STATUS_OPTS = [
   { value: 'not_started', label: 'ยังไม่เริ่ม' },
@@ -16,10 +26,24 @@ const STATUS_OPTS = [
 let tempIdCounter = 0
 function nextTempId() { tempIdCounter -= 1; return tempIdCounter }
 
-export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
+// boqMode: the site's phase weights are derived from the BOQ split (read-only here).
+export default function PhaseManageModal({ site, phases, onClose, onSaved, boqMode = false }) {
+  const { role } = useUserRole()
   const [rows, setRows] = useState(() => phases.map((p) => ({ ...p })))
   const [saving, setSaving] = useState(false)
   const originalIds = phases.map((p) => p.id)
+  const voReady = useProgressSchemaReady()
+  const showVoValue = voReady && canSeeMoney(role)
+  // phase id -> VO value as typed ('' = none)
+  const [voValues, setVoValues] = useState({})
+
+  useEffect(() => {
+    if (!showVoValue || !originalIds.length) return
+    let cancelled = false
+    // fail soft: on an error the value fields just start empty
+    loadPhaseVoValues(originalIds).then((m) => { if (!cancelled) setVoValues((v) => ({ ...m, ...v })) })
+    return () => { cancelled = true }
+  }, [showVoValue, originalIds.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setRow = (id, patch) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   const addRow = () => setRows((rs) => [
@@ -28,12 +52,12 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
   ])
   const removeRow = (id) => setRows((rs) => rs.filter((r) => r.id !== id))
 
-  const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.billing_weight_pct) || 0), 0)
+  const totalWeight = rows.reduce((s, r) => s + (r.is_vo ? 0 : parseFloat(r.billing_weight_pct) || 0), 0)
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      const clean = (r) => ({
+      const clean = (r) => withVoColumns({
         site_id: site.id,
         name: r.name,
         sort_order: r.sort_order,
@@ -42,7 +66,7 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
         status: r.status,
         billing_weight_pct: parseFloat(r.billing_weight_pct) || 0,
         depends_on_phase_id: r.depends_on_phase_id || null,
-      })
+      }, r, voReady)
       const toUpdate = rows.filter((r) => !r.isNew).map((r) => ({ id: r.id, ...clean(r) }))
       const toInsert = rows.filter((r) => r.isNew).map((r) => clean(r))
       const keptIds = rows.filter((r) => !r.isNew).map((r) => r.id)
@@ -52,9 +76,18 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
         const { error } = await supabase.from('site_phases').upsert(toUpdate)
         if (error) throw error
       }
+      const newRows = rows.filter((r) => r.isNew)
+      const idOf = {} // row id (temp id for new rows) -> real phase id
+      rows.filter((r) => !r.isNew).forEach((r) => { idOf[r.id] = r.id })
       if (toInsert.length) {
-        const { error } = await supabase.from('site_phases').insert(toInsert)
+        const { data: inserted, error } = await supabase.from('site_phases').insert(toInsert).select('id')
         if (error) throw error
+        ;(inserted || []).forEach((p, i) => { if (newRows[i]) idOf[newRows[i].id] = p.id })
+      }
+      if (showVoValue) {
+        // existing phases always (a removed flag/value deletes the row); new ones only when VO
+        await savePhaseVoValues(rows.filter((r) => idOf[r.id] && (!r.isNew || r.is_vo))
+          .map((r) => ({ phaseId: idOf[r.id], isVo: !!r.is_vo, value: voValues[r.id] })))
       }
       if (deletedIds.length) {
         const { error } = await supabase.from('site_phases').delete().in('id', deletedIds)
@@ -80,8 +113,15 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
             <select className="select" value={r.status} onChange={(e) => setRow(r.id, { status: e.target.value })}>
               {STATUS_OPTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <input type="number" className="input input-sm" min="0" max="100" value={r.billing_weight_pct}
+            {boqMode ? (
+              <span data-testid="weight-boq-mode" title="น้ำหนักเฟสคิดจาก BOQ แก้ที่แท็บ BOQ › แบ่ง % ต่อเฟส" style={{ fontSize: 11.5, color: 'var(--text2)' }}>
+                {r.is_vo ? 0 : (Number(r.billing_weight_pct) || 0)}% · คิดจาก BOQ
+              </span>
+            ) : (
+            <input type="number" className="input input-sm" min="0" max="100" value={r.is_vo ? 0 : r.billing_weight_pct}
+              disabled={!!r.is_vo} title={r.is_vo ? 'งาน VO ไม่นับ % เบิกเงินตามสัญญา' : undefined}
               onChange={(e) => setRow(r.id, { billing_weight_pct: e.target.value })} placeholder="%" />
+            )}
             <select className="select" value={r.depends_on_phase_id || ''} onChange={(e) => setRow(r.id, { depends_on_phase_id: e.target.value })}>
               <option value="">— ไม่ขึ้นกับขั้นตอนอื่น —</option>
               {rows.filter((other) => other.id !== r.id && !other.isNew).map((other) => (
@@ -89,6 +129,22 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
               ))}
             </select>
             <button type="button" className="btn btn-sm btn-danger" onClick={() => removeRow(r.id)}>✕</button>
+            {voReady && (
+              <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12, color: 'var(--text2)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!r.is_vo} onChange={(e) => setRow(r.id, { is_vo: e.target.checked })} />
+                  งานเพิ่ม (VO)
+                </label>
+                {r.is_vo && (
+                  <input className="input input-sm" style={{ width: 140 }} aria-label="เลขที่ VO" placeholder="เลขที่ VO"
+                    value={r.vo_ref || ''} onChange={(e) => setRow(r.id, { vo_ref: e.target.value })} />
+                )}
+                {r.is_vo && showVoValue && (
+                  <input type="number" min="0" className="input input-sm" style={{ width: 140 }} aria-label="มูลค่า VO (บาท)" placeholder="มูลค่า VO (บาท)"
+                    value={voValues[r.id] ?? ''} onChange={(e) => setVoValues((v) => ({ ...v, [r.id]: e.target.value }))} />
+                )}
+              </div>
+            )}
           </div>
         ))}
         <button type="button" className="btn btn-sm btn-ghost" onClick={addRow}>+ เพิ่มขั้นตอน</button>

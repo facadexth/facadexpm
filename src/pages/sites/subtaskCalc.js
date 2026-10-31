@@ -14,6 +14,7 @@
 //   computeNodeStats('p1', ...) -> derives from s1+s2 (2/2 done) -> done, weight 30
 // ============================================================
 import { computePhaseTaskStats } from './phaseTasksCalc.js'
+import { weightedMean, round2 } from './progressCalc.js'
 
 /**
  * Groups subtasks by their direct parent's id: a phase's id maps to its
@@ -38,7 +39,10 @@ export function isLeaf(nodeId, subtasksByParent) {
 /**
  * Recursive status/billing roll-up for one node:
  *   - >=1 child subtask -> derive done/total + derivedStatus from the
- *     children's OWN derived statuses (recursing), and billingWeightPct
+ *     children's OWN derived statuses (recursing); pct = the weighted
+ *     mean of the children's % by their own billing_weight_pct (plain mean
+ *     when those are all 0 -- node_progress in migration 09 / progressCalc.js;
+ *     a child with nothing to derive from counts done 100, else 0); billingWeightPct
  *     = sum of the children's own billingWeightPct-or-manual-weight
  *   - else >=1 microtask -> derive from microtasks via the existing
  *     computePhaseTaskStats (source: 'microtasks'); billingWeightPct
@@ -53,7 +57,8 @@ export function computeNodeStats(nodeId, subtasksByParent, microtasksByNodeId) {
     const childStats = children.map((c) => {
       const stats = computeNodeStats(c.id, subtasksByParent, microtasksByNodeId)
       const weight = stats.billingWeightPct != null ? stats.billingWeightPct : (Number(c.billing_weight_pct) || 0)
-      return { ...stats, weight }
+      const pctOfChild = stats.source === 'manual' ? (c.status === 'done' ? 100 : 0) : stats.pct
+      return { ...stats, weight, pctOfChild, ownWeight: Number(c.billing_weight_pct) || 0 }
     })
     const total = childStats.length
     const done = childStats.filter((s) => s.derivedStatus === 'done').length
@@ -61,7 +66,8 @@ export function computeNodeStats(nodeId, subtasksByParent, microtasksByNodeId) {
       ? 'done'
       : childStats.some((s) => s.derivedStatus && s.derivedStatus !== 'not_started') ? 'in_progress' : 'not_started'
     const billingWeightPct = childStats.reduce((sum, s) => sum + s.weight, 0)
-    return { total, done, pct: Math.round((done / total) * 100), derivedStatus, billingWeightPct, source: 'subtasks' }
+    const pct = round2(weightedMean(childStats.map((s) => [s.ownWeight, s.pctOfChild])))
+    return { total, done, pct, derivedStatus, billingWeightPct, source: 'subtasks' }
   }
   const microtasks = microtasksByNodeId[nodeId] || []
   if (microtasks.length > 0) {

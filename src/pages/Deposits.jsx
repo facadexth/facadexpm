@@ -7,6 +7,7 @@ import { useState, useMemo } from 'react'
 import { useSiteDepositSummary } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
+import CardTable from '../components/CardTable.jsx'
 
 export default function Deposits({ openSiteOverview }) {
   const { data: rows } = useSiteDepositSummary()
@@ -38,7 +39,7 @@ export default function Deposits({ openSiteOverview }) {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -69,7 +70,7 @@ export default function Deposits({ openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
     </div>
   )

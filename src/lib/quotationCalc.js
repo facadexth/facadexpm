@@ -67,3 +67,35 @@ export function calcQuotationTotals(items, { hasVat, priceIncludesVat, discountA
   const total = round2(subtotal + vat)
   return { rawTotal, discount, subtotal, vat, total }
 }
+
+/** Revision snapshots written before 2026-10-14 stored each line without
+ *  its item_type, so a note / item_description row came back looking like
+ *  a billable item with quantity 0 and price 0.00 (and no running number)
+ *  in the past-revision viewer. A row that carries its item_type is kept
+ *  as is; a legacy row with no quantity, no unit and no price can only
+ *  have been a description line, so it is read back as item_description
+ *  (a note and an item_description are indistinguishable in old data --
+ *  item_description is the closer fit, since it sits under the item above
+ *  it). Anything else is a real item. Never mutates its input. */
+export function normalizeSnapshotItems(items) {
+  return (items || []).map(it => {
+    if (it.item_type) return it
+    const blank = !(parseFloat(it.quantity) || 0) && !(parseFloat(it.unit_price) || 0)
+      && !(parseFloat(it.unit_price_material) || 0) && !(parseFloat(it.unit_price_labor) || 0)
+      && !(it.unit || '').trim()
+    return { ...it, item_type: blank ? 'item_description' : 'item' }
+  })
+}
+
+// Ratio of the discounted subtotal to the raw line total (1 when no discount). Moved from Invoices.jsx.
+export function discountMultiplier(quotation) {
+  const items = quotation.quotation_items || []
+  const rawTotal = items.reduce((s, it) => s + (it.line_total || 0), 0)
+  if (rawTotal <= 0) return 1
+  const totals = calcQuotationTotals(items, {
+    hasVat: false, // hasVat:false makes `subtotal` equal the discounted raw total exactly, before any VAT math -- that's the ratio we need
+    discountAmount: quotation.discount_amount,
+    discountPct: quotation.discount_pct,
+  })
+  return totals.subtotal / rawTotal
+}

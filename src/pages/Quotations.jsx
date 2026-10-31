@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useDocumentSigner, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -21,15 +21,21 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { format, startOfYear, endOfYear, addDays, differenceInDays } from 'date-fns'
-import { lineTotal, calcQuotationTotals, sumMaterialLabor } from '../lib/quotationCalc.js'
+import { lineTotal, calcQuotationTotals, sumMaterialLabor, normalizeSnapshotItems } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import PendingMark from '../components/PendingMark.jsx'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { isQuotationExpiring } from '../lib/pendingRules.js'
 import UnitSelect from '../components/UnitSelect.jsx'
+import { resolveDocumentTemplate } from '../lib/documentTemplates.js'
+import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
+import { quotationTheme } from '../components/documentLayouts/quotationTheme.js'
+import { ModernHeader, ModernFirstPageExtra, PremiumHeader, PremiumFirstPageExtra, BenefitStrip, ThanksLine, CompactHeader } from '../components/documentLayouts/TemplateBlocks.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
@@ -37,6 +43,10 @@ import { removeBlockOrClear } from '../lib/rowEditing.js'
 // quotation -- everyone else gets null from the hook without a single query (see useQuotationAttachments.js).
 import { useQuotationAttachments } from './estimation/useQuotationAttachments.js'
 import AttachmentPages from './estimation/AttachmentPages.jsx'
+import CardTable from '../components/CardTable.jsx'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import QuotationPhoneCards from '../components/phone/QuotationPhoneCards.jsx'
+import { useIsPhone } from '../hooks/useIsPhone.js'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -348,10 +358,10 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
               <button type="button" className="btn btn-sm btn-ghost" title="ซ่อนคำอธิบายนี้" onClick={() => remove(i)}>✕</button>
             </div>
           ) : (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: itemGridCols, gap: 6, alignItems: 'center' }}>
-              <span className="font-mono" style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{itemNumbers[i]}</span>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: itemGridCols, gap: 6, alignItems: 'center' }} data-phone="line-item">
+              <span className="font-mono" style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }} data-phone="li-no">{itemNumbers[i]}</span>
               <MoveButtons onInsertItem={() => insertItemAfter(i)} onInsertCatalog={() => setCatalogInsertAt(i)} onInsertNote={() => insertNoteAfter(i)} onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
-              <input className="input input-sm" placeholder="รายละเอียดรายการ" required
+              <input className="input input-sm" placeholder="รายละเอียดรายการ" required data-phone="li-desc"
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <input className="input input-sm num-spin" type="number" min="0" step="any" placeholder="จำนวน"
                 value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
@@ -683,7 +693,7 @@ export function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, 
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey, extraPages, extraPageCount = 0 }) {
+export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey, template, signerEmail, extraPages, extraPageCount = 0 }) {
   // item_description แนบเข้ากับ item ด้านบนแค่โดยตำแหน่ง ไม่มี FK จริง (ดู
   // comment ที่ EMPTY_ITEM_DESCRIPTION) -- ถ้าไม่มีคนพิมพ์อะไรลงไปเลย (เช่น
   // ตอน add จากรายการสินค้าที่ตัว catalog item เองไม่มี description) ไม่ควร
@@ -734,13 +744,36 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const totals = calcQuotationTotals(printableItems, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const isSplit = pricingMode === 'split'
   const materialLabor = isSplit ? sumMaterialLabor(printableItems) : null
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
-  const style = resolveDocumentStyle(tenant?.document_style)
+  const signer = useDocumentSigner(signerEmail)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
+  // `template` (a resolved template, see resolveDocumentTemplate) is only passed
+  // by previews today; without it the tenant's saved choice decides, and a
+  // tenant with no choice gets the classic layout exactly as before.
+  // published templates are only fetched for a tenant that actually chose one
+  const { templates: pubTemplates, packs: pubPacks } = useDocumentTemplates(!!tenant?.document_template_key && !template)
+  const tpl = template || resolveDocumentTemplate({ tenant, templates: pubTemplates, packs: pubPacks })
+  const style = tpl.style
+  const layout = tpl.layout
+  const content = tpl.content
+  const theme = quotationTheme(layout, style)
+  const Header = layout === 'modern' ? ModernHeader : layout === 'premium' ? PremiumHeader : QuotationHeader
+  const LaterHeader = layout !== 'classic' ? CompactHeader : Header
+  const FirstExtra = layout === 'modern' ? ModernFirstPageExtra : layout === 'premium' ? PremiumFirstPageExtra : null
+  // the serif face must be ready before measuring / html2canvas
+  const [fontReady, setFontReady] = useState(layout !== 'premium')
+  useEffect(() => {
+    if (layout !== 'premium') { setFontReady(true); return }
+    let alive = true
+    const done = () => { if (alive) setFontReady(true) }
+    if (document.fonts?.load) Promise.all([document.fonts.load('400 12px "Noto Serif Thai"'), document.fonts.load('600 12px "Noto Serif Thai"')]).then(done, done)
+    else done()
+    return () => { alive = false }
+  }, [layout])
 
   const revisionSuffix = revision > 1 ? `-R${revision}` : ''
-  const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style }
-  const colCount = (isSplit ? 5 : 4) + 1
+  const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style, theme }
+  const colCount = (isSplit ? 6 : 5) + 1
 
   // Item <-> item_description pairing reads from spacing alone, no line or
   // color: the item's own bottom border is dropped when it has one (so it
@@ -754,11 +787,11 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const renderRow = (it, i) => (
     it.item_type === 'note' ? (
       <tr key={it.id || i}>
-        <td colSpan={colCount} style={{ padding: '10px 8px', borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#6B4E1E', background: '#FFFDF7', whiteSpace: 'pre-line' }}>{it.description}</td>
+        <td colSpan={colCount} style={{ padding: '10px 8px', borderBottom: `1px solid ${theme.rowBorder}`, fontStyle: 'italic', color: '#6B4E1E', background: theme.noteBg, whiteSpace: 'pre-line' }}>{it.description}</td>
       </tr>
     ) : it.item_type === 'item_description' ? (
       <tr key={it.id || i}>
-        <td colSpan={colCount} style={{ padding: '0 8px 16px 22px', borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
+        <td colSpan={colCount} style={{ padding: '0 8px 16px 22px', borderBottom: `1px solid ${theme.rowBorder}`, fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
       </tr>
     ) : (() => {
       // Tighter bottom padding + no border when this item has its own
@@ -766,12 +799,13 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       // that closeness; an item with nothing glued to it keeps the normal
       // symmetric padding and its own separator border, same as before.
       const glued = printHasOwnDescription.has(it)
-      const cellStyle = { padding: glued ? '9px 8px 2px' : '9px 8px', borderBottom: glued ? 'none' : '1px solid #eee' }
+      const cellStyle = { padding: glued ? '9px 8px 2px' : '9px 8px', borderBottom: glued ? 'none' : `1px solid ${theme.rowBorder}` }
       return (
         <tr key={it.id || i}>
-          <td style={{ ...cellStyle, textAlign: 'center', padding: glued ? '9px 4px 2px' : '9px 4px', color: '#6a6f85' }}>{printItemNumbers.get(it)}</td>
+          <td style={{ ...cellStyle, textAlign: 'center', padding: glued ? '9px 4px 2px' : '9px 4px', color: theme.muted }}>{printItemNumbers.get(it)}</td>
           <td style={{ ...cellStyle, whiteSpace: 'pre-line' }}>{it.description}</td>
-          <td style={{ ...cellStyle, textAlign: 'right' }}>{it.quantity} {it.unit || ''}</td>
+          <td style={{ ...cellStyle, textAlign: 'right' }}>{it.quantity}</td>
+          <td style={{ ...cellStyle, textAlign: 'center' }}>{it.unit || ''}</td>
           {isSplit ? (
             <>
               <td style={{ ...cellStyle, textAlign: 'right' }}>{fmt(it.unit_price_material)}</td>
@@ -786,12 +820,13 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
     })()
   )
 
-  const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
+  const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: theme.thColor, background: theme.thBg, borderBottom: theme.thBorder }
   const renderTableHeader = () => (
     <tr>
       <th style={{ ...thStyle, textAlign: 'center', width: 30 }}>ที่</th>
       <th style={{ ...thStyle, textAlign: 'left' }}>รายการ</th>
       <th style={thStyle}>จำนวน</th>
+      <th style={{ ...thStyle, textAlign: 'center' }}>หน่วย</th>
       {isSplit ? (
         <>
           <th style={thStyle}>ค่าของ/หน่วย</th>
@@ -825,36 +860,38 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       <div style={{ flex: 1 }} />
 
       <div>
-        <div style={{ marginTop: 14, display: 'flex', gap: 24, alignItems: 'flex-start', borderTop: '1px solid #e4e6ef', paddingTop: 14 }}>
+        <div style={{ marginTop: 14, display: 'flex', gap: 24, alignItems: 'flex-start', borderTop: `1px solid ${theme.rowBorder}`, paddingTop: 14 }}>
           <div style={{ flex: 1, fontSize: 12.5, minWidth: 0 }}>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>📄 สรุป</div>
             <div style={{ display: 'grid', gap: 5 }}>
               {isSplit && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าของ</span><span>{fmt(materialLabor.material)} บาท</span></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าแรง</span><span>{fmt(materialLabor.labor)} บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>รวมค่าของ</span><span>{fmt(materialLabor.material)} บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>รวมค่าแรง</span><span>{fmt(materialLabor.labor)} บาท</span></div>
                 </>
               )}
               {totals.discount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>ส่วนลด</span><span>-{fmt(totals.discount)} บาท</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>ส่วนลด</span><span>-{fmt(totals.discount)} บาท</span></div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>{hasVat ? 'มูลค่าที่คำนวณภาษี 7%' : 'รวมก่อน VAT'}</span><span>{fmt(totals.subtotal)} บาท</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>{hasVat ? 'มูลค่าที่คำนวณภาษี 7%' : 'รวมก่อน VAT'}</span><span>{fmt(totals.subtotal)} บาท</span></div>
               {hasVat && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>ภาษีมูลค่าเพิ่ม 7%</span><span>{fmt(totals.vat)} บาท</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>ภาษีมูลค่าเพิ่ม 7%</span><span>{fmt(totals.vat)} บาท</span></div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 4, paddingTop: 6, borderTop: '1px solid #eee' }}>
-                <span style={{ color: '#6a6f85' }}>จำนวนเงินทั้งสิ้น</span>
-                <span style={{ textAlign: 'right', color: '#6a6f85', fontStyle: 'italic' }}>{thaiBahtText(totals.total)}</span>
+                <span style={{ color: theme.muted }}>จำนวนเงินทั้งสิ้น</span>
+                <span style={{ textAlign: 'right', color: theme.muted, fontStyle: 'italic' }}>{thaiBahtText(totals.total)}</span>
               </div>
             </div>
           </div>
           <div style={{ width: 220, flexShrink: 0 }}>
-            <div style={{ background: `${style.accent}14`, border: `1px solid ${style.accent}55`, borderRadius: 10, padding: '10px 14px' }}>
-              <div style={{ fontSize: 11, color: '#6a6f85' }}>รวมทั้งสิ้น</div>
-              <div style={{ fontWeight: 800, fontSize: 17, color: style.accent }}>{fmt(totals.total)} บาท</div>
+            <div style={{ background: theme.totalBoxBg, border: `1px solid ${theme.totalBoxBorder}`, borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: layout === 'classic' ? '#6a6f85' : theme.totalBoxText, opacity: layout === 'classic' ? 1 : 0.85 }}>รวมทั้งสิ้น</div>
+              <div style={{ fontWeight: 800, fontSize: 17, color: theme.totalBoxText }}>{fmt(totals.total)} บาท</div>
             </div>
           </div>
         </div>
+
+        {FirstExtra && <BenefitStrip content={content} theme={theme} style={style} />}
 
         {(paymentTerms || notes || bankAccount) && (() => {
           // Fixed order: หมายเหตุ, then เงื่อนไขการชำระเงิน, then ชำระเงินไปที่
@@ -865,7 +902,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
             paymentTerms && { key: 'terms', label: 'เงื่อนไขการชำระเงิน', text: paymentTerms },
           ].filter(Boolean)
           return (
-            <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+            <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: theme.notesBoxBg, borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
               {blocks.map(({ key, label, text }, i) => (
                 <div key={key} style={{ marginBottom: i < blocks.length - 1 || bankAccount ? 10 : 0 }}>
                   <strong style={{ display: 'block', marginBottom: 4, fontSize: style.footerTextSize + 0.5 }}>{label}</strong>
@@ -881,32 +918,31 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
           )
         })()}
 
-        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, textAlign: 'center', fontSize: 11.5 }}>
+        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, textAlign: 'center', fontSize: 11.5 }}>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
             </div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+            <div style={{ borderTop: `1px solid ${theme.sigLine}`, paddingTop: 8 }}>ผู้เสนอราคา</div>
             {myWorkerName && (
-              <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
+              <div style={{ marginTop: 2, color: theme.muted, fontSize: 10 }}>{myWorkerName}</div>
             )}
+            <div style={{ marginTop: 2, color: theme.muted, fontSize: 10 }}>วันที่ ........../........../..........</div>
           </div>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
             </div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
+            <div style={{ borderTop: `1px solid ${theme.sigLine}`, paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
             {clientSignature && (
-              <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
+              <div style={{ marginTop: 2, color: theme.muted, fontSize: 10 }}>
                 {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
               </div>
             )}
-          </div>
-          <div>
-            <div style={{ height: 40, border: '1px dashed #ccc', borderRadius: 6 }} />
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8, marginTop: 8 }}>ตราประทับ</div>
+            {!clientSignature && <div style={{ marginTop: 2, color: theme.muted, fontSize: 10 }}>วันที่ ........../........../..........</div>}
           </div>
         </div>
+        {FirstExtra && <ThanksLine content={content} theme={theme} />}
       </div>
     </>
   )
@@ -914,7 +950,9 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const { pages, pageCount, measurementNode } = usePaginatedDocument({
     items: printableItems,
     keepWithNext: printKeepWithNext,
-    renderHeader: () => <QuotationHeader {...headerProps} pageNumber={1} totalPages={1} />,
+    renderHeader: () => <Header {...headerProps} pageNumber={1} totalPages={1} />,
+    renderLaterHeader: layout !== 'classic' ? () => <LaterHeader {...headerProps} pageNumber={2} totalPages={2} /> : undefined,
+    renderFirstPageExtra: FirstExtra ? () => <FirstExtra content={content} style={style} theme={theme} /> : undefined,
     renderTableHeader,
     renderRow,
     renderFooter,
@@ -937,7 +975,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
     // revision's page geometry/footer-height reservation for the new one.
     // Matches DocumentPaper's identical extraRemeasureKey pattern
     // (Invoices.jsx).
-    remeasureKey: `${mySignature?.url || ''}|${clientSignature?.url || ''}|${extraRemeasureKey || ''}`,
+    remeasureKey: `${mySignature?.url || ''}|${clientSignature?.url || ''}|${extraRemeasureKey || ''}|${layout}|${fontReady}|${content?.heroPath || ''}|${(content?.gallery || []).length}|${(content?.features || []).length}`,
     pagePaddingCss: `${style.pagePaddingV}px ${style.pagePaddingH}px`,
     pageHeight: (PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2) - style.pagePaddingV * 2,
     tableMarginTop: style.tableMarginTop,
@@ -970,14 +1008,14 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const PAGE_DIV_HEIGHT_PX = PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2
 
   return (
-    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', width: PAGE_WIDTH_PX }}>
+    <div id={elementId} className="printable-document" style={{ fontFamily: theme.fontFamily, width: PAGE_WIDTH_PX }}>
       {pages.map((pageItems, pageIndex) => {
         const isLast = pageIndex === pages.length - 1
         return (
           <div
             key={pageIndex}
             style={{
-              padding: `${style.pagePaddingV}px ${style.pagePaddingH}px`, background: '#fff', color: '#17181f', boxSizing: 'border-box',
+              padding: `${style.pagePaddingV}px ${style.pagePaddingH}px`, background: theme.paperBg, color: theme.text, boxSizing: 'border-box',
               // Fixed height, not minHeight -- a page-div that's allowed to
               // grow past PAGE_DIV_HEIGHT_PX (e.g. from a measurement/
               // render drift) reintroduces the same overflow-past-budget
@@ -993,7 +1031,10 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
               boxShadow: pages.length > 1 ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
             }}
           >
-            <QuotationHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length + extraPageCount} />
+            {pageIndex === 0
+              ? <Header {...headerProps} pageNumber={1} totalPages={pages.length + extraPageCount} />
+              : <LaterHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length + extraPageCount} />}
+            {pageIndex === 0 && FirstExtra && <FirstExtra content={content} style={style} theme={theme} />}
 
             {pageItems.length > 0 && (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: style.tableMarginTop }}>
@@ -1088,6 +1129,7 @@ function QuotationDocumentModal({ qt, tenant, onClose, hasModuleAccess }) {
             hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
             discountAmount={qt.discount_amount} discountPct={qt.discount_pct} pricingMode={qt.pricing_mode}
             paymentTerms={qt.payment_terms} notes={qt.notes} bankAccount={qt.bank_accounts}
+            signerEmail={qt.created_by ?? null}
             clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
             onPageCountChange={setPageCount}
             {...(attachments ? {
@@ -1130,6 +1172,10 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
   const selected = (revisions || []).find(r => r.id === selectedId) || revisions?.[0]
   const elementId = selected ? `qt-hist-doc-${selected.id}` : null
   const s = selected?.snapshot
+  // Memoized because QuotationPaper keys its item numbering and page
+  // packing by row object identity -- a fresh array every render would
+  // re-paginate on each pass and lose the numbers.
+  const snapshotItems = useMemo(() => normalizeSnapshotItems(s?.items), [s])
   const [historyPageCount, setHistoryPageCount] = useState(1)
   const scaleRef = useRef(null)
   const handlePrint = () => {
@@ -1187,9 +1233,9 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
             <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
               <QuotationPaper
                 elementId={elementId} tenant={tenant} quotationNumber={quotation.quotation_number}
-                tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`}
+                tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`} signerEmail={quotation.created_by ?? null}
                 date={s.date} validUntil={s.valid_until} revision={selected.revision} siteName={null}
-                clientName={s.client_name} items={s.items || []}
+                clientName={s.client_name} items={snapshotItems}
                 hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}
                 discountAmount={s.discount_amount} discountPct={s.discount_pct} pricingMode={s.pricing_mode}
                 paymentTerms={s.payment_terms} notes={s.notes} bankAccount={s.bank_account}
@@ -1223,6 +1269,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
 }
 
 export default function Quotations({ navigateTo, navState, openSiteOverview }) {
+  const isPhone = useIsPhone()
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'quotations')
   const today = new Date()
@@ -1233,6 +1280,9 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const [dateTo,   setDateTo]   = useState(ytdTo)
   const [clientId, setClientId] = useState('')
   const [status,   setStatus]   = useState('')
+  // Bell/push "quotations near the end of their validity": the rows the bell counted
+  // (sent, not on hold, valid_until within 7 days), ignoring the YTD range, soonest first.
+  const followupFocus = usePendingFocus(navState, 'quotations_followup')
   const [showAdd,  setShowAdd]  = useState(false)
   const [editRow,  setEditRow]  = useState(null)
   const [dupInitial, setDupInitial] = useState(null)
@@ -1262,16 +1312,22 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       discountAmount: qt.discount_amount, discountPct: qt.discount_pct,
     }).total,
     status:           qt => qt.status || '',
+    valid_until:      qt => qt.valid_until || '',
   }
+  const TODAY_BKK = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10)
+  useEffect(() => {
+    if (followupFocus.active) { setStatus(''); setClientId(''); setDateFrom(''); setDateTo(''); setSortCol('valid_until'); setSortDir('asc') }
+  }, [followupFocus.active])
+  const endFollowupFocus = () => { followupFocus.clear(); setDateFrom(ytdFrom); setDateTo(ytdTo); setSortCol('date'); setSortDir('desc') }
   const sortedQuotations = useMemo(() => {
     const acc = SORT_ACCESSORS[sortCol]
-    return [...(quotations || [])].sort((a, b) => {
+    return (quotations || []).filter(qt => !followupFocus.active || isQuotationExpiring(qt, TODAY_BKK)).sort((a, b) => {
       const va = acc(a), vb = acc(b)
       if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
       return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotations, sortCol, sortDir])
+  }, [quotations, sortCol, sortDir, followupFocus.active, TODAY_BKK])
   const toggleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
@@ -1349,6 +1405,9 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
             items: (editRow.quotation_items || []).map(it => ({
               description: it.description, unit: it.unit, quantity: it.quantity, unit_price: it.unit_price,
               unit_price_material: it.unit_price_material, unit_price_labor: it.unit_price_labor, line_total: it.line_total,
+              // Without item_type a note / item_description row renders in the
+              // history viewer as a 0-quantity item (see normalizeSnapshotItems).
+              item_type: it.item_type || 'item',
             })),
           }
           const { error: snapError } = await supabase.from('quotation_revisions').insert({
@@ -1440,7 +1499,6 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
 
   // วันยืนราคา: เลื่อนอีก 7 วัน / พักใบเสนอราคา / ยกเลิกพัก
   // (ใบที่ส่งแล้วและเลยวันยืนราคาจะถูกพักอัตโนมัติทุกคืน -- ดู migration 2026-10-04-07)
-  const TODAY_BKK = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10)
   const plusDays = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
   const updateQuotation = async (id, payload, toast) => {
     const { error } = await supabase.from('quotations').update(payload).eq('id', id)
@@ -1616,6 +1674,69 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     )
   }
 
+  // Row actions, shared by the table row and the phone card (same JSX → same desktop DOM)
+  const renderQtActions = qt => (
+      <div className="actions-cell">
+        <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
+        {(qt.revision || 1) > 1 && (
+          <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
+        )}
+        {canEdit && qt.status === 'draft' && (
+          <>
+            <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
+            <RowActionsMenu items={[
+              { label: '✏️ แก้ไข', onClick: () => { setEditRow(qt); setShowAdd(true) } },
+              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+              { label: '🗑️ ลบ', onClick: () => setDeleteId(qt.id), danger: true },
+            ]} />
+          </>
+        )}
+        {canEdit && qt.status === 'sent' && (
+          <>
+            {qt.on_hold
+              ? <button className="btn btn-sm btn-primary" onClick={() => handleUnhold(qt)} title="เลยวันยืนราคา ระบบพักไว้ — ยกเลิกพักแล้วขยายวันยืนราคาให้ 7 วัน">▶ ยกเลิกพัก</button>
+              : <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>}
+            <RowActionsMenu items={[
+              ...(qt.valid_until && !qt.on_hold ? [{ label: '⏳ เลื่อนวันยืนราคา +7 วัน', onClick: () => handleSnooze(qt) }] : []),
+              qt.on_hold
+                ? { label: '▶ ยกเลิกพัก (Unhold)', onClick: () => handleUnhold(qt) }
+                : { label: '⏸ พักใบเสนอราคา', onClick: () => handleHold(qt) },
+              { label: '🔗 ลิงก์เซ็นรับ', onClick: () => setLinkTarget(qt) },
+              { label: '↩️ แก้ไข (ดึงกลับเป็นร่าง)', onClick: () => handlePullBackToEdit(qt) },
+              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+              { label: 'ปฏิเสธ', onClick: () => handleSetStatus(qt.id, 'rejected') },
+              { label: 'หมดอายุ', onClick: () => handleSetStatus(qt.id, 'expired') },
+            ]} />
+          </>
+        )}
+        {canEdit && qt.status === 'accepted' && !qt.site_id && (
+          <>
+            <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)} title="ลูกค้าเซ็นรับแล้ว เหลือแค่ผูกไซท์งาน">🔗 ผูกไซท์งาน</button>
+            <RowActionsMenu items={[
+              ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
+              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+            ]} />
+          </>
+        )}
+        {/* accepted+linked: OWNER-only edit escape hatch (see
+            handlePullBackToEdit's comment on why this is safe
+            even with invoices already issued). rejected/expired
+            below still have no edit path at all -- only
+            duplicate, which never touches the source document. */}
+        {canEdit && qt.status === 'accepted' && qt.site_id && (
+          <RowActionsMenu items={[
+            ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
+            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+          ]} />
+        )}
+        {canEdit && (qt.status === 'rejected' || qt.status === 'expired') && (
+          <RowActionsMenu items={[
+            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+          ]} />
+        )}
+      </div>
+  )
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
@@ -1623,23 +1744,40 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setDupInitial(null); setShowAdd(true) }}>+ เพิ่มใบเสนอราคา</button>}
         <div style={{ flex: 1 }} />
-        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-        <span style={{ color: 'var(--text3)' }}>—</span>
-        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        <PhoneFilters title="ช่วงวันที่" count={dateFrom || dateTo ? 1 : 0}
+          summary={dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []}
+          onClear={() => { setDateFrom(''); setDateTo('') }}>
+          <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          <span style={{ color: 'var(--text3)' }}>—</span>
+          <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </PhoneFilters>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ minWidth: 200 }}>
           <SearchableSelect value={clientId} onChange={setClientId} placeholder="ทุกลูกค้า" options={clientOpts(clients)} />
         </div>
-        <select className="select select-sm" style={{ width: 160 }} value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="select select-sm" style={{ width: 160 }} value={status} onChange={e => { followupFocus.clear(); setStatus(e.target.value) }}>
           <option value="">ทุกสถานะ</option>
           {QT_STATUSES.map(s => <option key={s} value={s}>{QT_STATUS_LABELS[s]}</option>)}
         </select>
+        <PendingFocusChip focus={{ ...followupFocus, clear: endFollowupFocus }} pendingKey="quotations_followup" />
       </div>
 
+      {isPhone ? (
+        <QuotationPhoneCards
+          rows={sortedQuotations.map(qt => ({
+            qt,
+            total: calcQuotationTotals(qt.quotation_items, { hasVat: qt.has_vat, priceIncludesVat: qt.price_includes_vat, discountAmount: qt.discount_amount, discountPct: qt.discount_pct }).total,
+            items: (qt.quotation_items || []).filter(it => it.item_type === 'item').length,
+            expiring: isQuotationExpiring(qt, TODAY_BKK),
+          }))}
+          todayIso={TODAY_BKK} toggleSort={toggleSort} sortIcon={si} statusLabels={QT_STATUS_LABELS}
+          fmt={fmt} fmtDate={fmtDate} renderActions={renderQtActions} onOpen={qt => setDocRow(qt)} PendingMark={PendingMark}
+        />
+      ) : (
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -1693,65 +1831,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                       )}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <div className="actions-cell">
-                        <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
-                        {(qt.revision || 1) > 1 && (
-                          <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
-                        )}
-                        {canEdit && qt.status === 'draft' && (
-                          <>
-                            <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
-                            <RowActionsMenu items={[
-                              { label: '✏️ แก้ไข', onClick: () => { setEditRow(qt); setShowAdd(true) } },
-                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                              { label: '🗑️ ลบ', onClick: () => setDeleteId(qt.id), danger: true },
-                            ]} />
-                          </>
-                        )}
-                        {canEdit && qt.status === 'sent' && (
-                          <>
-                            {qt.on_hold
-                              ? <button className="btn btn-sm btn-primary" onClick={() => handleUnhold(qt)} title="เลยวันยืนราคา ระบบพักไว้ — ยกเลิกพักแล้วขยายวันยืนราคาให้ 7 วัน">▶ ยกเลิกพัก</button>
-                              : <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>}
-                            <RowActionsMenu items={[
-                              ...(qt.valid_until && !qt.on_hold ? [{ label: '⏳ เลื่อนวันยืนราคา +7 วัน', onClick: () => handleSnooze(qt) }] : []),
-                              qt.on_hold
-                                ? { label: '▶ ยกเลิกพัก (Unhold)', onClick: () => handleUnhold(qt) }
-                                : { label: '⏸ พักใบเสนอราคา', onClick: () => handleHold(qt) },
-                              { label: '🔗 ลิงก์เซ็นรับ', onClick: () => setLinkTarget(qt) },
-                              { label: '↩️ แก้ไข (ดึงกลับเป็นร่าง)', onClick: () => handlePullBackToEdit(qt) },
-                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                              { label: 'ปฏิเสธ', onClick: () => handleSetStatus(qt.id, 'rejected') },
-                              { label: 'หมดอายุ', onClick: () => handleSetStatus(qt.id, 'expired') },
-                            ]} />
-                          </>
-                        )}
-                        {canEdit && qt.status === 'accepted' && !qt.site_id && (
-                          <>
-                            <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)} title="ลูกค้าเซ็นรับแล้ว เหลือแค่ผูกไซท์งาน">🔗 ผูกไซท์งาน</button>
-                            <RowActionsMenu items={[
-                              ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
-                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                            ]} />
-                          </>
-                        )}
-                        {/* accepted+linked: OWNER-only edit escape hatch (see
-                            handlePullBackToEdit's comment on why this is safe
-                            even with invoices already issued). rejected/expired
-                            below still have no edit path at all -- only
-                            duplicate, which never touches the source document. */}
-                        {canEdit && qt.status === 'accepted' && qt.site_id && (
-                          <RowActionsMenu items={[
-                            ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
-                            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                          ]} />
-                        )}
-                        {canEdit && (qt.status === 'rejected' || qt.status === 'expired') && (
-                          <RowActionsMenu items={[
-                            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                          ]} />
-                        )}
-                      </div>
+                      {renderQtActions(qt)}
                     </td>
                   </tr>
                 )
@@ -1761,8 +1841,9 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
+      )}
 
       {deleteId && (
         <ConfirmDialog title="ลบใบเสนอราคา" message="ยืนยันการลบใบเสนอราคานี้?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />

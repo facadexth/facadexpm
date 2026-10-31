@@ -1,6 +1,6 @@
 # LINE Rich Menu (2 rows x 3)
 
-`rich-menu.png` is 2500 x 1686 px, the large 6-area template in LINE Official Account Manager
+Current image (2026-10-18): `rich-menu-v2-1200x810.jpg` (owner's cream 3D design, 1200 x 810, a size LINE accepts for the large template; files must be under 1 MB). The older `rich-menu.png` is 2500 x 1686 px, the large 6-area template in LINE Official Account Manager
 (Rich menus -> create -> large -> the 2 x 3 layout). Re-render after changing the buttons with
 `node scripts/render-rich-menu.mjs`.
 
@@ -12,8 +12,8 @@ Set every area's action to **Text** and type exactly the text below. The bot rea
 | row 1, col 2 | ตารางงาน | `ตารางงาน` | replies with 4 tappable chips: งานวันนี้ / งานวันพรุ่งนี้ / งานอาทิตย์นี้ / งานอาทิตย์หน้า |
 | row 1, col 3 | งานเสร็จ | `งานเสร็จ` | asks which task (if several), then a one-tap "เสร็จแล้ว" chip; photos optional |
 | row 2, col 1 | แจ้งปัญหา | `แจ้งปัญหา` | asks for the details, then records the report |
-| row 2, col 2 | ขอเบิกของ | `ขอเบิกของ` | sends the one-time request form link |
-| row 2, col 3 | ขอลา | `ขอลา` | sends the one-time leave form link |
+| row 2, col 2 | ยื่นคำขอ | `ยื่นคำขอ` | replies with chips: 🏖️ ขอลา / 📦 เบิกของ / 💸 เบิกเงิน / ยกเลิก; each sends its one-time form link |
+| row 2, col 3 | สถานะคำขอ | `สถานะคำขอ` | replies (free) with the worker's leave requests + leave left, and salary advances + outstanding balance |
 
 Photos need no button: a photo sent to the bot is filed to the worker's site for today automatically.
 

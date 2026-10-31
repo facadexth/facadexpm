@@ -11,7 +11,7 @@
 export const DUPLICATE_EMAIL_MESSAGE =
   'อีเมลนี้ถูกใช้งานแล้ว กรุณาเข้าสู่ระบบด้วยอีเมลนี้ หากจำรหัสผ่านไม่ได้ให้ติดต่อผู้ดูแลระบบ หรือใช้อีเมลอื่นสมัคร'
 
-const GENERIC_SIGNUP_ERROR = 'สมัครไม่สำเร็จ กรุณาลองใหม่อีกครั้ง ถ้ายังไม่ได้ให้ติดต่อ support@changpm.app หรือ LINE @302yljzw'
+const GENERIC_SIGNUP_ERROR = 'สมัครไม่สำเร็จ กรุณาลองใหม่อีกครั้ง ถ้ายังไม่ได้ให้ติดต่อ support@changpm.app หรือ LINE @changpm'
 
 // Supabase's own wording is English, and on a gateway failure it can be an
 // empty object ("{}"). Show Thai text for the cases people actually hit.
@@ -20,7 +20,7 @@ export function signupErrorMessage(error) {
   const status = error?.status
   if (status === 429 || /rate limit/i.test(raw)) return 'ส่งอีเมลบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่'
   if (/error sending confirmation email/i.test(raw)) {
-    return 'ระบบส่งอีเมลยืนยันไม่สำเร็จ กรุณาลองใหม่ภายหลัง หรือติดต่อ support@changpm.app / LINE @302yljzw'
+    return 'ระบบส่งอีเมลยืนยันไม่สำเร็จ กรุณาลองใหม่ภายหลัง หรือติดต่อ support@changpm.app / LINE @changpm'
   }
   if (/password should be at least/i.test(raw)) return 'รหัสผ่านสั้นเกินไป กรุณาตั้งอย่างน้อย 6 ตัวอักษร'
   if (/invalid format|valid email|unable to validate email/i.test(raw)) return 'รูปแบบอีเมลไม่ถูกต้อง'

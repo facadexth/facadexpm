@@ -5,6 +5,7 @@
 // ============================================================
 import { round2 } from './depositMath.js'
 import { computePoItemBaseQty } from './inventoryCost.js'
+import { DELIVERY_CHECK_TEXT, DELIVERY_RPC_TEXT } from './deliveryTaxInvoiceText.js'
 
 const EPS = 0.005
 
@@ -92,7 +93,7 @@ export function proposePos({ pos, supplierId, invoiceDate, activeLinks, invoiceI
     const l = activeLinks?.get?.(po.id)
     return l && l.invoice_id !== invoiceId ? l : null
   }
-  const eligible = (pos || []).filter(po => po.supplier_id === supplierId && po.status === 'received')
+  const eligible = (pos || []).filter(po => po.supplier_id === supplierId && po.status === 'received' && po.tax_invoice_mode !== 'delivery')
   return {
     proposed: eligible.filter(po => inMonth(po) && !elsewhere(po)),
     outsideMonth: eligible.filter(po => !inMonth(po) && !elsewhere(po)),
@@ -121,6 +122,7 @@ export function formSignature(form) {
     net: String(f.net_before_vat ?? ''), vat: String(f.vat ?? ''), note: String(f.match_note || '').trim(),
     lines: (f.lines || []).map(l => [l.description, l.qty, l.unit, l.unit_price, l.discount_pct, l.inventory_item_id || '', l.site_id || '', l.base_qty ?? '']),
     pos: [...(f.po_ids || [])].sort(),
+    ...(f.link_kind === 'delivery' ? { k: 'delivery', rc: [...(f.receipt_ids || [])].sort() } : {}),
   })
 }
 export function previewIsCurrent(preview, form) {
@@ -153,8 +155,9 @@ export const CHECK_TEXT = {
   expense_changed: 'เลขที่ใบกำกับในรายจ่ายถูกแก้หลังบันทึก — ไม่ได้คืนเลขเดิม',
   po_data_not_finite: 'ข้อมูลใบสั่งซื้อหรือการรับของมีค่าที่ไม่ใช่ตัวเลข — แก้ข้อมูลก่อนจึงจะบันทึกได้',
   expense_missing: 'ไม่พบรายจ่ายของใบสั่งซื้อนี้ — ไม่ได้ประทับเลขที่ใบกำกับ',
-  void_inexact: 'สต็อกมีการเคลื่อนไหวหลังบันทึกใบกำกับ — ยกเลิกแล้ว แต่ต้นทุนเฉลี่ยอาจไม่เท่าเดิมทุกบาท',
+  void_inexact: 'สต็อกมีการเคลื่อนไหวหลังบันทึกใบกำกับ — ยกเลิกแล้ว แต่ต้นทุน/หน่วยอาจไม่เท่าเดิมทุกบาท',
   bad_header: 'ข้อมูลหัวใบกำกับไม่ครบหรือไม่ถูกต้อง',
+  ...DELIVERY_CHECK_TEXT,
 }
 
 const RPC_TEXT = {
@@ -168,6 +171,7 @@ const RPC_TEXT = {
   cross_tenant_reference: 'ข้อมูลอ้างอิงไม่ถูกต้อง',
   po_tax_invoiced: 'ใบสั่งซื้อนี้ผูกกับใบกำกับภาษีที่บันทึกแล้ว — ยกเลิกใบกำกับก่อนจึงจะแก้ได้',
   po_stock_flag_locked: 'เปลี่ยน "สต็อกเข้าจากใบกำกับ" หลังรับของไม่ได้',
+  ...DELIVERY_RPC_TEXT,
 }
 const CODES_LONGEST_FIRST = Object.keys(RPC_TEXT).sort((a, b) => b.length - a.length)
 
@@ -214,6 +218,7 @@ export function mapTaxInvoiceRpcError(err) {
   if (err?.code === '23505' || msg.includes('duplicate key')) {
     if (msg.includes('sti_invoice_no_active_uq')) return 'เลขที่ใบกำกับนี้มีอยู่แล้วสำหรับซัพพลายเออร์นี้'
     if (msg.includes('stip_po_active_uq')) return CHECK_TEXT.po_linked_elsewhere
+    if (msg.includes('stirc_receipt_active_uq')) return CHECK_TEXT.receipt_linked_elsewhere
   }
   if (err?.code === '23514' || msg.includes('violates check constraint')) {
     for (const [name, text] of Object.entries(CONSTRAINT_TEXT)) if (msg.includes(name)) return text
@@ -246,6 +251,13 @@ export function reversingPoCount(poCount, checks) {
   return Math.max(0, poCount - skipped.size)
 }
 
+const NO_REVERSAL_RECEIPT_CODES = ['receipt_no_stock_movements', 'receipt_stock_from_invoice']
+/** Number of linked receipts that really have stock movements to reverse. */
+export function reversingReceiptCount(receiptCount, checks) {
+  const skipped = new Set((checks || []).filter(c => NO_REVERSAL_RECEIPT_CODES.includes(c.code) && c.receipt_id).map(c => c.receipt_id))
+  return Math.max(0, receiptCount - skipped.size)
+}
+
 /** Prominent alerts for the confirm dialog: one entry per PO whose receipt was never recorded as a movement
  *  (post will ADD the invoice's stock with nothing to reverse: double count if that month was backfilled).
  *  Never de-duplicated by code: every affected PO is listed. */
@@ -258,11 +270,14 @@ export function doubleCountAlerts(checks, poNumberById) {
 
 /** Text for the post confirm dialog: every stock change, warnings (de-duplicated by code), typed reason.
  *  po_no_receipt_movements is NOT in here: doubleCountAlerts() shows it separately and prominently. */
-export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCount, preview, matchNote }) {
-  const out = [`เพิ่มสต็อกจากใบกำกับ ${stockLineCount} รายการ`, `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${reversingPoCount(poCount, preview?.checks)} ใบ`]
+export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCount, receiptCount, preview, matchNote }) {
+  const byReceipt = receiptCount != null
+  const out = [`เพิ่มสต็อกจากใบกำกับ ${stockLineCount} รายการ`, byReceipt
+    ? `กลับรายการรับเข้าสต็อกของการรับของ ${reversingReceiptCount(receiptCount, preview?.checks)} ล็อต`
+    : `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${reversingPoCount(poCount, preview?.checks)} ใบ`]
   for (const r of preview?.rows || []) {
     out.push(`${r.negative ? '⚠️ ' : ''}${r.item_name} @ ${r.site_name}: คงเหลือ ${fmtQty(r.before_qty)} → ${fmtQty(r.after_qty)} ${r.base_unit || ''}`.trim()
-      + ` · ต้นทุนเฉลี่ย ${fmtWac(r.before_wac)} → ${fmtWac(r.after_wac)}`
+      + ` · ต้นทุน/หน่วย ${fmtWac(r.before_wac)} → ${fmtWac(r.after_wac)}`
       + ` · รับเข้าใหม่ +${fmtQty(r.add_qty)} · กลับรายการ -${fmtQty(r.remove_qty)}`
       + (r.negative ? ' (สต็อกจะติดลบ)' : ''))
   }
@@ -272,11 +287,18 @@ export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCou
     seen.add(c.code); out.push('⚠️ ' + (CHECK_TEXT[c.code] || c.code))
   }
   if (String(matchNote || '').trim()) out.push(`เหตุผลที่ยอดต่าง: ${String(matchNote).trim()}`)
-  out.push(`รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}`)
+  out.push(byReceipt ? `บิลของล็อตที่เลือกไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}` : `รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}`)
   if (invoiceDate) {
     out.push(`รายการเคลื่อนไหวสต็อกจะลงวันที่ตามวันที่ใบกำกับ (${invoiceDate})`)
     out.push('หากยกเลิกใบกำกับภายหลัง รายการย้อนกลับจะลงวันที่วันที่ยกเลิก (วันนี้) ไม่ใช่เดือนของใบกำกับ — บัญชีสต็อกของเดือนนั้นจะไม่ถูกแก้ย้อนหลัง')
   }
   out.push('แก้ไขภายหลังไม่ได้ — ย้อนกลับได้ด้วย "ยกเลิกใบกำกับ" เท่านั้น')
   return out
+}
+
+/** One check as a line of text; the receipt no (delivery invoices) wins over the PO number. */
+export function checkLine(c, poNumberById) {
+  const po = c.po_id ? (poNumberById?.get?.(c.po_id) || null) : null
+  const ref = c.receipt_no || po
+  return (CHECK_TEXT[c.code] || c.code) + (ref ? ` (${ref})` : '')
 }

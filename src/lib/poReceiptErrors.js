@@ -4,6 +4,7 @@
 import { RPC_ERROR_TEXT, PO_DEPOSIT_LOCKED_TEXT, openDeposits } from './receiveDeposits.js'
 import { depositRemaining, round2 } from './depositMath.js'
 import { poTaxInvoiceErrorText } from './poTaxInvoiceStatus.js'
+import { RECEIVE_DELIVERY_DISCOUNT_TEXT, DELIVERY_RPC_TEXT, DELIVERY_CHECK_TEXT } from './deliveryTaxInvoiceText.js'
 
 export const PO_RECEIPT_LOCKED_TEXT = 'ใบสั่งซื้อนี้รับของแล้ว แก้ไขหรือยกเลิกไม่ได้ — แจ้งผู้ดูแลระบบ'
 export const DB_NOT_UPDATED_TEXT = 'ระบบยังไม่ได้อัปเดตฐานข้อมูล — แจ้งผู้ดูแลระบบ'
@@ -52,6 +53,29 @@ export const PO_RECEIPT_ERROR_TEXT = {
   cross_tenant_reference: 'ข้อมูลที่อ้างถึงไม่ถูกต้อง กรุณาเปิดใหม่',
   deposit_expense_is_po_generated: 'รายจ่ายนี้เป็นมัดจำที่สร้างจากใบสั่งซื้อ ลบหรือแก้ไขไม่ได้',
   po_tax_invoiced: 'ใบสั่งซื้อนี้ผูกกับใบกำกับภาษีแล้ว ทำรายการไม่ได้',
+  receipt_po_not_delivery: DELIVERY_CHECK_TEXT.receipt_po_not_delivery,
+  ...DELIVERY_RPC_TEXT,
+  // 2026-10-09-06: un-receive / cancel of a received PO reverses its stock; refused when the stock was already used
+  po_unreceive_stock_insufficient: 'หักสต็อกคืนไม่ได้ — ยอดคงเหลือไม่พอ (ของถูกใช้ไปแล้ว) ปรับสต็อกก่อนแล้วลองใหม่',
+  // 2026-10-15-01: stock received from a PO always goes to the tenant's "ส่วนกลาง" site
+  central_site_missing: 'ไม่พบไซท์งานชื่อ "ส่วนกลาง" สำหรับเก็บสต็อก กรุณาสร้างไซท์งานชื่อนี้ก่อนรับของ',
+}
+export const CENTRAL_SITE_MISSING_TEXT = PO_RECEIPT_ERROR_TEXT.central_site_missing
+
+/** The tenant's central stock site: the is_default site (one per tenant, seeded as "ส่วนกลาง" at signup), else a
+ *  site named "ส่วนกลาง" (trimmed), else '' — every purchase_in from a PO goes there (central_stock_site_id in SQL). */
+export function centralStockSiteId(sites) {
+  const list = sites || []
+  return list.find(s => s.is_default)?.id || list.find(s => String(s.name || '').trim() === 'ส่วนกลาง')?.id || ''
+}
+
+/** Sentence for the cancel / un-receive confirm dialogs once 2026-10-09-06 is live. */
+export const PO_UNRECEIVE_STOCK_NOTE = 'สต็อกที่รับจากใบนี้จะถูกหักคืนด้วย'
+export const PO_UNRECEIVE_STOCK_NOTE_MAYBE = 'สต็อกที่รับจากใบนี้ (ถ้ามี) จะถูกหักคืนด้วย'
+
+/** True when cancelling this PO will reverse stock on the server (probe live, legacy received PO, stock not from invoice). */
+export function poCancelReversesStock(po, probeReady) {
+  return !!(probeReady && po && po.status === 'received' && !po.stock_from_invoice)
 }
 
 /** Thai message for an RPC / trigger error; unknown codes fall back to the raw message. */
@@ -130,6 +154,13 @@ export function receiveRoute(po, index) {
   const discount = (po.purchase_order_items || []).some(it => Number(it.line_total) < 0)
   // null = loading or a non-soft query failure: we cannot tell which schema is live, so offer nothing yet
   if (!index) return { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
+  // a 'delivery' PO is received lot by lot only (receive_po_lines): the server refuses the old whole-PO receive
+  // (po_delivery_needs_receipt) because no po_receipts row would exist to link an invoice to
+  if (po.tax_invoice_mode === 'delivery') {
+    if (index.schemaReady === false) return { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
+    if (discount) return { kind: 'disabled', reason: RECEIVE_DELIVERY_DISCOUNT_TEXT }
+    return { kind: 'new' }
+  }
   if (index.schemaReady === false) return po.status === 'ordered' ? { kind: 'old' } : { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
   if (po.status === 'ordered') return discount ? { kind: 'old' } : { kind: 'new' }
   if (discount) return { kind: 'disabled', reason: RECEIVE_DISCOUNT_PARTIAL_TEXT }
@@ -169,4 +200,11 @@ export function isMissingRelationError(err) {
   if (err.code === '42P01' || err.code === 'PGRST205') return true
   const msg = `${err.message || ''} ${err.details || ''}`
   return /relation .* does not exist/i.test(msg) || /Could not find the table/i.test(msg)
+}
+
+/** True when PostgREST cannot find the embedded relationship to `table` (PGRST200), e.g. before the migration creates it. */
+export function isMissingEmbedError(err, table) {
+  if (!err) return false
+  const msg = `${err.message || ''} ${err.details || ''} ${err.hint || ''}`
+  return (err.code === 'PGRST200' || /could not find a relationship/i.test(msg)) && msg.includes(table)
 }

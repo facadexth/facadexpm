@@ -5,25 +5,45 @@
 // senders, and the one real LINE-specific reminder toggle. Everything
 // here was previously only reachable by hand-run SQL.
 // ============================================================
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { photoUploaderLabel } from '../lib/photoUpload.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useLineGroups } from '../hooks/useLineGroups.js'
+import OffboardedInGroupCard from './OffboardedInGroupCard.jsx'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
+import { planGroupRemoval } from '../lib/lineGroups.js'
 import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import {
   SCHEDULE_COMMAND_KEYS, SCHEDULE_COMMAND_DEFAULTS, FIXED_COMMAND_KEYS, FIXED_COMMAND_LABELS, FIXED_COMMAND_PHRASES,
-  resolveEnabled, resolveEffectivePhrases, validateCustomPhrase,
+  ADVANCE_COMMAND_KEYS, ADVANCE_COMMAND_DEFAULTS, resolveEnabled, resolveEffectivePhrases, validateCustomPhrase,
 } from '../lib/lineCommandSettings.js'
 import { PLATFORM_BOT_BASIC_ID, platformBotLabel } from '../lib/platformLineBot.js'
 import PendingMark from '../components/PendingMark.jsx'
 import { isIssueOpen } from '../lib/pendingRules.js'
+import CardTable from '../components/CardTable.jsx'
+const CC_COMMAND_MAP = { title: 'พิมพ์', sub: ['ทำอะไร'], actions: 'last' }
+const CC_ISSUE_MAP = { title: 'พนักงาน', status: 'สถานะ', sub: ['ไซต์งาน', 'วันที่แจ้ง'], actions: 'last' }
+const CC_UNLINKED_MAP = { title: 'LINE User ID', sub: ['พบครั้งแรก'], actions: 'last' }
+const CC_WORKER_MAP = { title: 'ชื่อ', status: 'สถานะการเชื่อมต่อ', sub: ['ตำแหน่ง'], actions: 'last' }
 
 const SCHEDULE_COMMAND_DESCRIPTIONS = {
   today_job: 'แชทส่วนตัว: งานของตัวเอง + ปุ่มลัดตามสถานะ (เช็คอิน/เช็คเอาท์/งานเสร็จ) · กลุ่ม: งานของทั้งทีมวันนี้ แบ่งตามไซต์',
   tomorrow_job: 'เหมือนงานวันนี้ แต่เป็นของพรุ่งนี้',
   this_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์นี้ ทีละบรรทัด',
   next_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์หน้า ทีละบรรทัด',
+}
+
+// Salary advance + request menus: DM only, renamable (lineCommandSettings.js ADVANCE_COMMAND_KEYS).
+const ADVANCE_COMMAND_DESCRIPTIONS = {
+  advance_request: 'ส่งลิงก์ฟอร์มขอเบิกเงินล่วงหน้า (ใช้ได้ 30 นาที) · ต้องมีโมดูลเงินเดือน',
+  advance_status: 'ตอบรายการเบิกเงินของตัวเอง + ยอดคืนคงเหลือ · ต้องมีโมดูลเงินเดือน',
+  request_menu: 'ปุ่มเมนู "ยื่นคำขอ": ให้กดเลือก ขอลา / เบิกของ / เบิกเงิน',
+  request_status: 'ปุ่มเมนู "สถานะคำขอ": การลา 60 วันล่าสุด + วันลาคงเหลือ + รายการเบิกเงิน',
+  payslip_request: 'ส่งลิงก์ดูสลิปเงินเดือนของตัวเอง (ใช้ได้ 30 นาที) · ต้องมีโมดูลเงินเดือน',
 }
 
 const FIXED_COMMAND_DESCRIPTIONS = {
@@ -45,9 +65,9 @@ function generateLinkCode() {
   return code
 }
 
-export default function CommunicationCenter() {
+export default function CommunicationCenter({ navState }) {
   const { tenant } = useTenant()
-  const { user } = useUserRole()
+  const { user, isAtLeast } = useUserRole()
 
   // ---- My own LINE link (user_roles.line_link_code/line_user_id --
   // same columns+webhook handling the LINE feature already had for any
@@ -95,11 +115,107 @@ export default function CommunicationCenter() {
   const fetchLineSettings = async () => {
     if (!tenant?.id) return
     setLoadingSettings(true)
-    const { data, error } = await supabase.from('line_settings').select('tenant_id, crew_group_id, group_link_code').eq('tenant_id', tenant.id).maybeSingle()
+    const { data, error } = await supabase.from('line_settings').select('tenant_id, group_link_code').eq('tenant_id', tenant.id).maybeSingle()
     if (!error) setLineSettings(data)
     setLoadingSettings(false)
   }
   useEffect(() => { fetchLineSettings() }, [tenant?.id])
+
+  // ---- Customer requests from the company's customer LINE OA. handled_by is
+  // always the logged-in user's own email, never form input. ----
+  const [custRequests, setCustRequests] = useState([])
+  const [hasCustChannel, setHasCustChannel] = useState(false)
+  const [closingReqId, setClosingReqId] = useState(null)
+  const fetchCustRequests = async () => {
+    const [{ data: reqs, error: e1 }, { data: ch, error: e2 }] = await Promise.all([
+      supabase.from('customer_line_requests').select('id, kind, display_name, created_at, clients(name)').is('handled_at', null).order('created_at', { ascending: false }),
+      supabase.from('customer_line_channels').select('tenant_id').maybeSingle(),
+    ])
+    if (!e1) setCustRequests(reqs || [])
+    if (!e2) setHasCustChannel(!!ch)
+  }
+  useEffect(() => { if (tenant?.id) fetchCustRequests() }, [tenant?.id])
+
+  const handleCloseCustRequest = async (id) => {
+    if (!user?.email) { alert('Error: ไม่พบอีเมลผู้ใช้'); return }
+    setClosingReqId(id)
+    try {
+      const { error } = await supabase.from('customer_line_requests')
+        .update({ handled_at: new Date().toISOString(), handled_by: user.email }).eq('id', id)
+      if (error) throw error
+      setCustRequests(list => list.filter(r => r.id !== id))
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setClosingReqId(null)
+    }
+  }
+
+  const { groups, limit, loading: loadingGroups, refetch: refetchGroups } = useLineGroups()
+  const isOwner = isAtLeast('OWNER')
+  const atCap = limit !== null && groups.length >= limit
+  const [groupBusy, setGroupBusy] = useState(false)
+  const [pendingRemoval, setPendingRemoval] = useState(null)
+  const [renaming, setRenaming] = useState(null) // { id, value }
+
+  const handleRename = async () => {
+    if (!renaming) return
+    setGroupBusy(true)
+    try {
+      const label = renaming.value.trim() || null
+      const { error } = await supabase.from('line_groups').update({ label }).eq('id', renaming.id).eq('tenant_id', tenant.id)
+      if (error) throw error
+      setRenaming(null)
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      await refetchGroups()
+      setGroupBusy(false)
+    }
+  }
+
+  const RECOVER_MSG = '\nยังไม่มีกลุ่มแจ้งงาน กรุณาเลือกกลุ่มแจ้งงานใหม่'
+
+  // Clear the old notify group first, then set the new one (partial unique index).
+  const handleSetNotify = async (id) => {
+    setGroupBusy(true)
+    let cleared = false
+    try {
+      const { error: e1 } = await supabase.from('line_groups').update({ is_notify: false }).eq('tenant_id', tenant.id).eq('is_notify', true)
+      if (e1) throw e1
+      cleared = true
+      const { error: e2 } = await supabase.from('line_groups').update({ is_notify: true }).eq('tenant_id', tenant.id).eq('id', id)
+      if (e2) throw e2
+    } catch (e) {
+      alert('Error: ' + e.message + (cleared ? RECOVER_MSG : ''))
+    } finally {
+      await refetchGroups()
+      setGroupBusy(false)
+    }
+  }
+
+  const handleUnlink = async (id, newNotifyId) => {
+    const plan = planGroupRemoval(groups, id, newNotifyId)
+    if (!plan.ok) { setPendingRemoval({ id, newNotifyId: '' }); return }
+    if (!newNotifyId && !window.confirm('ยกเลิกการเชื่อมกลุ่มนี้?')) return
+    setGroupBusy(true)
+    let deleted = false
+    try {
+      const { error } = await supabase.from('line_groups').delete().eq('tenant_id', tenant.id).eq('id', id)
+      if (error) throw error
+      deleted = true
+      if (plan.setNotifyId) {
+        const { error: e2 } = await supabase.from('line_groups').update({ is_notify: true }).eq('tenant_id', tenant.id).eq('id', plan.setNotifyId)
+        if (e2) throw e2
+      }
+    } catch (e) {
+      alert('Error: ' + e.message + (deleted && plan.setNotifyId ? RECOVER_MSG : ''))
+    } finally {
+      setPendingRemoval(null)
+      await refetchGroups()
+      setGroupBusy(false)
+    }
+  }
 
   const [groupClaimCode, setGroupClaimCode] = useState(null)
   const [generatingGroupCode, setGeneratingGroupCode] = useState(false)
@@ -320,6 +436,30 @@ export default function CommunicationCenter() {
   // policy for it already existed too, just unused.
   const [issueReports, setIssueReports] = useState([])
   const [loadingIssues, setLoadingIssues] = useState(true)
+  // Bell/push: scroll to the section the notification was about; issues also filter to open ones.
+  const issuesFocus = usePendingFocus(navState, 'issues_open')
+  const offboardFocus = usePendingFocus(navState, 'offboarded_in_group')
+  const issuesCardRef = useRef(null)
+  const offboardCardRef = useRef(null)
+  // Jump (not smooth: Chrome drops a smooth scroll when the page grows underneath it, which
+  // left the page near the top live) once every section above the issues card has loaded,
+  // then re-check a few times for anything that settles late.
+  const sectionsAboveIssuesLoaded = !loadingMyRole && !loadingSettings && !loadingWorkers && !loadingUnlinked && !loadingIssues
+  useEffect(() => {
+    if (!issuesFocus.active || !sectionsAboveIssuesLoaded) return
+    const go = () => {
+      const el = issuesCardRef.current
+      if (el && Math.abs(el.getBoundingClientRect().top) > 4) el.scrollIntoView({ behavior: 'auto', block: 'start' })
+    }
+    const timers = [50, 500, 1200, 2500].map(ms => setTimeout(go, ms))
+    return () => timers.forEach(clearTimeout)
+  }, [issuesFocus.active, sectionsAboveIssuesLoaded])
+  useEffect(() => {
+    if (!offboardFocus.active || loadingMyRole) return
+    const t = setTimeout(() => offboardCardRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' }), 50)
+    return () => clearTimeout(t)
+  }, [offboardFocus.active, loadingMyRole])
+  const visibleIssueReports = issueReports.filter(r => !issuesFocus.active || isIssueOpen(r))
   const [resolvingIssueId, setResolvingIssueId] = useState(null)
 
   const fetchIssueReports = async () => {
@@ -358,7 +498,7 @@ export default function CommunicationCenter() {
     setLoadingPhotos(true)
     const { data, error } = await supabase
       .from('line_site_photos')
-      .select('id, photo_path, date, created_at, workers(name, nickname), sites(name)')
+      .select('id, photo_path, date, created_at, worker_id, workers(name, nickname), sites(name)')
       .order('created_at', { ascending: false })
       .limit(60)
     if (error || !data?.length) {
@@ -403,13 +543,42 @@ export default function CommunicationCenter() {
     <div>
       <h2 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>💬 การสื่อสาร — บอทไลน์ทีมงาน</h2>
 
+      {(custRequests.length > 0 || hasCustChannel) && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>💬 ลูกค้าทักทาง LINE</div>
+          <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
+            ตอบลูกค้าในแชท LINE OA Manager แล้วกดปิดเรื่อง
+          </div>
+          {custRequests.length === 0 ? (
+            <div style={{ padding: 16, fontSize: 13, color: 'var(--text3)' }}>ไม่มีเรื่องค้าง</div>
+          ) : custRequests.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>
+                  {r.kind === 'repair' ? 'แจ้งซ่อม' : 'ขอใบเสนอราคา'} · {r.display_name || '-'}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                  {r.clients?.name ? `${r.clients.name} · ` : ''}{new Date(r.created_at).toLocaleString('th-TH')}
+                </div>
+              </div>
+              <button type="button" className="btn btn-sm" disabled={closingReqId === r.id} onClick={() => handleCloseCustRequest(r.id)}>ปิดเรื่อง</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div ref={offboardCardRef} style={{ scrollMarginTop: 120 }}>
+        <PendingFocusChip focus={offboardFocus} pendingKey="offboarded_in_group" style={{ marginBottom: 8 }} />
+        <OffboardedInGroupCard />
+      </div>
+
       {/* ---- Command guide ---- */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>📖 คำสั่งที่พิมพ์ได้ในไลน์</div>
         <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
-          เปิด/ปิดได้ทุกคำสั่ง แยกอิสระระหว่างแชทส่วนตัว (DM) กับกลุ่มไลน์ — คำสั่งดูตารางงาน 4 อันแรกเปลี่ยนคำที่ใช้พิมพ์ได้ด้วย (ใส่ได้หลายคำ คั่นด้วยจุลภาค ",") ที่เหลือกำหนดคำไว้ในระบบตายตัว แต่ปิดเปิดได้เหมือนกัน
+          เปิด/ปิดได้ทุกคำสั่ง แยกอิสระระหว่างแชทส่วนตัว (DM) กับกลุ่มไลน์ — คำสั่งดูตารางงาน 4 อันแรก และคำสั่งเบิกเงิน/คำขอ 4 อันถัดมา เปลี่ยนคำที่ใช้พิมพ์ได้ด้วย (ใส่ได้หลายคำ คั่นด้วยจุลภาค ",") ที่เหลือกำหนดคำไว้ในระบบตายตัว แต่ปิดเปิดได้เหมือนกัน
         </div>
-        <div className="table-wrap">
+        <CardTable map={CC_COMMAND_MAP}>
           <table>
             <thead>
               <tr>
@@ -455,6 +624,37 @@ export default function CommunicationCenter() {
                   </tr>
                 )
               })}
+              {ADVANCE_COMMAND_KEYS.map(key => {
+                const enabledDm = resolveEnabled(key, commandSettingsByKey, 'dm')
+                const phrases = resolveEffectivePhrases(key, commandSettingsByKey)
+                const isEditing = editingCommandKey === key
+                const isSaving = savingCommandKey === key
+                return (
+                  <tr key={key} style={{ opacity: enabledDm ? 1 : 0.5 }}>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {isEditing ? (
+                        <input className="input" style={{ fontSize: 12, padding: '3px 6px', width: 220 }} value={editPhraseValue}
+                          onChange={e => setEditPhraseValue(e.target.value)} placeholder={`${ADVANCE_COMMAND_DEFAULTS[key]}, ...`} autoFocus />
+                      ) : phrases.join(' / ')}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key, 'dm')}>{enabledDm ? '✅ เปิด' : '⛔ ปิด'}</button>
+                    </td>
+                    <td style={{ fontSize: 12, whiteSpace: 'nowrap', color: 'var(--text3)' }}>แชทส่วนตัวเท่านั้น</td>
+                    <td style={{ fontSize: 12.5 }}>{ADVANCE_COMMAND_DESCRIPTIONS[key]}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {isEditing ? (
+                        <>
+                          <button className="btn btn-sm btn-primary" disabled={isSaving} onClick={handleSaveCommandPhrase}>บันทึก</button>
+                          <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => setEditingCommandKey(null)}>ยกเลิก</button>
+                        </>
+                      ) : (
+                        <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => startEditCommandPhrase(key)}>แก้ไข</button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
               {FIXED_COMMAND_KEYS.map(key => {
                 const enabledDm = resolveEnabled(key, commandSettingsByKey, 'dm')
                 const enabledGroup = resolveEnabled(key, commandSettingsByKey, 'group')
@@ -481,7 +681,7 @@ export default function CommunicationCenter() {
               </tr>
             </tbody>
           </table>
-        </div>
+        </CardTable>
         <div style={{ padding: '10px 16px', fontSize: 11.5, color: 'var(--text3)', borderTop: '1px solid var(--border)' }}>
           "แชทส่วนตัว" ต้องเชื่อมบัญชีก่อนด้วยรหัส 6 หลัก · "กลุ่มทีมงาน" ต้องเป็นกลุ่มที่ตั้งไว้ด้านล่าง (การ์ด "การเชื่อมต่อ LINE Official Account") ยกเว้นคำสั่งดูตารางงาน 4 อันแรกที่ใครในกลุ่มก็ถามได้เลยเพราะเป็นแค่การดูข้อมูล — คำสั่งไหน "ปิด" อยู่แล้วมีคนพิมพ์ บอทจะตอบกลับว่าฟีเจอร์นี้ปิดอยู่ ให้ติดต่อแอดมินโดยตรง (ไม่เงียบเฉยแบบเดิม)
         </div>
@@ -511,7 +711,7 @@ export default function CommunicationCenter() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ fontWeight: 700 }}>📡 การเชื่อมต่อ LINE Official Account</div>
-          {!loadingSettings && statusBadge(!!lineSettings?.crew_group_id, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
+          {!loadingSettings && !loadingGroups && statusBadge(groups.length > 0, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
         </div>
         {loadingSettings ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
@@ -528,14 +728,65 @@ export default function CommunicationCenter() {
             <div style={{ padding: '0 16px 16px' }}>
               <div style={{ marginTop: 14 }}>
                 <label className="label">กลุ่มทีมงาน</label>
-                {lineSettings?.crew_group_id ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--green)' }}>✅ ตั้งค่าแล้ว</div>
-                ) : (
-                  <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>ยังไม่ได้ตั้งค่า</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>ใช้ไปแล้ว {groups.length} จาก {limit ?? 'ไม่จำกัด'} กลุ่ม</span>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={loadingGroups} onClick={refetchGroups}>🔄 รีเฟรช</button>
+                </div>
+                {groups.length > 0 && !groups.some(g => g.is_notify) && (
+                  <div style={{ fontSize: 12.5, color: 'var(--red)', marginTop: 6 }}>ยังไม่ได้ตั้งกลุ่มแจ้งงาน — งานประจำวันจะไม่ถูกส่ง กรุณาเลือกกลุ่มแจ้งงาน</div>
                 )}
-                <button type="button" className="btn btn-ghost btn-sm" disabled={generatingGroupCode} onClick={handleGenerateGroupCode} style={{ marginTop: 6 }}>
-                  {generatingGroupCode ? '⏳...' : lineSettings?.crew_group_id ? '🔄 เปลี่ยนกลุ่มทีมงาน' : '➕ เพิ่มกลุ่มทีมงาน'}
+                {groups.length === 0 && (
+                  <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 6 }}>ยังไม่ได้เชื่อมกลุ่ม</div>
+                )}
+                {groups.map(g => (
+                  <div key={g.id} style={{ marginTop: 8, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {renaming?.id === g.id ? (
+                        <>
+                          <input className="input" value={renaming.value} maxLength={100} autoFocus onChange={e => setRenaming({ id: g.id, value: e.target.value })} style={{ maxWidth: 220 }} />
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={handleRename}>บันทึก</button>
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={() => setRenaming(null)}>ยกเลิก</button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontWeight: 600 }}>{g.label || 'กลุ่ม LINE'}</span>
+                          {isOwner && (
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={() => setRenaming({ id: g.id, value: g.label || '' })}>✏️ เปลี่ยนชื่อ</button>
+                          )}
+                        </>
+                      )}
+                      {g.created_at && <span style={{ fontSize: 11, color: 'var(--text3)' }}>เชื่อมเมื่อ {new Date(g.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                      {g.is_notify && <span style={{ fontSize: 11, color: 'var(--green)' }}>กลุ่มแจ้งงาน</span>}
+                      {isOwner && (
+                        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {!g.is_notify && (
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={() => handleSetNotify(g.id)}>ตั้งเป็นกลุ่มแจ้งงาน</button>
+                          )}
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={() => handleUnlink(g.id)}>ยกเลิกการเชื่อม</button>
+                        </span>
+                      )}
+                    </div>
+                    {pendingRemoval?.id === g.id && (
+                      <div style={{ marginTop: 8, fontSize: 12.5 }}>
+                        <div>นี่คือกลุ่มแจ้งงาน เลือกกลุ่มแจ้งงานใหม่ก่อนยกเลิก:</div>
+                        <select className="input" value={pendingRemoval.newNotifyId} onChange={e => setPendingRemoval({ id: g.id, newNotifyId: e.target.value })} style={{ marginTop: 4 }}>
+                          <option value="">-- เลือกกลุ่ม --</option>
+                          {groups.filter(o => o.id !== g.id).map(o => <option key={o.id} value={o.id}>{o.label || 'กลุ่ม LINE'}</option>)}
+                        </select>
+                        <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy || !pendingRemoval.newNotifyId} onClick={() => handleUnlink(g.id, pendingRemoval.newNotifyId)}>ยืนยันยกเลิกการเชื่อม</button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPendingRemoval(null)}>ไม่ยกเลิก</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <button type="button" className="btn btn-ghost btn-sm" disabled={generatingGroupCode || atCap} onClick={handleGenerateGroupCode} style={{ marginTop: 8 }}>
+                  {atCap ? 'ครบจำนวนแล้ว' : generatingGroupCode ? '⏳...' : '➕ เพิ่มกลุ่ม'}
                 </button>
+                {atCap && (
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>ยกเลิกการเชื่อมกลุ่มเดิมก่อน หรืออัปเกรดแพ็กเกจเพื่อเพิ่มกลุ่ม</div>
+                )}
                 {groupClaimCode && (
                   <div style={{ fontSize: 12, marginTop: 8, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
                     เพิ่มบอทเข้ากลุ่มของคุณ แล้วพิมพ์รหัสนี้ในกลุ่ม:
@@ -578,7 +829,7 @@ export default function CommunicationCenter() {
         {loadingWorkers ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
         ) : (
-          <div className="table-wrap">
+          <CardTable map={CC_WORKER_MAP}>
             <table>
               <thead>
                 <tr>
@@ -614,7 +865,7 @@ export default function CommunicationCenter() {
                 )}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         )}
       </div>
 
@@ -628,7 +879,7 @@ export default function CommunicationCenter() {
         ) : !unlinkedSenders.length ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ทุกคนที่ทักในกลุ่มทีมงานถูกจดจำแล้ว</div>
         ) : (
-          <div className="table-wrap">
+          <CardTable map={CC_UNLINKED_MAP}>
             <table>
               <thead>
                 <tr>
@@ -659,21 +910,22 @@ export default function CommunicationCenter() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         )}
       </div>
 
       {/* ---- Issue reports ---- */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>
-          🚧 แจ้งปัญหาหน้างาน {issueReports.filter(r => r.status === 'open').length > 0 && `(${issueReports.filter(r => r.status === 'open').length} ยังไม่แก้ไข)`}
+      <div className="card" style={{ marginBottom: 20, scrollMarginTop: 120 }} ref={issuesCardRef}>
+        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>🚧 แจ้งปัญหาหน้างาน {issueReports.filter(r => r.status === 'open').length > 0 && `(${issueReports.filter(r => r.status === 'open').length} ยังไม่แก้ไข)`}</span>
+          <PendingFocusChip focus={issuesFocus} pendingKey="issues_open" />
         </div>
         {loadingIssues ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
-        ) : !issueReports.length ? (
+        ) : !visibleIssueReports.length ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ยังไม่มีการแจ้งปัญหาเข้ามา</div>
         ) : (
-          <div className="table-wrap">
+          <CardTable map={CC_ISSUE_MAP}>
             <table>
               <thead>
                 <tr>
@@ -686,7 +938,7 @@ export default function CommunicationCenter() {
                 </tr>
               </thead>
               <tbody>
-                {issueReports.map(r => (
+                {visibleIssueReports.map(r => (
                   <tr key={r.id} style={{ opacity: r.status === 'resolved' ? 0.55 : 1 }}>
                     <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{isIssueOpen(r) && <PendingMark label="ยังไม่แก้ไข" />}{r.workers?.nickname || r.workers?.name || '-'}</td>
                     <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{r.sites?.name || '-'}</td>
@@ -702,7 +954,7 @@ export default function CommunicationCenter() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         )}
       </div>
 
@@ -723,7 +975,7 @@ export default function CommunicationCenter() {
                   <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
                 )}
                 <div style={{ fontSize: 11, marginTop: 4, color: 'var(--text3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {p.workers?.nickname || p.workers?.name || '-'} · {p.sites?.name || '-'}
+                  {photoUploaderLabel(p)} · {p.sites?.name || '-'}
                 </div>
                 <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{new Date(p.created_at).toLocaleDateString('th-TH')}</div>
               </a>

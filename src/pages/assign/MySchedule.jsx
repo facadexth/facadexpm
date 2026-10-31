@@ -11,6 +11,7 @@
 // ============================================================
 import { useMemo, useState } from 'react'
 import { useUserRole } from '../../hooks/useUserRole.js'
+import { isWorkerDoneable, doneBlockedMessage } from '../../../supabase/functions/_shared/lineTaskRules.ts'
 import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useMySiteNames, useLeaveQuotaUsage, usePhaseTasks, useMyTeamToday, useMyAssignedCheckinLocation } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
 import { isTaskOverdue } from '../sites/phaseTasksCalc.js'
@@ -91,6 +92,11 @@ export default function MySchedule({ from, to, days, view }) {
       return (order[a.status] ?? 2) - (order[b.status] ?? 2)
     })
   }, [myTasksRaw, me, todayIso])
+
+  // การ์ดที่มีงานย่อย (อย่างน้อยเท่าที่ RLS ให้เห็น) -- สถานะคิดจากงานย่อย
+  const parentTaskIds = useMemo(
+    () => new Set((myTasksRaw || []).map((t) => t.parent_task_id).filter(Boolean)), [myTasksRaw])
+  const taskInfo = (t) => ({ progress_mode: t.progress_mode, has_children: parentTaskIds.has(t.id) })
 
   const updateTaskStatus = async (taskId, status) => {
     setSavingTaskId(taskId)
@@ -224,13 +230,15 @@ export default function MySchedule({ from, to, days, view }) {
                 </div>
                 {isOpen && (
                   <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                    {TASK_STATUS_OPTS.map((s) => (
+                    {isWorkerDoneable(taskInfo(t)) ? TASK_STATUS_OPTS.map((s) => (
                       <button key={s.value} type="button" className={`btn btn-sm ${t.status === s.value ? 'btn-primary' : 'btn-ghost'}`}
                         disabled={savingTaskId === t.id} style={{ flex: 1, fontSize: 11 }}
                         onClick={() => updateTaskStatus(t.id, s.value)}>
                         {s.label}
                       </button>
-                    ))}
+                    )) : (
+                      <div style={{ flex: 2, fontSize: 11, color: 'var(--text3)', alignSelf: 'center' }}>{doneBlockedMessage(taskInfo(t))}</div>
+                    )}
                     <label className="btn btn-sm btn-ghost" style={{ flex: 1, fontSize: 11, textAlign: 'center', cursor: uploadingTaskId === t.id ? 'default' : 'pointer' }}>
                       {uploadingTaskId === t.id ? '⏳...' : uploadedTaskId === t.id ? '✅ แนบรูปแล้ว' : '📷 แนบรูป'}
                       <input type="file" accept="image/*" capture="environment" multiple hidden

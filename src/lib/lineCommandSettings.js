@@ -14,6 +14,8 @@
 // deeply tied to matchGroupAction/matchDMAction's hardcoded keyword
 // logic (negation handling for แจ้งปัญหา, etc), not a simple swap.
 
+import { ADVANCE_PHRASES } from './payroll/advanceRules.js'
+
 export const SCHEDULE_COMMAND_KEYS = ['today_job', 'tomorrow_job', 'this_week_job', 'next_week_job']
 
 export const SCHEDULE_COMMAND_DEFAULTS = {
@@ -56,7 +58,30 @@ export const FIXED_COMMAND_LABELS = {
   job_done_start: 'งานเสร็จ',
 }
 
-export const ALL_COMMAND_KEYS = [...SCHEDULE_COMMAND_KEYS, ...FIXED_COMMAND_KEYS]
+// Salary advance + request menus (2026-10-18). DM only (the bot answers a group with
+// "ขอเบิกเงินทางแชตส่วนตัวกับบอทนะครับ"), so the settings show a DM on/off and a
+// rename, no group toggle. Default phrases come from advanceRules.js (the same table
+// the webhook's _shared/advance-logic.ts mirrors).
+export const ADVANCE_COMMAND_KEYS = ['advance_request', 'advance_status', 'request_menu', 'request_status', 'payslip_request']
+
+export const ADVANCE_COMMAND_DEFAULTS = Object.fromEntries(ADVANCE_COMMAND_KEYS.map(k => [k, ADVANCE_PHRASES[k][0]]))
+
+export const ADVANCE_COMMAND_LABELS = {
+  advance_request: 'เบิกเงิน',
+  advance_status: 'ยอดเบิก',
+  request_menu: 'ยื่นคำขอ',
+  request_status: 'สถานะคำขอ',
+  payslip_request: 'ขอสลิปเงินเดือน',
+}
+
+// Shortest custom phrase allowed for the 4 keys above.
+export const ADVANCE_MIN_PHRASE_LENGTH = 3
+
+// Commands whose phrase the owner can change.
+export const RENAMABLE_COMMAND_KEYS = [...SCHEDULE_COMMAND_KEYS, ...ADVANCE_COMMAND_KEYS]
+const RENAMABLE_COMMAND_LABELS = { ...SCHEDULE_COMMAND_LABELS, ...ADVANCE_COMMAND_LABELS }
+
+export const ALL_COMMAND_KEYS = [...SCHEDULE_COMMAND_KEYS, ...FIXED_COMMAND_KEYS, ...ADVANCE_COMMAND_KEYS]
 
 // Every phrase (or phrase-fragment) matched elsewhere in line-webhook's
 // matchGroupAction/matchDMAction -- a custom schedule phrase must not
@@ -98,7 +123,9 @@ export function splitPhrases(raw) {
 export function resolveEffectivePhrases(commandKey, settingsByKey) {
   const row = settingsByKey?.[commandKey]
   const custom = splitPhrases(row?.custom_phrase)
-  return custom.length ? custom : [SCHEDULE_COMMAND_DEFAULTS[commandKey]]
+  if (custom.length) return custom
+  if (SCHEDULE_COMMAND_DEFAULTS[commandKey]) return [SCHEDULE_COMMAND_DEFAULTS[commandKey]]
+  return [...(ADVANCE_PHRASES[commandKey] || [])]
 }
 
 // Single-phrase convenience for display (first configured phrase, or
@@ -119,7 +146,8 @@ export function resolveEnabled(commandKey, settingsByKey, context) {
 
 // Checks a candidate custom-phrase INPUT (raw, possibly comma-separated
 // multiple phrases) for commandKey against every reserved phrase AND
-// every OTHER schedule command's current effective phrases (never
+// every OTHER renamable command's current effective phrases -- the 4
+// schedule commands and the 4 salary-advance/request ones (never
 // against itself, so re-saving the same phrase is fine). Returns
 // { valid: true } or { valid: false, reason: string }.
 export function validateCustomPhrase(candidateInput, commandKey, settingsByKey) {
@@ -127,17 +155,21 @@ export function validateCustomPhrase(candidateInput, commandKey, settingsByKey) 
   if (candidates.length === 0) return { valid: true } // blank = fall back to default, always fine
 
   for (const trimmed of candidates) {
+    // A very short phrase for a money/request command would fire on ordinary chat.
+    if (ADVANCE_COMMAND_KEYS.includes(commandKey) && trimmed.length < ADVANCE_MIN_PHRASE_LENGTH) {
+      return { valid: false, reason: `"${trimmed}" สั้นเกินไป -- ต้องยาวอย่างน้อย ${ADVANCE_MIN_PHRASE_LENGTH} ตัวอักษร` }
+    }
     for (const reserved of RESERVED_PHRASES) {
       if (phrasesCollide(trimmed, reserved)) {
         return { valid: false, reason: `"${trimmed}" ชนกับคำสั่งเดิมในระบบ ("${reserved}") -- กรุณาใช้คำอื่น` }
       }
     }
 
-    for (const otherKey of SCHEDULE_COMMAND_KEYS) {
+    for (const otherKey of RENAMABLE_COMMAND_KEYS) {
       if (otherKey === commandKey) continue
       for (const otherPhrase of resolveEffectivePhrases(otherKey, settingsByKey)) {
         if (phrasesCollide(trimmed, otherPhrase)) {
-          return { valid: false, reason: `"${trimmed}" ชนกับคำสั่ง "${SCHEDULE_COMMAND_LABELS[otherKey]}" ("${otherPhrase}") -- กรุณาใช้คำอื่น` }
+          return { valid: false, reason: `"${trimmed}" ชนกับคำสั่ง "${RENAMABLE_COMMAND_LABELS[otherKey]}" ("${otherPhrase}") -- กรุณาใช้คำอื่น` }
         }
       }
     }

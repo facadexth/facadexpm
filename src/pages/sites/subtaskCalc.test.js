@@ -47,7 +47,7 @@ describe('computeNodeStats', () => {
   it('derives from microtasks (source: microtasks) when a leaf has them, billingWeightPct stays null', () => {
     const microtasksByNodeId = { p1: [{ status: 'done' }, { status: 'in_progress' }] }
     expect(computeNodeStats('p1', {}, microtasksByNodeId)).toEqual({
-      total: 2, done: 1, pct: 50, derivedStatus: 'in_progress', billingWeightPct: null, source: 'microtasks',
+      total: 2, done: 1, pct: 0, derivedStatus: 'in_progress', billingWeightPct: null, source: 'microtasks',
     })
   })
 
@@ -79,6 +79,15 @@ describe('computeNodeStats', () => {
 
     const p1Stats = computeNodeStats('p1', subtasksByParent, microtasksByNodeId)
     expect(p1Stats).toEqual({ total: 2, done: 2, pct: 100, derivedStatus: 'done', billingWeightPct: 30, source: 'subtasks' })
+  })
+
+  it('pct is the mean of the children weighted by billing_weight_pct', () => {
+    const subtasks = [
+      { id: 's1', phase_id: 'p1', parent_subtask_id: null, billing_weight_pct: 25, status: 'done' },
+      { id: 's2', phase_id: 'p1', parent_subtask_id: null, billing_weight_pct: 75 },
+    ]
+    const subtasksByParent = groupSubtasksByParent(subtasks)
+    expect(computeNodeStats('p1', subtasksByParent, { s2: [{ id: 't', weight_pts: 100, status: 'not_started' }] }).pct).toBe(25)
   })
 
   it('is in_progress when some but not all children are done, not_started when none have started', () => {

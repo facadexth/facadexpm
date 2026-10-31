@@ -3,12 +3,18 @@ import { isMissingRelationError } from '../lib/poReceiptErrors.js'
 
 // Chainable supabase fake: table -> result ({data,error}) or a function of the select string.
 const results = {}
+const rpcResults = {}
+const tablesQueried = []
+const calls = []
+let rpcCount = 0
 vi.mock('../lib/supabase.js', () => ({
   supabase: {
+    rpc: (name) => (rpcCount++, Promise.resolve(rpcResults[name] || { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.' + name } })),
     from: (table) => {
+      tablesQueried.push(table)
       let sel = ''
       const q = {
-        select: (s) => { sel = s; return q }, eq: () => q, not: () => q, order: () => q, range: () => q, limit: () => q,
+        select: (s) => { sel = s; calls.push(['select', table, s]); return q }, eq: (c, v) => { calls.push(['eq', table, c, v]); return q }, not: () => q, order: () => q, range: () => q, limit: () => q,
         maybeSingle: () => q,
         then: (res, rej) => Promise.resolve(typeof results[table] === 'function' ? results[table](sel) : results[table]).then(res, rej),
       }
@@ -16,7 +22,7 @@ vi.mock('../lib/supabase.js', () => ({
     },
   },
 }))
-const { fetchPoMoneyIndex, fetchPoLedger } = await import('./useSupabase.js')
+const { fetchPoMoneyIndex, fetchPoLedger, deliveryReadyProbe, resetDeliveryReadyCache, fetchDeliveryReceipts, fetchActiveReceiptLinks } = await import('./useSupabase.js')
 
 const relErr = { code: '42P01', message: 'relation "po_receipt_items" does not exist' }
 
@@ -67,5 +73,91 @@ describe('fail soft before the migrations', () => {
     results.po_deposit_applications = { data: [], error: null }
     results.expenses = { data: null, error: { code: '42501', message: 'permission denied' } }
     await expect(fetchPoLedger('P')).rejects.toBeTruthy()
+  })
+})
+
+describe('per-delivery tax invoice fail soft', () => {
+  beforeEach(() => { for (const k of Object.keys(results)) delete results[k]; for (const k of Object.keys(rpcResults)) delete rpcResults[k]; tablesQueried.length = 0; calls.length = 0; rpcCount = 0; resetDeliveryReadyCache() })
+  const ready = () => { rpcResults.delivery_tax_invoice_ready = { data: true, error: null } }
+
+  it('probe error (PGRST202): not ready, and no table is queried (04 applied alone lights nothing up)', async () => {
+    results.po_receipts = { data: [{ id: 'x' }], error: null }
+    results.supplier_tax_invoice_receipts = { data: [{ receipt_id: 'r1', active: true }], error: null }
+    expect(await deliveryReadyProbe()).toBe(false)
+    expect(await fetchDeliveryReceipts()).toEqual({ ready: false, rows: [] })
+    const links = await fetchActiveReceiptLinks()
+    expect(links.ready).toBe(false)
+    expect(links.map.size).toBe(0)
+    expect(tablesQueried).toEqual([])
+  })
+  it('probe returning anything but true is not ready', async () => {
+    rpcResults.delivery_tax_invoice_ready = { data: false, error: null }
+    expect(await deliveryReadyProbe()).toBe(false)
+    rpcResults.delivery_tax_invoice_ready = { data: null, error: null }
+    expect(await deliveryReadyProbe()).toBe(false)
+  })
+  it('receipts: missing column / table -> not ready; other errors rethrown', async () => {
+    ready()
+    results.po_receipts = { data: null, error: { code: '42703', message: 'column purchase_orders.tax_invoice_mode does not exist' } }
+    expect(await fetchDeliveryReceipts()).toEqual({ ready: false, rows: [] })
+    results.po_receipts = { data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.po_receipts'" } }
+    expect(await fetchDeliveryReceipts()).toEqual({ ready: false, rows: [] })
+    results.po_receipts = { data: null, error: { code: '42501', message: 'permission denied' } }
+    await expect(fetchDeliveryReceipts()).rejects.toBeTruthy()
+  })
+  it('receipts: ready returns rows and requests the inner join + delivery-mode filter', async () => {
+    ready()
+    results.po_receipts = { data: [{ id: 'r1' }], error: null }
+    expect(await fetchDeliveryReceipts()).toEqual({ ready: true, rows: [{ id: 'r1' }] })
+    const sel = calls.find(c => c[0] === 'select' && c[1] === 'po_receipts')[2]
+    expect(sel).toContain('purchase_orders!po_receipts_po_fk!inner(')
+    expect(calls).toContainEqual(['eq', 'po_receipts', 'purchase_orders.tax_invoice_mode', 'delivery'])
+  })
+  it('links: only active rows are requested', async () => {
+    ready()
+    results.supplier_tax_invoice_receipts = { data: [], error: null }
+    await fetchActiveReceiptLinks()
+    expect(calls).toContainEqual(['eq', 'supplier_tax_invoice_receipts', 'active', true])
+    expect(calls.find(c => c[0] === 'select' && c[1] === 'supplier_tax_invoice_receipts')[2]).toContain('active')
+  })
+  it('probe: only a missing function means not ready; other errors surface and are not cached', async () => {
+    rpcResults.delivery_tax_invoice_ready = { data: null, error: { code: '42883', message: 'function does not exist' } }
+    expect(await deliveryReadyProbe()).toBe(false)
+    rpcResults.delivery_tax_invoice_ready = { data: null, error: { message: 'Could not find the function public.delivery_tax_invoice_ready' } }
+    expect(await deliveryReadyProbe()).toBe(false)
+    const net = { message: 'TypeError: Failed to fetch' }
+    rpcResults.delivery_tax_invoice_ready = { data: null, error: net }
+    await expect(deliveryReadyProbe()).rejects.toBe(net)
+    await expect(fetchDeliveryReceipts()).rejects.toBe(net)
+    await expect(fetchActiveReceiptLinks()).rejects.toBe(net)
+    const perm = { code: '42501', message: 'permission denied for function' }
+    rpcResults.delivery_tax_invoice_ready = { data: null, error: perm }
+    await expect(deliveryReadyProbe()).rejects.toBe(perm)
+    expect(tablesQueried).toEqual([])
+    // recovers on the next call
+    ready()
+    expect(await deliveryReadyProbe()).toBe(true)
+  })
+  it('probe: a TRUE result is cached for the session (one RPC); false is not cached', async () => {
+    ready()
+    expect(await deliveryReadyProbe()).toBe(true)
+    expect(await deliveryReadyProbe()).toBe(true)
+    expect(rpcCount).toBe(1)
+    resetDeliveryReadyCache()
+    rpcResults.delivery_tax_invoice_ready = { data: false, error: null }
+    expect(await deliveryReadyProbe()).toBe(false)
+    expect(await deliveryReadyProbe()).toBe(false)
+    expect(rpcCount).toBe(3)
+  })
+  it('links: missing table -> not ready with an empty map; rows build the map', async () => {
+    ready()
+    results.supplier_tax_invoice_receipts = { data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.supplier_tax_invoice_receipts'" } }
+    const a = await fetchActiveReceiptLinks()
+    expect(a.ready).toBe(false)
+    expect(a.map instanceof Map && a.map.size === 0).toBe(true)
+    results.supplier_tax_invoice_receipts = { data: [{ receipt_id: 'r1', invoice_id: 'i1', active: true, supplier_tax_invoices: { invoice_no: 'A', status: 'draft' } }], error: null }
+    const b = await fetchActiveReceiptLinks()
+    expect(b.ready).toBe(true)
+    expect(b.map.get('r1').invoice_no).toBe('A')
   })
 })

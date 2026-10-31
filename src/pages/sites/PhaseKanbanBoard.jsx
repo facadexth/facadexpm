@@ -16,15 +16,27 @@
 // ไปเรื่อยๆ จนถึง leaf (ดู selectedChain ด้านล่าง) -- คลิกแท่ง leaf บนแท็บ
 // Gantt ก็จะ deep-link มาที่นี่พร้อม chip เลือกไว้ให้ทั้งเส้นผ่าน initialLeafId
 // ============================================================
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
-import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites } from '../../hooks/useSupabase.js'
+import SearchableSelect from '../../components/SearchableSelect.jsx'
+import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, useBoqItems, useSiteHasPlan, attachPmWorkerNames } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
+import { nodeProgress, fmtNum } from './progressCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
-import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
+import { uploadSitePhotos, bangkokTodayIso, photoUploaderLabel } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
+import { useUserRole } from '../../hooks/useUserRole.js'
+import { useProgressSchemaReady } from '../../lib/progressSchema.js'
+import { canManagePlan, canManageSites } from '../../lib/roles.js'
+import { auditLog } from '../../lib/audit.js'
+import { useBoqPhaseSplits } from './useBoqPhaseSplits.js'
+import { cellsFromRows } from './boqPhaseSplit.js'
+import { boqRemainingInPhase, boqCardCandidates, bulkCardRows, buildBoqMultiSave, sortZones } from './boqPhaseCards.js'
+import BoqBulkCardsDialog, { insertBoqCards } from './BoqBulkCardsDialog.jsx'
+import RecordProgressDialog from './RecordProgressDialog.jsx'
+import SplitTaskDialog from './SplitTaskDialog.jsx'
 
 const ALL_PHASES = '__all__'
 
@@ -36,9 +48,140 @@ const COLUMNS = [
 
 const PHOTO_DRAG_MIME = 'application/x-line-site-photo-id'
 
-const emptyDraft = (phaseId, status, sortOrder) => ({
+const TRAY_COLLAPSED_KEY = 'kanbanPhotoTrayCollapsed'
+const readTrayCollapsed = () => {
+  try { return localStorage.getItem(TRAY_COLLAPSED_KEY) === '1' } catch { return false }
+}
+
+/** Sites a photo can be moved to: Ongoing only, never the current site.
+ *  label = "<code> · <name> · Ongoing"; keywords carry name, code and client so
+ *  SearchableSelect's case-insensitive match covers all three. */
+export function ongoingSiteOptions(sites, currentSiteId) {
+  return (sites || [])
+    .filter((s) => s.status === 'Ongoing' && s.id !== currentSiteId)
+    .map((s) => ({
+      value: s.id,
+      label: `${s.site_number || '-'} · ${s.name} · Ongoing`,
+      keywords: [s.site_number, s.name, s.client_display_name, s.client_name].filter(Boolean).join(' '),
+      name: s.name,
+    }))
+}
+
+/** Search box + result list (SearchableSelect) for the destination site, then a
+ *  confirm button "ย้ายไป <site name>". onConfirm(siteId) runs the caller's move handler. */
+function SiteMovePicker({ sites, currentSiteId, busy, onConfirm, onCancel }) {
+  const [picked, setPicked] = useState('')
+  const options = useMemo(() => ongoingSiteOptions(sites, currentSiteId), [sites, currentSiteId])
+  const chosen = options.find((o) => o.value === picked)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: '1 1 260px', minWidth: 0 }}>
+      <div style={{ flex: '1 1 220px', minWidth: 0, fontSize: 13 }}>
+        <SearchableSelect value={picked} onChange={setPicked} options={options}
+          placeholder="ค้นหาไซต์ปลายทาง (รหัส / ชื่อ / ลูกค้า)" emptyLabel="ไม่พบไซต์ที่กำลังดำเนินการ" disabled={busy} />
+      </div>
+      <button type="button" className="btn-secondary" disabled={busy || !chosen} onClick={() => chosen && onConfirm(chosen.value)} style={{ fontSize: 13 }}>
+        {chosen ? `ย้ายไป ${chosen.name}` : 'ย้ายไป...'}
+      </button>
+      <button type="button" className="btn-secondary" disabled={busy} onClick={onCancel} style={{ fontSize: 13 }}>ยกเลิก</button>
+    </div>
+  )
+}
+
+/** Large view of a tray photo with ← / → through the tray's photos and "เลือกรูปนี้"
+ *  (selects it for tap-to-assign). Built on the app's Modal (no other lightbox exists). */
+function PhotoPreview({ photos, photoId, canSelect, onNavigate, onClose, onSelect }) {
+  const idx = photos.findIndex((p) => p.id === photoId)
+  const photo = photos[idx]
+  const go = (d) => { const n = photos[idx + d]; if (n) onNavigate(n.id) }
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  })
+  useEffect(() => { if (!photo) onClose() })
+  if (!photo) return null
+  return (
+    <Modal title={`📷 รูป ${idx + 1} / ${photos.length}`} onClose={onClose} maxWidth={760}>
+      <div className="modal-body" style={{ textAlign: 'center' }}>
+        {photo.url ? (
+          <img src={photo.url} alt="" style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: 8 }} />
+        ) : (
+          <div style={{ padding: 40, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
+        )}
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
+          {photoUploaderLabel(photo)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 12 }}>
+          <button type="button" className="btn btn-ghost" aria-label="รูปก่อนหน้า" disabled={idx <= 0} onClick={() => go(-1)}>←</button>
+          {canSelect && <button type="button" className="btn btn-primary" onClick={() => onSelect(photo.id)}>เลือกรูปนี้</button>}
+          <button type="button" className="btn btn-ghost" aria-label="รูปถัดไป" disabled={idx >= photos.length - 1} onClick={() => go(1)}>→</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// A new card starts as a BOQ card when the site has a BOQ line to pick
+// (defaultBoq), else as a general card. Issue phases never count, so the caller
+// passes defaultBoq false there. A new BOQ card picks its lines in boqPicks
+// ([{ boq_item_id, qty }], one card per pick); boq_item_id/planned_qty are the
+// edit form's single-item fields.
+export const emptyDraft = (phaseId, status, sortOrder, defaultBoq = false) => ({
   phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [], leadWorkerId: null,
+  progress_mode: defaultBoq ? 'quantity' : 'status', boq_item_id: '', planned_qty: '', boqPicks: [],
 })
+
+// The card-kind/quantity fields a card form saves (and audits when they change).
+// weight_pts is never sent: general cards are 0 and BOQ card points are
+// recomputed by the database from the BOQ value shares.
+const WEIGHT_FIELDS = ['progress_mode', 'planned_qty', 'boq_item_id']
+const normWeightField = (k, v) => (v == null || v === '' ? null : k === 'planned_qty' ? Number(v) : v)
+
+/**
+ * The phase_tasks row a card form saves. Returns { payload, weightFields } or
+ * { error } (a message for the user). orig = the card before editing (null
+ * for a new card). weightFields (card kind + BOQ line + qty, never points) is
+ * null when the columns are not there yet (progressReady false) or the card is
+ * an issue card. A BOQ card ('quantity') needs a BOQ line and a qty > 0; a
+ * general card ('status') sends neither.
+ * Status: a new quantity card starts not_started (then follows its recorded
+ * quantity); so does any new card on a site with no PLAN yet (noPlan, the DB
+ * gate) unless it sits in an issue phase; an existing card sends status only
+ * when it really changed, only on a status leaf, and never in the same update
+ * as a change of card kind (the DB rejects that).
+ * issuePhase: the card sits in an issue phase (its new cards keep the picked column).
+ */
+export function buildTaskSave({ draft, orig, progressReady, childrenByParent = {}, boqRemaining = () => null, noPlan = false, issuePhase = false }) {
+  const payload = {
+    name: draft.name.trim(), zone: draft.zone.trim() || null,
+    due_date: draft.due_date || null, sort_order: draft.sort_order,
+  }
+  let weightFields = null
+  if (progressReady && !(orig && orig.issue_report_id != null)) {
+    const isQty = draft.progress_mode === 'quantity'
+    let planned = null
+    if (isQty) {
+      if (!draft.boq_item_id) return { error: 'กรุณาเลือกรายการ BOQ' }
+      planned = Number(draft.planned_qty)
+      if (!(planned > 0)) return { error: 'กรุณาใส่จำนวนในการ์ดนี้ (มากกว่า 0)' }
+      const left = boqRemaining(draft.boq_item_id, orig?.id)
+      if (left != null && planned > left) return { error: `จำนวนในการ์ดนี้เกินที่เหลือใน BOQ ของเฟสนี้ (${fmtNum(left)})` }
+    }
+    weightFields = {
+      progress_mode: draft.progress_mode,
+      boq_item_id: isQty ? draft.boq_item_id : null, planned_qty: planned,
+    }
+    Object.assign(payload, weightFields)
+  }
+  if (!orig) {
+    const forceNotStarted = weightFields?.progress_mode === 'quantity' || (noPlan && !issuePhase)
+    payload.status = forceNotStarted ? 'not_started' : draft.status
+  } else {
+    const modeChanged = !!weightFields && weightFields.progress_mode !== (orig.progress_mode || 'status')
+    if (draft.status !== orig.status && !modeChanged && isStatusLeafTask(orig, childrenByParent)) payload.status = draft.status
+  }
+  return { payload, weightFields }
+}
 
 export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initialLeafId }) {
   const { data: allPhases } = useSitePhases({ includeIssues: true })
@@ -47,6 +190,9 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const { data: allSubtasks } = useSubtasks()
   const { data: allSites } = useSites()
   const { tenant } = useTenant()
+  const { role } = useUserRole()
+  const { data: boqItems } = useBoqItems(site.id)
+  const { hasPlan } = useSiteHasPlan(site.id)
 
   // เชนของ id ที่เลือกไว้ต่อชั้น: selectedChain[0] = phase (หรือ ALL_PHASES),
   // selectedChain[1] = subtask ชั้น 1 ที่เลือกใต้ phase นั้น, [2] = ชั้น 2, ...
@@ -58,6 +204,8 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [dragOverKey, setDragOverKey] = useState(null) // `${phaseId}:${status}` -- บอร์ดหลายอันโชว์พร้อมกันได้ในโหมด "ทั้งหมด"
+  const [recordingTaskId, setRecordingTaskId] = useState(null) // RecordProgressDialog (quantity card)
+  const [splittingTaskId, setSplittingTaskId] = useState(null) // SplitTaskDialog
 
   // งานเสร็จ ที่ส่งรูปแนบมาผ่านไลน์ (line_site_photos.task_id) -- ต่างจาก
   // รูปภาพหน้างานทั่วไปตรงที่ผูกกับ task โดยตรง เลยเอามาโชว์เป็น badge
@@ -86,6 +234,31 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const [uploadingBulk, setUploadingBulk] = useState(false)
   const [assigningPhotoId, setAssigningPhotoId] = useState(null)
   const [myWorkerId, setMyWorkerId] = useState(null)
+  // Tap-to-assign (separate from the multi-select checkboxes above): the one photo
+  // picked by tapping its thumbnail; tapping a card then assigns it.
+  const [tapPhotoId, setTapPhotoId] = useState(null)
+  const [previewPhotoId, setPreviewPhotoId] = useState(null)
+  const [trayCollapsed, setTrayCollapsed] = useState(readTrayCollapsed)
+  const toggleTrayCollapsed = () => {
+    setTrayCollapsed((cur) => {
+      const next = !cur
+      try { localStorage.setItem(TRAY_COLLAPSED_KEY, next ? '1' : '0') } catch { /* private mode: not remembered */ }
+      return next
+    })
+  }
+  // Only a photo that is still in the tray counts as selected (it may have been
+  // assigned by drag, moved or deleted since it was tapped).
+  const tapPhoto = tapPhotoId ? unassignedPhotos.find((p) => p.id === tapPhotoId) : null
+  useEffect(() => {
+    if (tapPhotoId && !loadingPhotos && !tapPhoto) setTapPhotoId(null)
+  }, [tapPhotoId, tapPhoto, loadingPhotos])
+  useEffect(() => { setTapPhotoId(null); setPreviewPhotoId(null) }, [site.id])
+  const handleTapAssign = (taskId) => {
+    const photoId = tapPhoto?.id
+    if (!photoId) return
+    setTapPhotoId(null)
+    handleAssignPhoto(photoId, taskId)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -103,11 +276,12 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const fetchPhotos = async () => {
     const [{ data: assignedRows }, { data: unassignedRows }] = await Promise.all([
       supabase.from('line_site_photos').select('task_id').eq('site_id', site.id).not('task_id', 'is', null),
-      supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at').eq('site_id', site.id).is('task_id', null).order('created_at', { ascending: false }).limit(40),
+      supabase.from('line_site_photos').select('id, photo_path, worker_id, workers(name, nickname), created_at, customer_visible').eq('site_id', site.id).is('task_id', null).order('created_at', { ascending: false }).limit(40),
     ])
     const counts = {}
     ;(assignedRows || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1 })
-    const rows = unassignedRows || []
+    // PM cannot embed workers(...): attach names from pm_workers (no-op for other roles).
+    const rows = await attachPmWorkerNames(unassignedRows)
     const paths = rows.map((p) => p.photo_path)
     let urlByPath = {}
     if (paths.length) {
@@ -142,9 +316,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   useEffect(() => {
     let cancelled = false
     const todayIso = new Date().toISOString().slice(0, 10)
-    supabase.from('worker_assignments').select('shift, workers(name, nickname)')
+    supabase.from('worker_assignments').select('shift, worker_id, workers(name, nickname)')
       .eq('site_id', site.id).eq('date', todayIso).eq('is_team_leader', true)
-      .then(({ data }) => {
+      .then(({ data }) => attachPmWorkerNames(data))
+      .then((data) => {
         if (cancelled) return
         const next = { morning: null, evening: null }
         ;(data || []).forEach((r) => { next[r.shift] = r.workers?.nickname || r.workers?.name || null })
@@ -160,9 +335,9 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setSelectedPhotoIds(new Set())
     setShowSwitchSitePicker(false)
     setLoadingViewPhotos(true)
-    const { data } = await supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at')
+    const { data } = await supabase.from('line_site_photos').select('id, photo_path, worker_id, workers(name, nickname), created_at, customer_visible')
       .eq('task_id', task.id).order('created_at')
-    const rows = data || []
+    const rows = await attachPmWorkerNames(data)
     const paths = rows.map((p) => p.photo_path)
     let urlByPath = {}
     if (paths.length) {
@@ -171,6 +346,28 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     }
     setViewingPhotos(rows.map((p) => ({ ...p, url: urlByPath[p.photo_path] })))
     setLoadingViewPhotos(false)
+  }
+
+  // Optimistic flip of "ให้ลูกค้าเห็น" on a tray or task-viewer photo; reverts to the
+  // pre-tap value on error. A second tap while the RPC is pending is ignored.
+  const visibleInFlight = useRef(new Set())
+  const handleToggleCustomerVisible = async (photo) => {
+    if (visibleInFlight.current.has(photo.id)) return
+    visibleInFlight.current.add(photo.id)
+    const prev = !!photo.customer_visible
+    const next = !prev
+    const setVisible = (v) => {
+      const upd = (list) => list.map((x) => (x.id === photo.id ? { ...x, customer_visible: v } : x))
+      setUnassignedPhotos(upd)
+      setViewingPhotos(upd)
+    }
+    setVisible(next)
+    try {
+      const { error } = await supabase.rpc('set_customer_visible', { p_kind: 'line_site_photo', p_id: photo.id, p_visible: next })
+      if (error) { setVisible(prev); alert('Error: ' + error.message) }
+    } finally {
+      visibleInFlight.current.delete(photo.id)
+    }
   }
 
   const handleTogglePhotoSelected = (photoId) => {
@@ -195,7 +392,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setBulkActing(true)
     try {
       const { error } = await supabase.from('line_site_photos')
-        .update({ site_id: newSiteId, task_id: null }).in('id', ids)
+        .update({ site_id: newSiteId, task_id: null, customer_visible: false }).in('id', ids)
       if (error) throw error
       setShowSwitchSitePicker(false)
       setSelectedPhotoIds(new Set())
@@ -255,7 +452,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setUnassignedBulkActing(true)
     try {
       const { error } = await supabase.from('line_site_photos')
-        .update({ site_id: newSiteId, task_id: null }).in('id', ids)
+        .update({ site_id: newSiteId, task_id: null, customer_visible: false }).in('id', ids)
       if (error) throw error
       setShowUnassignedSwitchSitePicker(false)
       setSelectedUnassignedIds(new Set())
@@ -344,6 +541,29 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     return m
   }, [allTasks])
 
+  // Split children by parent card id, every card by id, BOQ lines by id.
+  const childrenByParent = useMemo(() => {
+    const m = {}
+    ;(allTasks || []).forEach((t) => { if (t.parent_task_id) (m[t.parent_task_id] ||= []).push(t) })
+    return m
+  }, [allTasks])
+  const taskById = useMemo(() => Object.fromEntries((allTasks || []).map((t) => [t.id, t])), [allTasks])
+  const boqById = useMemo(() => Object.fromEntries(boqItems.map((b) => [b.id, b])), [boqItems])
+  // Before migration 07 is applied the cards have no weight/quantity columns:
+  // the form then neither shows nor sends them, so the live Kanban keeps working.
+  // A schema probe, not the card data: a user who sees no cards yet still gets the fields.
+  const progressReady = useProgressSchemaReady()
+  // no PLAN yet: new cards start not_started whatever column they were added in (DB gate)
+  const noPlan = progressReady && hasPlan === false
+  // BOQ qty left for a card IN ONE PHASE = BOQ planned_qty − Σ planned_qty of the line's
+  // other cards in that phase (the DB limit is per item x phase; subtask cards carry the phase).
+  const siteTasks = useMemo(() => (allTasks || []).filter((t) => t.site_id === site.id), [allTasks, site.id])
+  const boqRemaining = (boqId, exceptTaskId, phaseId) => boqRemainingInPhase(boqById[boqId], phaseId, siteTasks, exceptTaskId)
+  // the site's saved "% ต่อเฟส" rows (BOQ tab): non-empty = BOQ mode -> "+ การ์ดจาก BOQ (n)" per phase
+  const boqIds = useMemo(() => boqItems.map((b) => b.id), [boqItems])
+  const splits = useBoqPhaseSplits(boqIds, progressReady)
+  const [bulkPhaseId, setBulkPhaseId] = useState(null)
+
   const subtasksByParent = useMemo(() => groupSubtasksByParent((allSubtasks || []).filter((s) => s.site_id === site.id)), [allSubtasks, site.id])
 
   // subtask id -> ตัวโหนดเอง (ใช้หา .phase_id ของ subtask ตอนสร้าง phase_tasks ใหม่)
@@ -352,6 +572,15 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     ;(allSubtasks || []).forEach((s) => { m[s.id] = s })
     return m
   }, [allSubtasks])
+  // a phase or subtask under an issue phase (cards there are not progress)
+  const isIssueNode = (nodeId) => {
+    const phaseId = byNodeId[nodeId]?.phase_id || nodeId
+    return !!phases.find((p) => p.id === phaseId)?.is_issue_phase
+  }
+  // the phase a target node (phase or subtask) belongs to -- the BOQ limit counts per phase
+  const phaseOfNode = (nodeId) => byNodeId[nodeId]?.phase_id || nodeId
+  const splitCells = useMemo(() => (splits.boqMode ? cellsFromRows(boqItems, phases, splits.rows) : null), [splits.boqMode, splits.rows, boqItems, phases])
+  const bulkCandidates = (phaseId) => boqCardCandidates({ phaseId, boqItems, cells: splitCells, tasks: siteTasks })
 
   const workerById = useMemo(() => {
     const m = {}
@@ -379,7 +608,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setSelectedChain([phaseId, ...chain.filter((id) => id !== phaseId)])
   }, [initialLeafId, allSubtasks])
 
-  const zones = useMemo(() => [...new Set(leafMicrotasks.map((t) => t.zone).filter(Boolean))].sort(), [leafMicrotasks])
+  const zones = useMemo(() => sortZones(new Set(leafMicrotasks.map((t) => t.zone).filter(Boolean))), [leafMicrotasks])
   const effectiveZone = zones.includes(selectedZone) ? selectedZone : 'all'
   const visibleTasks = leafMicrotasks.filter((t) => effectiveZone === 'all' || t.zone === effectiveZone)
 
@@ -406,26 +635,91 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       due_date: task.due_date || '', sort_order: task.sort_order,
       assigneeIds: workerRows.map((r) => r.worker_id),
       leadWorkerId: workerRows.find((r) => r.is_lead)?.worker_id || null,
+      progress_mode: task.progress_mode || 'status',
+      boq_item_id: task.boq_item_id || '', planned_qty: task.planned_qty ?? '',
     })
   }
   const startAdd = (nodeId, status) => {
     const tasks = microtasksByNodeId[nodeId] || []
     const sortOrder = tasks.length ? Math.max(...tasks.map((t) => t.sort_order || 0)) + 1 : 1
     setEditingId(`__new__:${nodeId}:${status}`)
-    setDraft(emptyDraft(nodeId, status, sortOrder))
+    setDraft(emptyDraft(nodeId, status, sortOrder, boqItems.length > 0 && !isIssueNode(nodeId)))
   }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
-  const saveDraft = async () => {
-    if (!draft.name.trim()) { alert('กรุณาตั้งชื่องาน'); return }
+  // phase_task_workers of one card = draft.assigneeIds (+ lead), non-destructively.
+  const syncTaskWorkers = async (taskId) => {
+    if (draft.assigneeIds.length) {
+      // upsert(ignoreDuplicates) adds anyone newly checked (with the
+      // right is_lead already set) without touching rows that already
+      // existed -- same non-destructive ordering as before (insert the
+      // new set first, only delete what's no longer wanted, further
+      // below), so a failure here never wipes an existing assignee.
+      const { error: insErr } = await supabase.from('phase_task_workers')
+        .upsert(draft.assigneeIds.map((worker_id) => ({ task_id: taskId, worker_id, is_lead: worker_id === draft.leadWorkerId })), { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
+      if (insErr) throw insErr
+      // ignoreDuplicates means an assignee who was already on the task
+      // keeps whatever is_lead value their row already had -- sync it
+      // explicitly for the two people whose leader status can actually
+      // change: clear it off everyone who isn't the new leader, then
+      // set it on the new leader (a real UPDATE, now that phase_task_
+      // workers has an admin_updates policy -- see migration -01).
+      const { error: clearLeadErr } = await supabase.from('phase_task_workers')
+        .update({ is_lead: false }).eq('task_id', taskId).neq('worker_id', draft.leadWorkerId || '00000000-0000-0000-0000-000000000000')
+      if (clearLeadErr) throw clearLeadErr
+      if (draft.leadWorkerId) {
+        const { error: setLeadErr } = await supabase.from('phase_task_workers')
+          .update({ is_lead: true }).eq('task_id', taskId).eq('worker_id', draft.leadWorkerId)
+        if (setLeadErr) throw setLeadErr
+      }
+    }
+    let delQuery = supabase.from('phase_task_workers').delete().eq('task_id', taskId)
+    if (draft.assigneeIds.length) delQuery = delQuery.not('worker_id', 'in', `(${draft.assigneeIds.join(',')})`)
+    const { error: delErr } = await delQuery
+    if (delErr) throw delErr
+  }
+
+  // A new BOQ card: one card per ticked BOQ line (draft.boqPicks), inserted in one
+  // batch + audited like "+ การ์ดจาก BOQ". The name is optional (single pick keeps it).
+  const saveNewBoqCards = async () => {
+    const draftPhaseId = phaseOfNode(draft.phase_id)
+    const built = buildBoqMultiSave({ draft, boqItems, boqRemaining: (boqId) => boqRemaining(boqId, null, draftPhaseId) })
+    if (built.error) { alert(built.error); return }
+    const isTargetPhase = phases.some((p) => p.id === draft.phase_id)
+    const inserts = bulkCardRows({
+      siteId: site.id, phaseId: draftPhaseId, subtaskId: isTargetPhase ? null : draft.phase_id,
+      nextSortOrder: draft.sort_order, zone: draft.zone.trim() || null, dueDate: draft.due_date || null, picks: built.picks,
+    })
     setSaving(true)
     try {
-      const payload = {
-        name: draft.name.trim(), zone: draft.zone.trim() || null, status: draft.status,
-        due_date: draft.due_date || null, sort_order: draft.sort_order,
-      }
+      const created = await insertBoqCards(inserts, draftPhaseId)
+      for (const t of created) await syncTaskWorkers(t.id)
+      await afterWrite()
+      cancelEdit()
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveDraft = async () => {
+    const isNew = String(editingId).startsWith('__new__')
+    if (isNew && progressReady && draft.progress_mode === 'quantity') return saveNewBoqCards()
+    if (!draft.name.trim()) { alert('กรุณาตั้งชื่องาน'); return }
+    const orig = isNew ? null : taskById[editingId]
+    const draftPhaseId = phaseOfNode(orig ? (orig.subtask_id || orig.phase_id) : draft.phase_id)
+    const built = buildTaskSave({
+      draft, orig, progressReady, childrenByParent, noPlan,
+      boqRemaining: (boqId, exceptId) => boqRemaining(boqId, exceptId, draftPhaseId),
+      issuePhase: isIssueNode(orig ? (orig.subtask_id || orig.phase_id) : draft.phase_id),
+    })
+    if (built.error) { alert(built.error); return }
+    const { payload, weightFields } = built
+    setSaving(true)
+    try {
       let taskId = editingId
-      if (String(editingId).startsWith('__new__')) {
+      if (isNew) {
         // draft.phase_id คือโหนดเป้าหมายจริง (phase หรือ leaf subtask) --
         // phase_tasks ต้องได้ phase_id เป็น phase บรรพบุรุษสูงสุดเสมอ และ
         // subtask_id เฉพาะตอนเป้าหมายเป็น subtask จริงๆ (คอนเวนชันเดียวกับ
@@ -443,35 +737,13 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       } else {
         const { error } = await supabase.from('phase_tasks').update(payload).eq('id', editingId)
         if (error) throw error
-      }
-      if (draft.assigneeIds.length) {
-        // upsert(ignoreDuplicates) adds anyone newly checked (with the
-        // right is_lead already set) without touching rows that already
-        // existed -- same non-destructive ordering as before (insert the
-        // new set first, only delete what's no longer wanted, further
-        // below), so a failure here never wipes an existing assignee.
-        const { error: insErr } = await supabase.from('phase_task_workers')
-          .upsert(draft.assigneeIds.map((worker_id) => ({ task_id: taskId, worker_id, is_lead: worker_id === draft.leadWorkerId })), { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
-        if (insErr) throw insErr
-        // ignoreDuplicates means an assignee who was already on the task
-        // keeps whatever is_lead value their row already had -- sync it
-        // explicitly for the two people whose leader status can actually
-        // change: clear it off everyone who isn't the new leader, then
-        // set it on the new leader (a real UPDATE, now that phase_task_
-        // workers has an admin_updates policy -- see migration -01).
-        const { error: clearLeadErr } = await supabase.from('phase_task_workers')
-          .update({ is_lead: false }).eq('task_id', taskId).neq('worker_id', draft.leadWorkerId || '00000000-0000-0000-0000-000000000000')
-        if (clearLeadErr) throw clearLeadErr
-        if (draft.leadWorkerId) {
-          const { error: setLeadErr } = await supabase.from('phase_task_workers')
-            .update({ is_lead: true }).eq('task_id', taskId).eq('worker_id', draft.leadWorkerId)
-          if (setLeadErr) throw setLeadErr
+        if (weightFields) {
+          const before = Object.fromEntries(WEIGHT_FIELDS.map((k) => [k, normWeightField(k, orig[k])]))
+          const after = Object.fromEntries(WEIGHT_FIELDS.map((k) => [k, normWeightField(k, weightFields[k])]))
+          if (WEIGHT_FIELDS.some((k) => before[k] !== after[k])) await auditLog('phase_tasks', editingId, 'update', before, after)
         }
       }
-      let delQuery = supabase.from('phase_task_workers').delete().eq('task_id', taskId)
-      if (draft.assigneeIds.length) delQuery = delQuery.not('worker_id', 'in', `(${draft.assigneeIds.join(',')})`)
-      const { error: delErr } = await delQuery
-      if (delErr) throw delErr
+      await syncTaskWorkers(taskId)
       await afterWrite()
       cancelEdit()
     } catch (e) {
@@ -484,12 +756,20 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const doDelete = async (id) => {
     setSaving(true)
     try {
+      const before = taskById[id]
       const { error } = await supabase.from('phase_tasks').delete().eq('id', id)
       if (error) throw error
+      if (before) {
+        await auditLog('phase_tasks', id, 'delete', Object.fromEntries(
+          ['name', 'status', 'phase_id', 'subtask_id', 'parent_task_id', 'weight_pts', ...WEIGHT_FIELDS, 'done_qty']
+            .filter((k) => k in before).map((k) => [k, before[k] ?? null])), null)
+      }
       await afterWrite()
       if (editingId === id) cancelEdit()
     } catch (e) {
-      alert('ลบไม่สำเร็จ: ' + e.message)
+      alert(e.code === '23503' && /ยกเลิกยอด/.test(e.message || '')
+        ? 'ลบไม่ได้: การ์ดนี้มียอดที่บันทึกไว้แล้ว\nกด "+ บันทึกยอด" บนการ์ด แล้วกด "ยกเลิกรายการ" ทุกรายการก่อน จึงจะลบได้'
+        : 'ลบไม่สำเร็จ: ' + e.message)
     } finally {
       setSaving(false)
       setConfirmDeleteId(null)
@@ -527,12 +807,47 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     return <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>ไซท์นี้ยังไม่มีขั้นตอนงาน — เพิ่มขั้นตอนก่อนในแท็บ Gantt</div>
   }
 
+  // % ของโหนด (ถ่วงแต้ม, progressCalc.js) -- คิดจากการ์ด
+  // ทั้งโหนดเสมอ ไม่ใช่เฉพาะชั้น (zone) ที่กรองอยู่. ขั้นตอนแจ้งปัญหาไม่นับ
+  // ความคืบหน้า -> ไม่แสดง (null)
+  const nodeById = { ...byNodeId }
+  phases.forEach((p) => { nodeById[p.id] = p })
+  // boqCards: the node's top-level non-issue BOQ cards (what its % counts by);
+  // fromSubphases: a node with child sub-phases takes its % from them.
+  // The header caption is shown only once the schema probe is ready.
+  // Sub-phases inside an issue phase are issue nodes too (no %).
+  const progressOf = (nodeId) => (isIssueNode(nodeId) ? null : {
+    pct: Math.round(nodeProgress(nodeId, { tasksByNode: microtasksByNodeId, subtasksByParent, nodeById }) * 100),
+    fromSubphases: (subtasksByParent[nodeId] || []).length > 0,
+    boqCards: progressReady
+      ? (microtasksByNodeId[nodeId] || []).filter((t) => !t.parent_task_id && t.issue_report_id == null && t.progress_mode === 'quantity').length
+      : null,
+  })
+
+  const recordingTask = recordingTaskId ? taskById[recordingTaskId] : null
+  const splittingTask = splittingTaskId ? taskById[splittingTaskId] : null
+
+  const formProps = {
+    progressReady, boqItems, canManageQty: canManagePlan(role),
+    // the open form's phase: remaining qty is per phase
+    boqRemaining: (boqId, exceptId) => boqRemaining(boqId, exceptId, phaseOfNode(draft?.phase_id)),
+    onSplit: (task) => { cancelEdit(); setSplittingTaskId(task.id) },
+  }
   const boardProps = {
-    canEdit, workers: workers || [], workerById, editingId, draft, setDraft,
+    canEdit, role, childrenByParent, taskById, boqById, formProps, isIssueNode,
+    onRecord: (task) => setRecordingTaskId(task.id),
+    workers: workers || [], workerById, editingId, draft, setDraft,
     onToggleAssignee: toggleAssignee, onSetLead: setLead, onStartEdit: startEdit, onStartAdd: startAdd,
     onCancelEdit: cancelEdit, onSaveDraft: saveDraft, onDeleteRequest: setConfirmDeleteId,
     onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
     taskPhotoCounts, onViewPhotos: handleViewPhotos, onAssignPhoto: handleAssignPhoto,
+    tapAssignActive: canEdit && !!tapPhoto, onTapAssign: handleTapAssign,
+    // "+ การ์ดจาก BOQ (n)" per phase: BOQ mode, OWNER/PM, cards go straight on the phase (leaf)
+    boqBulkFor: (phaseId) => {
+      if (!canEdit || !canManagePlan(role) || !splits.boqMode || isIssueNode(phaseId) || !isLeaf(phaseId, subtasksByParent)) return null
+      const { count } = bulkCandidates(phaseId)
+      return count > 0 ? { count, onOpen: () => setBulkPhaseId(phaseId) } : null
+    },
   }
 
   return (
@@ -547,35 +862,50 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
           {todayLeaders.evening && <span style={{ fontSize: 12.5 }}>🌆 บ่าย: <b>{todayLeaders.evening}</b></span>}
         </div>
       )}
-      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: unassignedPhotos.length ? 10 : 0, flexWrap: 'wrap', gap: 8 }}>
+      {/* Sticky tray: the WINDOW scrolls in this app (App.jsx StickyChrome pins header + tab bar
+          and publishes its height as --chrome-h), so the tray sticks just under that chrome. No
+          ancestor between here and the page has overflow other than visible/clip, so sticky
+          resolves against the window. */}
+      <div data-testid="photo-tray-sticky" style={{ position: 'sticky', top: 'var(--chrome-h, 110px)', zIndex: 20, background: 'var(--bg)', paddingBottom: 10, marginBottom: 4 }}>
+      <div className="card" style={{ padding: 12, marginBottom: 0 }}>
+        <div className="kb-tray-head" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div className="card-title">📷 รูปที่รอมอบหมาย{unassignedPhotos.length > 0 ? ` (${unassignedPhotos.length})` : ''}</div>
-          {canEdit && (
-            <label className="btn btn-ghost btn-sm" style={{ cursor: uploadingBulk ? 'default' : 'pointer' }}>
-              {uploadingBulk ? '⏳ กำลังอัปโหลด...' : '+ อัปโหลดรูป'}
-              <input type="file" accept="image/*" multiple hidden disabled={uploadingBulk || !tenant?.id} onChange={handleBulkUpload} />
-            </label>
+          {unassignedPhotos.length > 0 && canEdit && (
+            <span className="kb-tray-hint" style={{ fontSize: 11.5, color: 'var(--text3)' }}>ลากรูปไปวางบนการ์ด หรือ แตะรูป → แตะการ์ด</span>
           )}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {canEdit && (
+              <label className="btn btn-ghost btn-sm" style={{ cursor: uploadingBulk ? 'default' : 'pointer' }}>
+                {uploadingBulk ? '⏳ กำลังอัปโหลด...' : '+ อัปโหลดรูป'}
+                <input type="file" accept="image/*" multiple hidden disabled={uploadingBulk || !tenant?.id} onChange={handleBulkUpload} />
+              </label>
+            )}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={toggleTrayCollapsed}>
+              {trayCollapsed ? 'แสดงแถบ ▼' : 'ซ่อนแถบ ▲'}
+            </button>
+          </div>
         </div>
-        {canEdit && selectedUnassignedIds.size > 0 && (
+        {canEdit && tapPhoto && (
+          <div role="status" style={{
+            marginTop: 8, padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            background: 'rgba(255,140,0,.12)', border: '1px solid var(--accent, #ff8c00)', color: 'var(--text)',
+          }}>
+            <span style={{ flex: '1 1 200px' }}>เลือกรูปแล้ว 1 รูป — แตะการ์ดที่จะใส่รูป (หรือ แตะรูปอีกครั้งเพื่อยกเลิก)</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTapPhotoId(null)}>✕ ยกเลิก</button>
+          </div>
+        )}
+        {!trayCollapsed && canEdit && selectedUnassignedIds.size > 0 && (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px',
+            display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '8px 10px',
             background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)', flexWrap: 'wrap',
           }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>เลือกไว้ {selectedUnassignedIds.size} รูป</span>
             {showUnassignedSwitchSitePicker ? (
-              <select
-                autoFocus
-                disabled={unassignedBulkActing}
-                defaultValue=""
-                onChange={(e) => { if (e.target.value) handleUnassignedBulkSwitchSite(e.target.value) }}
-                style={{ fontSize: 13, padding: '4px 6px' }}
-              >
-                <option value="" disabled>เลือกไซต์ปลายทาง...</option>
-                {(allSites || []).filter((s) => s.id !== site.id).map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+              <SiteMovePicker
+                sites={allSites} currentSiteId={site.id} busy={unassignedBulkActing}
+                onConfirm={handleUnassignedBulkSwitchSite}
+                onCancel={() => setShowUnassignedSwitchSitePicker(false)}
+              />
             ) : (
               <button type="button" className="btn-secondary" disabled={unassignedBulkActing} onClick={() => setShowUnassignedSwitchSitePicker(true)} style={{ fontSize: 13 }}>
                 📍 ย้ายไซต์
@@ -589,36 +919,66 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
             </button>
           </div>
         )}
-        {loadingPhotos ? (
-          <div style={{ color: 'var(--text3)', fontSize: 12 }}>กำลังโหลด...</div>
+        {!trayCollapsed && (loadingPhotos ? (
+          <div style={{ color: 'var(--text3)', fontSize: 12, marginTop: 8 }}>กำลังโหลด...</div>
         ) : unassignedPhotos.length > 0 ? (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {unassignedPhotos.map((p) => (
-              <div key={p.id} style={{ position: 'relative', width: 90 }}>
-                {canEdit && (
-                  <input
-                    type="checkbox"
-                    checked={selectedUnassignedIds.has(p.id)}
-                    onChange={() => handleToggleUnassignedSelected(p.id)}
-                    style={{ position: 'absolute', top: 4, left: 4, width: 16, height: 16, zIndex: 1, cursor: 'pointer' }}
-                  />
-                )}
-                <div
-                  draggable={canEdit}
-                  onDragStart={canEdit ? (e) => e.dataTransfer.setData(PHOTO_DRAG_MIME, p.id) : undefined}
-                  title={`${p.workers?.nickname || p.workers?.name || ''} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
-                  style={{ opacity: assigningPhotoId === p.id ? 0.5 : 1, cursor: canEdit ? 'grab' : 'default' }}>
-                  {p.url ? (
-                    <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
-                  ) : (
-                    <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
+          <div data-testid="photo-tray-row" style={{ display: 'flex', flexWrap: 'nowrap', gap: 10, overflowX: 'auto', marginTop: 10, paddingBottom: 4 }}>
+            {unassignedPhotos.map((p) => {
+              const tapSelected = tapPhoto?.id === p.id
+              const ring = tapSelected ? '3px solid var(--accent, #ff8c00)' : '1px solid var(--border)'
+              return (
+                <div key={p.id} className="kb-tray-item" style={{ position: 'relative', width: 72, flex: 'none' }}>
+                  {canEdit && (
+                    <input
+                      type="checkbox"
+                      aria-label="เลือกหลายรูป"
+                      checked={selectedUnassignedIds.has(p.id)}
+                      onChange={() => handleToggleUnassignedSelected(p.id)}
+                      style={{ position: 'absolute', top: 4, left: 4, width: 16, height: 16, zIndex: 1, cursor: 'pointer' }}
+                    />
                   )}
-                  <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+                  <button
+                    type="button"
+                    aria-label="ดูรูปขนาดใหญ่"
+                    onClick={(e) => { e.stopPropagation(); setPreviewPhotoId(p.id) }}
+                    style={{
+                      position: 'absolute', top: 2, right: 2, zIndex: 1, minWidth: 26, minHeight: 26, padding: 0,
+                      border: 'none', borderRadius: 6, background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 14, lineHeight: 1, cursor: 'pointer',
+                    }}>⤢</button>
+                  {canManageSites(role) && (
+                    <button
+                      type="button"
+                      aria-label="ให้ลูกค้าเห็น"
+                      aria-pressed={!!p.customer_visible}
+                      title="ให้ลูกค้าเห็น"
+                      onClick={(e) => { e.stopPropagation(); handleToggleCustomerVisible(p) }}
+                      style={{
+                        position: 'absolute', top: 30, right: 2, zIndex: 1, minWidth: 26, minHeight: 26, padding: 0,
+                        border: p.customer_visible ? '2px solid var(--accent, #ff8c00)' : 'none', borderRadius: 6, fontSize: 14, lineHeight: 1, cursor: 'pointer',
+                        background: p.customer_visible ? 'var(--accent, #ff8c00)' : 'rgba(0,0,0,.6)', color: '#fff',
+                        opacity: p.customer_visible ? 1 : 0.75, boxSizing: 'border-box',
+                      }}>👁</button>
+                  )}
+                  <div
+                    data-testid="photo-thumb"
+                    draggable={canEdit}
+                    onDragStart={canEdit ? (e) => e.dataTransfer.setData(PHOTO_DRAG_MIME, p.id) : undefined}
+                    onClick={canEdit ? () => setTapPhotoId((cur) => (cur === p.id ? null : p.id)) : undefined}
+                    title={`${photoUploaderLabel(p, '')} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
+                    style={{ opacity: assigningPhotoId === p.id ? 0.5 : 1, cursor: canEdit ? 'grab' : 'default' }}>
+                    {p.url ? (
+                      <img src={p.url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, display: 'block', border: ring, boxSizing: 'border-box' }} />
+                    ) : (
+                      <div className="kb-tray-ph" style={{ width: 72, height: 72, borderRadius: 8, border: ring, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
+                    )}
+                    <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{photoUploaderLabel(p)}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
-        ) : null}
+        ) : null)}
+      </div>
       </div>
       {/* ยาว selectedChain.length + 1 เสมอ -- ชั้นสุดท้าย "พิเศษ" (ยังไม่มี
           ใน selectedChain) คือชั้นที่ให้เลือกลูกของโหนดที่เพิ่งเลือกไปหมาดๆ
@@ -669,7 +1029,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                     ⚠️ พบงานย่อยที่ไม่ได้อยู่ใต้ขั้นตอนย่อยใดๆ — อาจเกิดจากข้อผิดพลาดระหว่างการย้ายข้อมูล (แก้ไข/ย้ายงานเหล่านี้ได้ตามปกติ แต่เพิ่มงานใหม่ที่นี่ไม่ได้แล้ว — เลือกขั้นตอนย่อยจาก chip ด้านบนแทน)
                   </div>
                 )}
-                <PhaseBoard phaseId={phase.id} tasks={microtasksByNodeId[phase.id] || []} disableAdd={!phaseIsLeaf} {...boardProps} />
+                <PhaseBoard phaseId={phase.id} tasks={microtasksByNodeId[phase.id] || []} disableAdd={!phaseIsLeaf} progress={progressOf(phase.id)} {...boardProps} />
               </div>
             )
           })
@@ -699,8 +1059,26 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
               ))}
             </div>
           )}
-          <PhaseBoard phaseId={activeLeafId} tasks={visibleTasks} {...boardProps} />
+          <PhaseBoard phaseId={activeLeafId} tasks={visibleTasks} progress={progressOf(activeLeafId)} {...boardProps} />
         </>
+      )}
+
+      {bulkPhaseId && phases.find((p) => p.id === bulkPhaseId) && (
+        <BoqBulkCardsDialog siteId={site.id} phase={phases.find((p) => p.id === bulkPhaseId)}
+          rows={bulkCandidates(bulkPhaseId).rows}
+          nextSortOrder={(microtasksByNodeId[bulkPhaseId] || []).reduce((m, t) => Math.max(m, t.sort_order || 0), 0) + 1}
+          onClose={() => setBulkPhaseId(null)} onCreated={afterWrite} />
+      )}
+
+      {recordingTask && (
+        <RecordProgressDialog task={recordingTask}
+          unit={recordingTask.boq_item_id ? boqById[recordingTask.boq_item_id]?.unit : null}
+          canManage={canEdit && canManagePlan(role)}
+          onClose={() => setRecordingTaskId(null)} onSaved={afterWrite} />
+      )}
+
+      {splittingTask && (
+        <SplitTaskDialog task={splittingTask} onClose={() => setSplittingTaskId(null)} onSaved={afterWrite} />
       )}
 
       {confirmDeleteId && (
@@ -733,6 +1111,14 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
         />
       )}
 
+      {previewPhotoId && (
+        <PhotoPreview
+          photos={unassignedPhotos} photoId={previewPhotoId} canSelect={canEdit}
+          onNavigate={setPreviewPhotoId} onClose={() => setPreviewPhotoId(null)}
+          onSelect={(id) => { setTapPhotoId(id); setPreviewPhotoId(null) }}
+        />
+      )}
+
       {viewingPhotosTaskId && (
         <Modal title={`📷 รูปหลักฐานงานเสร็จ — ${viewingPhotosTaskName}`} onClose={() => setViewingPhotosTaskId(null)} maxWidth={520}>
           <div className="modal-body">
@@ -743,18 +1129,11 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
               }}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>เลือกไว้ {selectedPhotoIds.size} รูป</span>
                 {showSwitchSitePicker ? (
-                  <select
-                    autoFocus
-                    disabled={bulkActing}
-                    defaultValue=""
-                    onChange={(e) => { if (e.target.value) handleBulkSwitchSite(e.target.value) }}
-                    style={{ fontSize: 13, padding: '4px 6px' }}
-                  >
-                    <option value="" disabled>เลือกไซต์ปลายทาง...</option>
-                    {(allSites || []).filter((s) => s.id !== site.id).map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                  <SiteMovePicker
+                    sites={allSites} currentSiteId={site.id} busy={bulkActing}
+                    onConfirm={handleBulkSwitchSite}
+                    onCancel={() => setShowSwitchSitePicker(false)}
+                  />
                 ) : (
                   <button type="button" className="btn-secondary" disabled={bulkActing} onClick={() => setShowSwitchSitePicker(true)} style={{ fontSize: 13 }}>
                     📍 ย้ายไซต์
@@ -784,6 +1163,20 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                         style={{ position: 'absolute', top: 6, left: 6, width: 18, height: 18, zIndex: 1, cursor: 'pointer' }}
                       />
                     )}
+                    {canManageSites(role) && (
+                      <button
+                        type="button"
+                        aria-label="ให้ลูกค้าเห็น"
+                        aria-pressed={!!p.customer_visible}
+                        title="ให้ลูกค้าเห็น"
+                        onClick={(e) => { e.stopPropagation(); handleToggleCustomerVisible(p) }}
+                        style={{
+                          position: 'absolute', top: 6, right: 6, zIndex: 1, minWidth: 26, minHeight: 26, padding: 0,
+                          border: p.customer_visible ? '2px solid var(--accent, #ff8c00)' : 'none', borderRadius: 6, fontSize: 14, lineHeight: 1, cursor: 'pointer',
+                          background: p.customer_visible ? 'var(--accent, #ff8c00)' : 'rgba(0,0,0,.6)', color: '#fff',
+                          opacity: p.customer_visible ? 1 : 0.75, boxSizing: 'border-box',
+                        }}>👁</button>
+                    )}
                     <a href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
                       {p.url ? (
                         <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
@@ -791,7 +1184,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                         <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
                       )}
                       <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)' }}>
-                        {p.workers?.nickname || p.workers?.name || '-'} · {new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                        {photoUploaderLabel(p)} · {new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
                       </div>
                     </a>
                   </div>
@@ -805,13 +1198,159 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   )
 }
 
+const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.status, c.label]))
+// The card's kind once the schema has it (undefined before migration 07):
+// 'boq' (progress_mode 'quantity', counts by points), 'general' (counts 0 %),
+// null for an issue card or a pre-migration row (no tag, solid border).
+const cardKind = (t) => {
+  if (t.progress_mode == null || t.issue_report_id != null) return null
+  return t.progress_mode === 'quantity' ? 'boq' : 'general'
+}
+
+/** A card whose status is set by hand (drag / edit form): a status card with
+ *  no split children. Quantity cards follow their recorded quantity and parent
+ *  cards follow their children, so the DB rejects a direct status change. */
+export function isStatusLeafTask(task, childrenByParent) {
+  return task.progress_mode !== 'quantity' && !(childrenByParent[task.id] || []).length
+}
+
+/** One Kanban card: kind tag ("BOQ · N แต้ม" / dashed "งานทั่วไป · ไม่นับ %"),
+ *  quantity meter + "+ บันทึกยอด" (OWNER/PM), a parent card's children,
+ *  assignees and the photo badge. */
+export function TaskCard({
+  task, canEdit, role, childTasks = [], parentName, unit, photoCount = 0,
+  leadWorker = null, otherAssignees = [], onEdit, onViewPhotos, onAssignPhoto, onRecord,
+  tapAssignActive = false, onTapAssign,
+}) {
+  const isQuantity = task.progress_mode === 'quantity'
+  const isStatusLeaf = isStatusLeafTask(task, { [task.id]: childTasks })
+  const kind = cardKind(task)
+  const planned = Number(task.planned_qty) || 0
+  const done = Number(task.done_qty) || 0
+  const qtyPct = planned > 0 ? Math.round(Math.min(done / planned, 1) * 1000) / 10 : 0
+  return (
+    <div
+      draggable={canEdit && isStatusLeaf}
+      onDragStart={canEdit && isStatusLeaf ? (e) => e.dataTransfer.setData('text/plain', task.id) : undefined}
+      onDragOver={canEdit ? (e) => { if (e.dataTransfer.types.includes(PHOTO_DRAG_MIME)) e.preventDefault() } : undefined}
+      onDrop={canEdit ? (e) => {
+        const photoId = e.dataTransfer.getData(PHOTO_DRAG_MIME)
+        if (!photoId) return // not a photo drag -- let it bubble to the column's own onDrop (card-to-column move)
+        e.preventDefault()
+        e.stopPropagation()
+        onAssignPhoto?.(photoId, task.id)
+      } : undefined}
+      onClick={canEdit ? () => (tapAssignActive ? onTapAssign?.(task.id) : onEdit?.(task)) : undefined}
+      style={{
+        // longhands only (a border shorthand mixed with borderStyle makes React warn on rerender);
+        // the left edge is the solid 3px status stripe, general cards are dashed elsewhere.
+        // While a tray photo is picked (tap-to-assign) every card gets a dashed orange border.
+        background: 'var(--bg2)', borderWidth: '1px 1px 1px 3px',
+        borderStyle: kind === 'general' || tapAssignActive ? 'dashed dashed dashed solid' : 'solid',
+        borderColor: `${tapAssignActive ? 'var(--accent, #ff8c00)' : 'var(--border)'} ${tapAssignActive ? 'var(--accent, #ff8c00)' : 'var(--border)'} ${tapAssignActive ? 'var(--accent, #ff8c00)' : 'var(--border)'} ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
+        borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
+      }}>
+      {tapAssignActive && <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent, #ff8c00)', marginBottom: 4 }}>แตะเพื่อใส่รูปที่เลือก</div>}
+      {parentName && <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 3 }}>↳ งานย่อยของ {parentName}</div>}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{task.name}</div>
+        {kind === 'boq' && (
+          <span data-kind="boq" style={{ flex: 'none', fontSize: 10, fontWeight: 700, color: '#1E1E1E', background: 'var(--accent)', borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+            {`BOQ · ${fmtNum(task.weight_pts)} แต้ม`}
+          </span>
+        )}
+        {kind === 'general' && (
+          <span data-kind="general" style={{ flex: 'none', fontSize: 10, fontWeight: 700, color: 'var(--text2)', border: '1px dashed var(--border)', borderRadius: 20, padding: '1px 8px', whiteSpace: 'nowrap' }}>
+            งานทั่วไป · ไม่นับ %
+          </span>
+        )}
+      </div>
+      {isQuantity && (
+        <div style={{ marginBottom: 8 }}>
+          <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={qtyPct}
+            style={{ height: 6, borderRadius: 3, background: 'var(--bg3)', overflow: 'hidden', marginBottom: 4 }}>
+            <div style={{ width: `${qtyPct}%`, height: '100%', background: STATUS_COLOR[task.status] || 'var(--accent)' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: 'var(--text2)' }}>{`${fmtNum(done)}/${fmtNum(planned)}${unit ? ` ${unit}` : ''} · ${qtyPct}%`}</span>
+            {canEdit && canManagePlan(role) && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
+                onClick={(e) => { e.stopPropagation(); onRecord?.(task) }}>+ บันทึกยอด</button>
+            )}
+          </div>
+        </div>
+      )}
+      {childTasks.length > 0 && (
+        <div style={{ display: 'grid', gap: 2, marginBottom: 8, padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}>
+          {childTasks.map((c) => (
+            <div key={c.id} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', flex: 'none', background: STATUS_COLOR[c.status] || STATUS_COLOR.not_started }} />
+              <span style={{ flex: 1, minWidth: 0 }}>{c.name} · {STATUS_LABEL[c.status] || c.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {task.zone && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
+          )}
+          {photoCount > 0 && (
+            <span title="ดูรูปหลักฐานงานเสร็จ" onClick={(e) => onViewPhotos?.(task, e)}
+              style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', background: 'rgba(var(--green-rgb), .14)', borderRadius: 20, padding: '2px 9px', cursor: 'pointer' }}>
+              📷 {photoCount}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {leadWorker && (
+            <span title={`👑 หัวหน้าทีม: ${leadWorker.nickname || leadWorker.name}`}
+              style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--yellow)', color: '#3a2f0e', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--yellow)', boxShadow: '0 0 0 1px var(--bg2)' }}>
+              {(leadWorker.nickname || leadWorker.name || '?').slice(0, 2)}
+            </span>
+          )}
+          {otherAssignees.map((w) => (
+            <span key={w.id} title={w.nickname || w.name} style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {(w.nickname || w.name || '?').slice(0, 2)}
+            </span>
+          ))}
+          {!leadWorker && !otherAssignees.length && <span style={{ fontSize: 10.5, color: 'var(--text3)' }}>ยังไม่มอบหมาย</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
-  dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto,
+  dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto, progress,
+  role, childrenByParent, taskById, boqById, onRecord, formProps, isIssueNode, tapAssignActive, onTapAssign, boqBulkFor,
 }) {
+  const issueNode = !!isIssueNode?.(phaseId)
+  const boqBulk = boqBulkFor?.(phaseId)
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+    <>
+    {boqBulk && !editingId && (
+      <button type="button" className="btn btn-sm" data-testid="boq-bulk-button"
+        style={{ width: '100%', marginBottom: 10, border: '1px dashed var(--accent)', background: 'var(--bg3)', color: 'var(--accent)', fontWeight: 700 }}
+        title="รายการ BOQ ที่มี % ในเฟสนี้ แต่ยังมีจำนวนเหลือ"
+        onClick={boqBulk.onOpen}>+ การ์ดจาก BOQ ({boqBulk.count} รายการรอสร้าง)</button>
+    )}
+    {progress && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10, fontSize: 12 }}>
+        <span style={{ background: 'var(--bg3)', borderRadius: 20, padding: '2px 10px', fontWeight: 700, color: 'var(--text2)' }}>
+          ความคืบหน้า {progress.pct}%
+        </span>
+        {progress.boqCards != null && (
+          <span style={{ color: 'var(--text3)' }}>
+            {progress.fromSubphases ? 'คิดจากขั้นตอนย่อย'
+              : progress.boqCards > 0 ? `คิดจากการ์ด BOQ ${progress.boqCards} ใบ · แต้มแบ่งตามมูลค่า` : 'คิดจากสถานะเฟส'}
+          </span>
+        )}
+      </div>
+    )}
+    <div data-phone="kanban" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
       {COLUMNS.map((col) => {
         const key = `${phaseId}:${col.status}`
         const colTasks = tasks.filter((t) => t.status === col.status)
@@ -824,7 +1363,8 @@ function PhaseBoard({
               e.preventDefault()
               setDragOverKey(null)
               const taskId = e.dataTransfer.getData('text/plain')
-              if (taskId) onQuickMove(taskId, col.status)
+              // quantity and parent cards move only through their own rules (not draggable, and ignored here)
+              if (taskId && taskById[taskId] && isStatusLeafTask(taskById[taskId], childrenByParent)) onQuickMove(taskId, col.status)
             } : undefined}
             style={{
               background: dragOverKey === key ? 'var(--bg3)' : 'transparent',
@@ -836,72 +1376,33 @@ function PhaseBoard({
             </div>
 
             {colTasks.map((task) => {
-              const workerRows = task.phase_task_workers || []
-              const leadRow = workerRows.find((r) => r.is_lead)
-              const leadWorker = leadRow ? workerById[leadRow.worker_id] : null
-              const otherAssignees = workerRows
-                .filter((r) => !r.is_lead)
-                .map((r) => workerById[r.worker_id])
-                .filter(Boolean)
               if (editingId === task.id) {
                 return (
                   <TaskEditPanel key={task.id} draft={draft} setDraft={setDraft} workers={workers}
                     onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft}
-                    onDelete={() => onDeleteRequest(task.id)} saving={saving} />
+                    onDelete={() => onDeleteRequest(task.id)} saving={saving}
+                    task={task} isParent={(childrenByParent[task.id] || []).length > 0} issuePhase={issueNode} {...formProps} />
                 )
               }
+              const workerRows = task.phase_task_workers || []
+              const leadRow = workerRows.find((r) => r.is_lead)
               return (
-                <div key={task.id}
-                  draggable={canEdit}
-                  onDragStart={canEdit ? (e) => e.dataTransfer.setData('text/plain', task.id) : undefined}
-                  onDragOver={canEdit ? (e) => { if (e.dataTransfer.types.includes(PHOTO_DRAG_MIME)) e.preventDefault() } : undefined}
-                  onDrop={canEdit ? (e) => {
-                    const photoId = e.dataTransfer.getData(PHOTO_DRAG_MIME)
-                    if (!photoId) return // not a photo drag -- let it bubble to the column's own onDrop (card-to-column move)
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onAssignPhoto(photoId, task.id)
-                  } : undefined}
-                  onClick={canEdit ? () => onStartEdit(task) : undefined}
-                  style={{
-                    background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
-                    borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
-                  }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{task.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {task.zone && (
-                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
-                      )}
-                      {taskPhotoCounts[task.id] > 0 && (
-                        <span title="ดูรูปหลักฐานงานเสร็จ" onClick={(e) => onViewPhotos(task, e)}
-                          style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', background: 'rgba(var(--green-rgb), .14)', borderRadius: 20, padding: '2px 9px', cursor: 'pointer' }}>
-                          📷 {taskPhotoCounts[task.id]}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      {leadWorker && (
-                        <span title={`👑 หัวหน้าทีม: ${leadWorker.nickname || leadWorker.name}`}
-                          style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--yellow)', color: '#3a2f0e', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--yellow)', boxShadow: '0 0 0 1px var(--bg2)' }}>
-                          {(leadWorker.nickname || leadWorker.name || '?').slice(0, 2)}
-                        </span>
-                      )}
-                      {otherAssignees.map((w) => (
-                        <span key={w.id} title={w.nickname || w.name} style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {(w.nickname || w.name || '?').slice(0, 2)}
-                        </span>
-                      ))}
-                      {!leadWorker && !otherAssignees.length && <span style={{ fontSize: 10.5, color: 'var(--text3)' }}>ยังไม่มอบหมาย</span>}
-                    </div>
-                  </div>
-                </div>
+                <TaskCard key={task.id} task={task} canEdit={canEdit} role={role}
+                  childTasks={childrenByParent[task.id] || []}
+                  parentName={task.parent_task_id ? taskById[task.parent_task_id]?.name : null}
+                  unit={task.boq_item_id ? boqById[task.boq_item_id]?.unit : null}
+                  photoCount={taskPhotoCounts[task.id] || 0}
+                  leadWorker={leadRow ? workerById[leadRow.worker_id] : null}
+                  otherAssignees={workerRows.filter((r) => !r.is_lead).map((r) => workerById[r.worker_id]).filter(Boolean)}
+                  onEdit={onStartEdit} onViewPhotos={onViewPhotos} onAssignPhoto={onAssignPhoto} onRecord={onRecord}
+                  tapAssignActive={tapAssignActive} onTapAssign={onTapAssign} />
               )
             })}
 
             {isNewHere && (
               <TaskEditPanel draft={draft} setDraft={setDraft} workers={workers}
-                onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft} saving={saving} isNew />
+                onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft} saving={saving} isNew
+                issuePhase={issueNode} {...formProps} />
             )}
 
             {canEdit && !editingId && (
@@ -914,15 +1415,53 @@ function PhaseBoard({
         )
       })}
     </div>
+    </>
   )
 }
 
-function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onSetLead, onCancel, onSave, onDelete, saving, isNew }) {
+function TaskEditPanel({
+  draft, setDraft, workers, onToggleAssignee, onSetLead, onCancel, onSave, onDelete, saving, isNew,
+  task, isParent = false, progressReady, boqItems = [], boqRemaining, onSplit, canManageQty = false, issuePhase = false,
+}) {
+  // pre-migration the kind is ignored (a BOQ default must not hide the status buttons)
+  const isQuantity = !!progressReady && draft.progress_mode === 'quantity'
+  const isIssueCard = task?.issue_report_id != null
+  const showWeightFields = progressReady && !isIssueCard
+  // the DB rejects a kind change on a parent or split child (only general cards
+  // split) and on a card with recorded quantity
+  const modeLocked = isParent || !!task?.parent_task_id || Number(task?.done_qty) > 0
+  const modeLockedWhy = isParent || task?.parent_task_id
+    ? 'งานที่แตกแล้วเป็นงานทั่วไปเท่านั้น'
+    : 'การ์ดนี้มีรายการบันทึกยอดแล้ว เปลี่ยนชนิดงานไม่ได้'
+  // once quantity is recorded only OWNER/PM may change the card's quantity (DB guard)
+  const qtyLocked = !canManageQty && Number(task?.done_qty) > 0
+  // only a saved general card can be split, at any status (its children have 0 points)
+  const canSplit = progressReady && !isNew && !!task && !isParent && !task.parent_task_id && !isIssueCard
+    && (task.progress_mode || 'status') === 'status' && !isQuantity
+  const setKind = (mode) => setDraft((d) => ({ ...d, progress_mode: mode }))
+  const boqLeft = isQuantity && draft.boq_item_id ? boqRemaining?.(draft.boq_item_id, task?.id) : null
+  const boqUnit = boqItems.find((b) => b.id === draft.boq_item_id)?.unit
+  // new card: several BOQ lines at once (one card each); ticking a line starts its
+  // qty at what is left in this phase; a line with nothing left cannot be ticked
+  const multiBoq = isQuantity && isNew
+  const pickOf = (id) => (draft.boqPicks || []).find((p) => p.boq_item_id === id)
+  const togglePick = (b) => setDraft((d) => {
+    const picks = d.boqPicks || []
+    if (picks.some((p) => p.boq_item_id === b.id)) return { ...d, boqPicks: picks.filter((p) => p.boq_item_id !== b.id) }
+    const left = boqRemaining?.(b.id, null)
+    return { ...d, boqPicks: [...picks, { boq_item_id: b.id, qty: left != null ? String(left) : '' }] }
+  })
+  const setPickQty = (id, qty) => setDraft((d) => ({ ...d, boqPicks: (d.boqPicks || []).map((p) => (p.boq_item_id === id ? { ...p, qty } : p)) }))
   return (
     <div style={{ background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 9, padding: 12, marginBottom: 10 }}>
       <input className="input input-sm" style={{ width: '100%', marginBottom: 8, fontWeight: 600 }}
-        value={draft.name} placeholder="ชื่องาน" autoFocus
+        value={draft.name} placeholder={multiBoq ? 'ชื่องาน (เว้นว่าง = ใช้ชื่อรายการ BOQ)' : 'ชื่องาน'} autoFocus
         onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
+      {isQuantity || isParent ? (
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>
+          {isParent ? 'สถานะคิดจากงานย่อย' : 'สถานะคิดจากยอดที่บันทึก (+ บันทึกยอด บนการ์ด)'}
+        </div>
+      ) : (
       <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
         {COLUMNS.map((c) => (
           <button key={c.status} type="button"
@@ -933,6 +1472,83 @@ function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onSetLead, 
           </button>
         ))}
       </div>
+      )}
+      {showWeightFields && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <div role="radiogroup" aria-label="ชนิดงาน" title={modeLocked ? modeLockedWhy : undefined}
+            style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6 }}>
+            {[
+              { mode: 'quantity', label: 'งาน BOQ (นับ %)', hint: 'งานตามสัญญา ขยับตามยอดติดตั้ง' },
+              { mode: 'status', label: 'งานทั่วไป (ไม่นับ %)', hint: 'งานอื่นที่จะจ่ายให้ช่าง' },
+            // a card in an issue phase cannot become a BOQ card (issue nodes never count);
+            // an existing BOQ card there keeps the choice so its kind still shows
+            ].filter((k) => !(issuePhase && k.mode === 'quantity' && (isNew || task?.progress_mode !== 'quantity'))).map((k) => {
+              const on = draft.progress_mode === k.mode
+              return (
+                <label key={k.mode} style={{
+                  display: 'grid', gap: 2, fontSize: 11, color: 'var(--text3)', padding: '6px 8px', borderRadius: 8,
+                  border: `1px ${k.mode === 'status' ? 'dashed' : 'solid'} ${on ? 'var(--accent)' : 'var(--border)'}`,
+                  background: on ? 'var(--bg3)' : 'transparent', cursor: modeLocked ? 'default' : 'pointer', opacity: modeLocked && !on ? 0.5 : 1,
+                }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
+                    <input type="radio" name={`card-kind-${task?.id || 'new'}`} aria-label={k.label} checked={on}
+                      disabled={modeLocked} onChange={() => setKind(k.mode)} />
+                    {k.label}
+                  </span>
+                  {k.hint}
+                </label>
+              )
+            })}
+          </div>
+          {multiBoq && (
+            <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--text3)' }}>
+              รายการ BOQ — ติ๊กได้หลายรายการ สร้างการ์ดละ 1 ใบ · จำนวนเริ่มที่ที่เหลือในเฟสนี้
+              <div style={{ display: 'grid', gap: 4, marginTop: 4, maxHeight: 220, overflowY: 'auto', background: 'var(--bg3)', borderRadius: 6, padding: 6 }}>
+                {boqItems.map((b) => {
+                  const left = boqRemaining?.(b.id, null)
+                  const full = left != null && left <= 0
+                  const pick = pickOf(b.id)
+                  return (
+                    <div key={b.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 80px', gap: 6, alignItems: 'center', fontSize: 12, color: full ? 'var(--text3)' : 'var(--text)' }}>
+                      <input type="checkbox" aria-label={`เลือก ${b.description}`} checked={!!pick} disabled={full || saving} onChange={() => togglePick(b)} />
+                      <span>{`${b.code} ${b.description} — เหลือในเฟสนี้ ${fmtNum(left)}${b.unit ? ` ${b.unit}` : ''}`}</span>
+                      <input type="number" min="0" step="any" className="input input-sm" style={{ textAlign: 'right' }} aria-label={`จำนวน ${b.description}`}
+                        value={pick ? pick.qty : ''} disabled={!pick || saving} placeholder={full ? '—' : undefined}
+                        onChange={(e) => setPickQty(b.id, e.target.value)} />
+                    </div>
+                  )
+                })}
+                {!boqItems.length && <div>ไซต์นี้ยังไม่มีรายการ BOQ</div>}
+              </div>
+              <div style={{ marginTop: 4 }}>แต้มคิดให้อัตโนมัติจากมูลค่า ไม่ต้องกรอก</div>
+            </div>
+          )}
+          {isQuantity && !multiBoq && (
+            <>
+              <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
+                รายการ BOQ
+                <select className="select" style={{ width: '100%', marginTop: 2 }} value={draft.boq_item_id}
+                  onChange={(e) => setDraft((d) => ({ ...d, boq_item_id: e.target.value }))}>
+                  <option value="">— เลือกรายการ BOQ —</option>
+                  {boqItems.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {`${b.code} ${b.description} — เหลือในเฟสนี้ ${fmtNum(boqRemaining?.(b.id, task?.id))}${b.unit ? ` ${b.unit}` : ''}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
+                จำนวนในการ์ดนี้{boqUnit ? ` (${boqUnit})` : ''}{boqLeft != null ? ` · เหลือในเฟสนี้ ${fmtNum(boqLeft)} ใส่ได้ไม่เกินนี้` : ''}
+                <input type="number" min="0" step="any" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
+                  value={draft.planned_qty} disabled={qtyLocked}
+                  title={qtyLocked ? 'เฉพาะ OWNER/PM แก้จำนวนการ์ดที่มียอดแล้ว' : undefined}
+                  onChange={(e) => setDraft((d) => ({ ...d, planned_qty: e.target.value }))} />
+              </label>
+              <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--text3)' }}>แต้มคิดให้อัตโนมัติจากมูลค่า ไม่ต้องกรอก</div>
+            </>
+          )}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
         <label style={{ fontSize: 11, color: 'var(--text3)' }}>
           ชั้น/โซน
@@ -973,7 +1589,10 @@ function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onSetLead, 
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         {!isNew && (
-          <button type="button" className="btn btn-sm btn-danger" style={{ marginRight: 'auto' }} disabled={saving} onClick={onDelete}>🗑 ลบ</button>
+          <button type="button" className="btn btn-sm btn-danger" style={{ marginRight: canSplit ? 0 : 'auto' }} disabled={saving} onClick={onDelete}>🗑 ลบ</button>
+        )}
+        {canSplit && (
+          <button type="button" className="btn btn-sm btn-ghost" style={{ marginRight: 'auto' }} disabled={saving} onClick={() => onSplit?.(task)}>✂️ แตกงาน</button>
         )}
         <button type="button" className="btn btn-sm btn-ghost" disabled={saving} onClick={onCancel}>ยกเลิก</button>
         <button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={onSave}>{saving ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}</button>

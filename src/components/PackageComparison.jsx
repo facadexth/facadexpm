@@ -61,6 +61,10 @@ export default function PackageComparison({ currentPackageId, onApply, applyingI
               <td style={{ fontWeight: 600 }}>ไซท์งาน "กำลังดำเนินการ" สูงสุด</td>
               {packages.map(p => <td key={p.id} style={{ textAlign: 'center' }}>{quotaLabel(p.max_sites)}</td>)}
             </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>กลุ่ม LINE ที่ผูกได้สูงสุด</td>
+              {packages.map(p => <td key={p.id} style={{ textAlign: 'center' }}>{quotaLabel(p.max_line_groups)}</td>)}
+            </tr>
             {Object.entries(MODULE_LABELS).map(([key, label]) => (
               <tr key={key}>
                 <td style={{ fontWeight: 600 }}>{label}</td>

@@ -5,15 +5,14 @@
 // ============================================================
 import { useEffect, useRef, useState } from 'react'
 import { fmt } from '../lib/supabase.js'
-import { CHECK_TEXT, fmtQty, fmtWac } from '../lib/supplierTaxInvoice.js'
+import { CHECK_TEXT, checkLine, fmtQty, fmtWac } from '../lib/supplierTaxInvoice.js'
+import CardTable from './CardTable.jsx'
+const TAX_PREVIEW_MAP = { title: 'สินค้า', amount: 'คงเหลือหลัง', sub: ['ไซท์งาน'] }
 
 const num = v => (v == null || v === '' ? null : Number(v))
 const q = fmtQty
 
-export function checkLine(c, poNumberById) {
-  const po = c.po_id ? (poNumberById?.get?.(c.po_id) || null) : null
-  return (CHECK_TEXT[c.code] || c.code) + (po ? ` (${po})` : '')
-}
+export { checkLine }
 
 export default function TaxInvoicePreview({ preview, poNumberById }) {
   if (!preview) return null
@@ -32,7 +31,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
           ))}
         </div>
       )}
-      <div className="table-wrap">
+      <CardTable map={TAX_PREVIEW_MAP}>
         <table>
           <thead>
             <tr>
@@ -41,7 +40,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
               <th style={{ textAlign: 'right' }}>+ จากใบกำกับ</th>
               <th style={{ textAlign: 'right' }}>- กลับรายการใบสั่งซื้อ</th>
               <th style={{ textAlign: 'right' }}>คงเหลือหลัง</th>
-              <th style={{ textAlign: 'right' }}>ต้นทุนเฉลี่ยหลัง</th>
+              <th style={{ textAlign: 'right' }}>ต้นทุน/หน่วยหลัง</th>
             </tr>
           </thead>
           <tbody>
@@ -64,7 +63,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
             {!rows.length && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)' }}>ไม่มีการเปลี่ยนแปลงสต็อก</td></tr>}
           </tbody>
         </table>
-      </div>
+      </CardTable>
       <div>
         มูลค่าสินค้าใบสั่งซื้อ {fmt(preview.po_sum)} · ต่าง {fmt(preview.diff)} (เกณฑ์ ±{fmt(preview.tolerance)})
       </div>
