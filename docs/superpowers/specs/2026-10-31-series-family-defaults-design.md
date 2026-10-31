@@ -9,7 +9,7 @@
 
 ## 2. ตาราง family (artifact v3) และคำตอบเจ้าของ 2026-10-31
 - STANDARD = หน้าตัดทั่วไป ความหนาให้เลือก 1.0 / 1.2 / 1.5 / 1.8 / 2.0 มม.: SMS = SMS001 ทั้ง 6 ชุด, Alumet = MINI MC, MN = GROUP 01 (ยืนยันแล้ว)
-- MN จัดตามหัวข้อชุดในไฟล์ราคา PriceList2024: 15 family + family 'miscellaneous (misc.)' รวม 13 ชุดที่เหลือ (artifact v4) — ใช้ misc. กับ MN เท่านั้น; SMS 230 / SMS 300 และชุดอื่นของไฟล์ Aluminium calculation แยกเดี่ยว (เจ้าของ 2026-10-31)
+- MN จัดตามหัวข้อชุดในไฟล์ราคา PriceList2024: 15 family + family 'miscellaneous (misc.)' รวม 17 ชุดที่เหลือ (artifact v4 + AWNING 3", BOX-FRAME 4" มีรางในตัว, T-SLOT, ULTRA SLIM) — ใช้ misc. กับ MN เท่านั้น; SMS 230 / SMS 300 และชุดอื่นของไฟล์ Aluminium calculation แยกเดี่ยว (เจ้าของ 2026-10-31)
 - **เจ้าของอนุมัติสเปก 2026-10-31 ("1. ok")**
 - KC = ผู้ขายส่ง (ขาย SMS/FUJI) ไม่มี family; FUJI ยังไม่มีในแคตตาล็อก (งานแยก); แยก "ผู้ขาย" จาก "โรงรีด" = งานแยก
 - สมมติฐาน (ยังไม่ตอบ): HOMELIFE และ PROLINE รวมเป็น family เดียว — หลายชุดต่อประเภท → ชุดแรกตามชื่อ เปลี่ยนในรายการได้
