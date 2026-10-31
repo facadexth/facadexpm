@@ -595,7 +595,7 @@ The migration is already on CHANG, so the code can ship. Settings saves send the
 7. 1,440 stickers for 120 sets — needs printing by bar range or batch.
 8. Custom-length table ~60 rows per profile — show the best 3–5.
 9. Drain holes not built (waiting for count, spacing, size).
-10. "จำนวนช่อง (บาน)" vs "จำนวนชุด" are easy to confuse.
+10. "จำนวนช่อง (บาน)" vs "จำนวนชุด" are easy to confuse. Fixed after round 2: the field is now "แบ่งกี่ช่อง (ใน 1 ชุด)" (panel_count splits the width into columns with a centre post; layout templates hint "ปกติใส่ 1" and warn above 1), and the table header is "จำนวนชุด (ทั้งงาน)". All 3 live items had panel_count 1.
 
 Not yet checked: the downloaded sticker PDFs (roll 50×30 and A4).
 

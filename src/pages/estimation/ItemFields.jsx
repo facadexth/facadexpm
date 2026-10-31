@@ -24,6 +24,11 @@ export const Check = ({ checked, disabled, onChange, children }) => (
 const grid = cols => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${cols}px, 1fr))`, gap: 10 })
 export const Options = ({ list }) => list.map(o => <option key={o.value} value={o.value}>{o.label}</option>)
 
+// "แบ่งกี่ช่อง" = panel_count: the width splits into equal columns (resolveGrid) with a centre post between them.
+// A layout template already draws its own sashes, so there it stays 1.
+const splitHint = t => (t && t.layout_kind ? 'แบบนี้กำหนดจำนวนบานเองแล้ว ปกติใส่ 1' : 'ปกติ 1 · ใส่ 2 ขึ้นไปเมื่อมีเสากลางแบ่ง')
+const splitWarn = (t, n) => (t && t.layout_kind && Number(n) > 1 ? 'มากกว่า 1 จะเพิ่มเสากลางและคูณชิ้นส่วนต่อช่อง' : null)
+
 export default function ItemFields({ form, m, update, dis }) {
   const setLine = (i, k, v) => update({ extra_lines: form.extra_lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)) })
   return (
@@ -53,7 +58,7 @@ export default function ItemFields({ form, m, update, dis }) {
       <div style={grid(110)}>
         <Field label="กว้าง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.width_m} onChange={e => update({ width_m: e.target.value })} /></Field>
         <Field label="สูง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.height_m} onChange={e => update({ height_m: e.target.value })} /></Field>
-        <Field label="จำนวนช่อง (บาน)"><input className="input" type="number" min="1" step="1" disabled={dis} value={form.panel_count} onChange={e => update({ panel_count: e.target.value })} /></Field>
+        <Field label="แบ่งกี่ช่อง (ใน 1 ชุด)" hint={splitHint(m.template)} warn={splitWarn(m.template, form.panel_count)}><input className="input" type="number" min="1" step="1" disabled={dis} value={form.panel_count} onChange={e => update({ panel_count: e.target.value })} /></Field>
       </div>
       <ItemLayoutInputs li={m.layoutInputs} form={form} update={update} dis={dis} />
 

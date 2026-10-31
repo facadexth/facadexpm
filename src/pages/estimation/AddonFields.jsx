@@ -32,7 +32,7 @@ export default function AddonFields({ form, update, typeId, typeOptions, templat
         <div style={grid}>
           <Field label="กว้าง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.addon_width_m} onChange={e => update({ addon_width_m: e.target.value })} /></Field>
           <Field label="สูง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.addon_height_m} onChange={e => update({ addon_height_m: e.target.value })} /></Field>
-          <Field label="จำนวนช่อง (บาน)"><input className="input" type="number" min="1" step="1" disabled={dis} value={form.addon_panel_count} onChange={e => update({ addon_panel_count: e.target.value })} /></Field>
+          <Field label="แบ่งกี่ช่อง (ใน 1 ชุด)" hint="ปกติ 1 · ใส่ 2 ขึ้นไปเมื่อมีเสากลางแบ่ง"><input className="input" type="number" min="1" step="1" disabled={dis} value={form.addon_panel_count} onChange={e => update({ addon_panel_count: e.target.value })} /></Field>
           <Field label="ตำแหน่ง">
             <select className="input" disabled={dis} value={form.addon_position} onChange={e => update({ addon_position: e.target.value })}>
               {POSITIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}

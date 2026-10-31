@@ -78,7 +78,7 @@ export default function QuickQuote({ project, ctx, templates, seriesTypes, today
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
           {input('width_m', 'กว้าง (มม.) ★')}
           {input('height_m', 'สูง (มม.) ★')}
-          {input('panel_count', 'จำนวนช่อง (บาน)', { min: '1' })}
+          <Field label="แบ่งกี่ช่อง (ใน 1 ชุด)" hint="ปกติ 1 · ใส่ 2 ขึ้นไปเมื่อมีเสากลางแบ่ง"><input className="input" type="number" min="1" step="1" value={q.panel_count} onChange={e => set({ panel_count: e.target.value })} /></Field>
         </div>
         {v.availability === 'not_offered' && (
           <div style={{ fontSize: 13, color: 'var(--red)' }}>⚠ ซีรีส์นี้ไม่ผลิตประเภทนี้{v.offeredBy.length ? ` · ซีรีส์ที่ผลิต: ${v.offeredBy.join(', ')}` : ' · ยังไม่มีซีรีส์ที่ผลิตประเภทนี้'}</div>

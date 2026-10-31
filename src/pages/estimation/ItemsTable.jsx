@@ -36,7 +36,7 @@ export default function ItemsTable({ items, costs, previewSigs, project, index, 
     <div className="card">
       <div className="table-wrap">
         <table>
-          <thead><tr><th>เลขช่อง</th><th>ชื่อรายการ</th><th>ประเภท</th><th>ซีรีส์</th><th>สถานะ</th><th>ขนาด</th><th>จำนวนชุด</th><th>ราคา/ชุด</th><th>รวม</th><th></th></tr></thead>
+          <thead><tr><th>เลขช่อง</th><th>ชื่อรายการ</th><th>ประเภท</th><th>ซีรีส์</th><th>สถานะ</th><th>ขนาด</th><th>จำนวนชุด (ทั้งงาน)</th><th>ราคา/ชุด</th><th>รวม</th><th></th></tr></thead>
           <tbody>
             {items.map(o => {
               const cost = costs[o.id]
@@ -50,7 +50,7 @@ export default function ItemsTable({ items, costs, previewSigs, project, index, 
               return (
                 <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(o.id)}>
                   <td style={{ fontWeight: 600 }}>{o.opening_no}</td>
-                  <td>{o.item_name || '—'}</td>
+                  <td>{o.item_name || '—'}{Number(o.panel_count) > 1 && <span style={{ color: 'var(--text3)' }}> · แบ่ง {Number(o.panel_count)} ช่อง</span>}</td>
                   <td>{tpl && tpl.type_id ? typeLabel(index.types, tpl.type_id) : (tpl ? tpl.name : '—')}</td>
                   <td>{series ? seriesLabelShort(series, index.providers[series.provider_id]) : (o.series || '—')}</td>
                   <td><span title={status === 'unresolved' ? reasons : status === 'old_preview' ? 'ภาพที่บันทึกไว้เก่ากว่าข้อมูล เปิดรายการแล้วบันทึกภาพใหม่' : undefined} style={{ color: STATUS[status][1], fontWeight: 600 }}>{STATUS[status][0]}</span></td>
