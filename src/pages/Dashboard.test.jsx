@@ -13,8 +13,9 @@ vi.mock('recharts', () => {
   return { ResponsiveContainer: Box, BarChart: Box, Bar: Nil, XAxis: Nil, YAxis: Nil, CartesianGrid: Nil, Tooltip: Nil }
 })
 const empty = { data: [], loading: false, error: null, refetch: () => {} }
+let incomesData = []
 vi.mock('../hooks/useSupabase.js', () => ({
-  useQuery: () => empty, useSites: () => empty, useExpenses: () => empty, useIncomes: () => empty,
+  useQuery: () => empty, useSites: () => empty, useExpenses: () => empty, useIncomes: () => ({ ...empty, data: incomesData }),
   usePaymentForecast: () => empty, useSitesProgress: () => empty, useSiteRetentionSummary: () => empty,
   useCheques: () => empty, useAppSetting: () => ({ ...empty, data: '3' }),
 }))
@@ -26,20 +27,36 @@ vi.mock('../hooks/useDashboardData.js', () => ({
 import Dashboard from './Dashboard.jsx'
 
 beforeEach(() => { window.matchMedia = q => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }) })
-afterEach(() => { cleanup(); hookRole = 'OWNER'; localStorage.clear() })
+afterEach(() => { cleanup(); hookRole = 'OWNER'; incomesData = []; localStorage.clear() })
 
 describe('OWNER dashboard', () => {
   it('shows the 8 money cards and every new card, without the old table', () => {
     const nav = vi.fn()
     const { container, getByText } = render(<Dashboard navigateTo={nav} pendingCounts={{ po_draft: 1 }} />)
     const text = container.textContent
-    for (const t of ['รายรับรวม', 'รายรับไม่มี VAT', 'รายจ่ายรวม', 'กำไรเบื้องต้น', 'Retention ใกล้ครบกำหนด', 'เตรียมเงินจ่ายเช็ค',
+    for (const t of ['รายรับรวม', 'รายรับมี VAT', 'รายรับไม่มี VAT', 'รายจ่ายรวม', 'กำไรเบื้องต้น', 'Retention ใกล้ครบกำหนด', 'เตรียมเงินจ่ายเช็ค',
       'รายรับ vs รายจ่าย รายเดือน', 'ต้องชำระ 1–3 เดือนข้างหน้า', 'คนงานวันนี้', 'ไซท์ที่ทำงานวันนี้', 'เรื่องรอคุณ',
       'ค่าใช้จ่ายเกินกำหนด', 'เลยกำหนดส่งมอบ', 'ใบเสนอราคาเดือนนี้']) expect(text).toContain(t)
     expect(text).not.toContain('กดหัวตารางเพื่อเรียง')
     expect(text).not.toContain('ยอดที่ต้องชำระ (รายเดือน)')
     fireEvent.click(getByText(/PO|ใบสั่งซื้อฉบับร่าง/))
     expect(nav).toHaveBeenCalledWith('purchase_orders', { pending: 'po_draft' })
+  })
+
+  it('splits income into a VAT card and a non-VAT card', () => {
+    incomesData = [
+      { id: 'a', received_amount: 107000, vat: 7000, date: '2026-01-05' },
+      { id: 'b', received_amount: 53500, vat: 3500, date: '2026-01-06' },
+      { id: 'c', received_amount: 20000, vat: 0, date: '2026-01-07' },
+    ]
+    const nav = vi.fn()
+    const { getByText } = render(<Dashboard navigateTo={nav} />)
+    const card = label => getByText(label, { selector: '.kpi-label' }).closest('.kpi-card')
+    expect(card('รายรับมี VAT').textContent).toContain('160,500')
+    expect(card('รายรับมี VAT').textContent).toContain('VAT 10,500')
+    expect(card('รายรับไม่มี VAT').textContent).toContain('20,000')
+    fireEvent.click(card('รายรับมี VAT'))
+    expect(nav).toHaveBeenCalledWith('income')
   })
 
   it('customizer groups cards and hiding one persists under the same key', () => {

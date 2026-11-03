@@ -31,6 +31,7 @@ import {
 // group 'money' = 8 ใบเดิม (คำนวณเหมือนเดิมทุกอย่าง), 'today' = การ์ดใหม่
 const CARD_DEFS = [
   { id: 'income', label: 'รายรับรวม', group: 'money' },
+  { id: 'vat_income', label: 'รายรับมี VAT', group: 'money' },
   { id: 'non_vat_income', label: 'รายรับไม่มี VAT', group: 'money' },
   { id: 'expense', label: 'รายจ่ายรวม', group: 'money' },
   { id: 'profit', label: 'กำไรเบื้องต้น', group: 'money' },
@@ -456,6 +457,8 @@ function OwnerDashboard({ navigateTo, user, pendingCounts, canSeeTab }) {
   // ── KPI Calculations (unchanged) ──
   const totalIncome  = useMemo(() => (incomes  || []).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
   const nonVatIncome = useMemo(() => (incomes  || []).filter(i => !i.vat).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
+  const vatIncome    = totalIncome - nonVatIncome
+  const vatAmount    = useMemo(() => (incomes  || []).reduce((s, i) => s + (Number(i.vat) || 0), 0), [incomes])
   const totalExpense = useMemo(() => (expenses || []).reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const profit       = totalIncome - totalExpense
 
@@ -514,6 +517,7 @@ function OwnerDashboard({ navigateTo, user, pendingCounts, canSeeTab }) {
   const availableDefs = CARD_DEFS.filter(d => d.id !== 'cheque_reminder' || hasChequeTracking)
   const registry = {
     income: <Kpi key="income" label="รายรับรวม" value={fmtShort(totalIncome)} sub={`${fmt(totalIncome)} บาท`} cls="green" color="var(--green)" onClick={() => navigateTo('income')} />,
+    vat_income: <Kpi key="vat_income" label="รายรับมี VAT" value={fmtShort(vatIncome)} sub={`${fmt(vatIncome)} บาท · VAT ${fmt(vatAmount)}`} cls="green" color="var(--green)" onClick={() => navigateTo('income')} />,
     non_vat_income: <Kpi key="non_vat_income" label="รายรับไม่มี VAT" value={fmtShort(nonVatIncome)} sub={`${fmt(nonVatIncome)} บาท`} cls="green" color="var(--green)" onClick={() => navigateTo('income')} />,
     expense: <Kpi key="expense" label="รายจ่ายรวม" value={fmtShort(totalExpense)} sub={`${fmt(totalExpense)} บาท`} cls="red" color="var(--red)" onClick={() => navigateTo('expenses', range.from ? { dateFrom: range.from, dateTo: range.to } : {})} />,
     profit: <Kpi key="profit" label="กำไรเบื้องต้น" value={fmtShort(profit)} sub={profit >= 0 ? `+${(profit/totalIncome*100).toFixed(1)}%` : 'ขาดทุน'} cls={profit>=0?'green':'red'} color={profit>=0?'var(--green)':'var(--red)'} onClick={() => navigateTo(salesTab)} />,
