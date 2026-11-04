@@ -28,6 +28,21 @@ describe('CutSheetView', () => {
     expect(html).toContain('3000')
     expect(html).not.toContain('ใบตัดไม่ตรงกับรายการปัจจุบัน')
   })
+  it('names each piece\'s ends head-tail, slants the 45° ends and shows the profile picture', () => {
+    const mixed = { ...pc(2.1), end_a: 'square', end_b: 'miter45', kerf_style: 'miter45' }
+    const both = { ...pc(0.9), end_a: 'miter45', end_b: 'miter45', kerf_style: 'miter45' }
+    const html = render({ plan: plan({ offcutBars: [], bars: [{ length_m: 6.4, left_m: 0.4, pieces: [mixed, both, pc(1)] }] }), imageUrls: { p1: 'https://s/p1.png' } })
+    expect(html).toContain('2100</b> ตรง-45')
+    expect(html).toContain('900</b> 45')
+    expect(html).toContain('1000</b> ตรง')
+    expect(html).toContain('clip-path:polygon(0px 0, calc(100% - min(34px, 30%)) 0, 100% 100%, 0 100%)')
+    expect(html).toContain('clip-path:polygon(min(34px, 30%) 0, calc(100% - min(34px, 30%)) 0, 100% 100%, 0 100%)')
+    expect(html.split('clip-path').length - 1).toBe(2)
+    expect(html).toContain('src="https://s/p1.png"')
+  })
+  it('a group without a picture shows none', () => {
+    expect(render({})).not.toContain('<img')
+  })
   it('blocks issuing while a piece cannot be cut and lists it', () => {
     const html = render({ plan: plan({ unplaced: [pc(7.2, 'W-09', 'ตั้ง')] }) })
     expect(html).toContain('ตัดไม่ได้ — ยาวเกินเส้น')

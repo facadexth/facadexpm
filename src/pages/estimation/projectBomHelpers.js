@@ -456,3 +456,18 @@ export function missingDieNos(plan, seriesMap, seriesById) {
   }
   return names.length ? { names, series } : null
 }
+
+// How a piece's two ends are cut, head then tail: one word when both ends match ("ตรง", "45"), else "ตรง-45".
+const END_WORD = { square: 'ตรง', miter45: '45', notch: 'บาก' }
+export function endsText(endA, endB) {
+  const a = END_WORD[endA] || END_WORD.square
+  const b = END_WORD[endB] || END_WORD.square
+  return a === b ? a : `${a}-${b}`
+}
+
+// Piece outline for the cut sheet: a 45° end slants in at the top by the bar's height (capped for short pieces).
+export function pieceClipPath(endA, endB, inset = 'min(34px, 30%)') {
+  const left = endA === 'miter45' ? inset : '0px'
+  const right = endB === 'miter45' ? `calc(100% - ${inset})` : '100%'
+  return endA === 'miter45' || endB === 'miter45' ? `polygon(${left} 0, ${right} 0, 100% 100%, 0 100%)` : undefined
+}

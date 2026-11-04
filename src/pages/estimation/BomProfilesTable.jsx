@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { parseStockLength } from './projectBomHelpers.js'
 import InlineError from './InlineError.jsx'
+import { ProfileThumb } from '../../components/ProfileImage.jsx'
 
 const m2 = n => Number(n).toFixed(2)
 const m3 = n => Number(n).toFixed(3)
@@ -41,7 +42,7 @@ function BarCount({ g }) {
 
 // profiles: projectBomHelpers.section1Rows rows (plain buildProjectBom rows work too); issued: the numbers are the
 // issued plan's.
-export default function BomProfilesTable({ profiles, overrides, canEdit, onSaveStock, issued = false }) {
+export default function BomProfilesTable({ profiles, overrides, canEdit, onSaveStock, issued = false, imageUrls = {} }) {
   const [error, setError] = useState(null)
   if (!profiles.length) return <div style={{ color: 'var(--text3)', fontSize: 13 }}>ยังไม่มีเส้นอลูมิเนียมที่คิดราคาได้</div>
   const anyOffcut = profiles.some(g => codesOf(g).length > 0)
@@ -59,7 +60,10 @@ export default function BomProfilesTable({ profiles, overrides, canEdit, onSaveS
           <tbody>
             {profiles.map(g => (
               <tr key={g.key}>
-                <td>{g.die_no ? <b>{g.die_no}</b> : null} {g.name}<div style={{ fontSize: 11, color: 'var(--text3)' }}>{g.openings.join(', ')}</div></td>
+                <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <ProfileThumb url={imageUrls[g.profile_id]} alt={g.die_no || g.name} title={`${g.die_no ? `${g.die_no} · ` : ''}${g.name}`} />
+                  <div>{g.die_no ? <b>{g.die_no}</b> : null} {g.name}<div style={{ fontSize: 11, color: 'var(--text3)' }}>{g.openings.join(', ')}</div></div>
+                </div></td>
                 <td>{g.finish_name || '—'}</td>
                 <td style={{ fontSize: 12 }}>{g.cuts.map(c => <div key={`${c.length_m}|${c.style}`} className="font-mono">{m3(c.length_m)} × {c.quantity} <span style={{ color: 'var(--text3)' }}>{c.style === 'miter45' ? '45° (ยาวด้านนอก)' : '90°'}</span></div>)}</td>
                 <td className="font-mono">{m2(g.cut_total_m)}</td>

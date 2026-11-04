@@ -20,6 +20,7 @@ import CutOptimizerPanel from './CutOptimizerPanel.jsx'
 import CutModeField from './CutModeField.jsx'
 import CustomLengthSummary from './CustomLengthSummary.jsx'
 import CutSheetView from './CutSheetView.jsx'
+import { useImageUrls } from '../../lib/profileImages.js'
 import StickerSheet from './StickerSheet.jsx'
 import OffcutStockPanel from './OffcutStockPanel.jsx'
 import ProviderCompare from './ProviderCompare.jsx'
@@ -71,6 +72,12 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
   // The ONE cut plan of this tab (summary, cut sheet, stickers and offcut stock all read it).
   const groupInfo = useMemo(() => cutGroupInfo(entries, index), [entries, index])
   const kgPerM = useMemo(() => cutGroupKgPerM(groupInfo, index), [groupInfo, index])
+  // Cross-section pictures by profile id (BOM table thumbnails, cut sheet headers).
+  const imagePathByProfile = useMemo(() => Object.fromEntries(Object.values(groupInfo)
+    .map(g => [g.profile_id, (index.profiles || {})[g.profile_id]?.image_path]).filter(([, p]) => p)), [groupInfo, index])
+  const signedImages = useImageUrls(Object.values(imagePathByProfile))
+  const imageUrls = useMemo(() => Object.fromEntries(Object.entries(imagePathByProfile).map(([id, p]) => [id, signedImages[p]]).filter(([, u]) => u)),
+    [imagePathByProfile, signedImages])
   const offcuts = useMemo(() => (offcutsFirst ? offcutsByGroup(offcutsQ.data) : {}), [offcutsFirst, offcutsQ.data])
   const overrides = useMemo(() => (isCustom ? cutGroupOverrides(groupInfo, projectStock.byProfile) : {}), [isCustom, groupInfo, projectStock])
   // Never plan while the offcut stock is still loading (an issued plan must not silently skip offcuts); a load error
@@ -175,7 +182,7 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
       )}
 
       <Section title="1. อลูมิเนียมโปรไฟล์ (แยกตามหน้าตัดและสี)">
-        <BomProfilesTable profiles={section1} overrides={isCustom ? projectStock.byProfile : {}} canEdit={canEdit && isCustom && !issued} onSaveStock={saveProfile} issued={!!issued} />
+        <BomProfilesTable profiles={section1} overrides={isCustom ? projectStock.byProfile : {}} canEdit={canEdit && isCustom && !issued} onSaveStock={saveProfile} issued={!!issued} imageUrls={imageUrls} />
       </Section>
 
       {isCustom && <CutOptimizerPanel profiles={bom.profiles} seriesMap={seriesMap} index={index} settings={settings} asOf={project.price_as_of} rangeM={rangeM} canEdit={canEdit && !issued} onUseLength={saveProfile} />}
@@ -185,7 +192,7 @@ export default function ProjectBomView({ project, items, costs, base, index, ser
         : issued !== undefined && (
           <>
             <CutSheetView plan={plan} issued={issuedShown} codes={offcutCodes} flipped={flipped} settings={settings} canEdit={canEdit} busy={cutBusy} onIssue={issuePlan} onVoid={voidPlan}
-              error={cutErrorView} onDismissError={() => setCutError(null)} missingDie={missingDie} />
+              error={cutErrorView} onDismissError={() => setCutError(null)} missingDie={missingDie} imageUrls={imageUrls} />
             <StickerSheet plan={plan} issued={issuedShown} codes={offcutCodes} projectName={project.name} projectId={project.id} openingIds={openingIds} flipped={flipped} onFlip={onFlip} missingDie={missingDie} />
           </>
         )}
