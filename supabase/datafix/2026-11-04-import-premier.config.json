@@ -1,0 +1,131 @@
+{
+ "slug": "2026-11-04-import-premier",
+ "owner_note": "Owner 2026-11-04: \"i add premier\" — Premier (Goldstar Metal, Vol.2026) as an extruder, prices like SMS (wood grain 350 every shade). kg/m = powder-coat midpoint / bar (extraction rule). P-007407 railing post: only 1.39 printed, taken as kg/m. P-124941 imported inactive (1.2 mm weight heavier than 1.5 mm, misprint).",
+ "provider_name": "Premier (บจก. โกลด์สตาร์ เมทัล)",
+ "short_name": "PM",
+ "finishes": [
+  [
+   "อบขาว",
+   170
+  ],
+  [
+   "อบดำ",
+   170
+  ],
+  [
+   "อบเทาซาฮาร่า",
+   170
+  ],
+  [
+   "สีชุบ (อโนไดซ์)",
+   170
+  ],
+  [
+   "ลายไม้ Butternut",
+   350
+  ],
+  [
+   "ลายไม้ Light Oak",
+   350
+  ],
+  [
+   "ลายไม้ Snow",
+   350
+  ],
+  [
+   "ลายไม้ Natural",
+   350
+  ],
+  [
+   "ลายไม้ Golden Teak",
+   350
+  ],
+  [
+   "ลายไม้ Teak",
+   350
+  ],
+  [
+   "ลายไม้ Red Teak",
+   350
+  ],
+  [
+   "ลายไม้ Brown Teak",
+   350
+  ]
+ ],
+ "parts": [
+  {
+   "json": "docs/catalogs/premier/premier-part-a.json",
+   "sections": "DOC/ALUMNIUM CATALOG/_extracted/premier-a-sections"
+  },
+  {
+   "json": "docs/catalogs/premier/premier-part-b.json",
+   "sections": "DOC/ALUMNIUM CATALOG/_extracted/premier-b-sections"
+  }
+ ],
+ "families": {
+  "EURO SERIES": [
+   0,
+   null
+  ],
+  "EXTRA PLUS": [
+   1,
+   null
+  ],
+  "SLIM LINE / SYNC": [
+   2,
+   null
+  ],
+  "บานเฟี้ยม No.1": [
+   3,
+   null
+  ],
+  "งานตกแต่ง / ราวกันตก": [
+   4,
+   null
+  ]
+ },
+ "series_rename": {
+  "EURO SERIES ชุดบานเลื่อน (ประตู หน้าต่าง ระบบยูโร ขนาดเฟรม 4\")": "EURO ชุดบานเลื่อน (เฟรม 4\")",
+  "EURO SERIES ชุดบานเปิด / เปิดคู่ / กระทุ้ง / Fix (เฟรม 4\")": "EURO ชุดบานเปิด / กระทุ้ง / ติดตาย (เฟรม 4\")",
+  "EXTRA PLUS ชุดบานเลื่อน เฟรม 10 ซม. (Euro system, 1.2 / 1.5 mm)": "EXTRA PLUS ชุดบานเลื่อน (เฟรม 10 ซม.)",
+  "EXTRA PLUS ชุดบานเลื่อน เอ็กซ์ต้ากรอบบานยูโร (frame 4\", euro sash)": "EXTRA PLUS ชุดบานเลื่อน กรอบบานยูโร (เฟรม 4\")",
+  "EXTRA PLUS ชุดบานเปิด / เปิดคู่ / กระทุ้ง (เฟรม 10 ซม.)": "EXTRA PLUS ชุดบานเปิด / กระทุ้ง (เฟรม 10 ซม.)",
+  "CLICK LOCK อลูมิเนียมสำหรับงานตกแต่ง ผนัง ฝ้า (+ รุ่น Standard ลูกฟูก)": "CLICK LOCK ผนัง / ฝ้า + ลูกฟูก",
+  "ราวกันตกอลูมิเนียม พรีเมียร์ (Smart Railing)": "ราวกันตก Smart Railing",
+  "บานเฟี้ยม พรีเมียร์ No.1 — เฟรม 4 นิ้ว (FOLDING DOORS, frame 101.6)": "บานเฟี้ยม No.1 เฟรม 4\"",
+  "บานเฟี้ยม พรีเมียร์ No.1 (FOLDING DOORS, frame 62 x 72.5)": "บานเฟี้ยม No.1 (เฟรม 62 x 72.5)",
+  "SLIM LINE FOLDING DOORS (บานเฟี้ยม สลิมไลน์)": "SLIM LINE บานเฟี้ยม",
+  "SLIM LINE OPEN DOORS (ประตูบานเปิด สลิมไลน์)": "SLIM LINE ประตูบานเปิด",
+  "SLIM LINE SLIDING DOORS — ล้อล่าง (บานเลื่อน สลิมไลน์)": "SLIM LINE บานเลื่อน ล้อล่าง",
+  "SLIM LINE HANGING DOORS — รางแขวน (บานเลื่อนแขวน สลิมไลน์)": "SLIM LINE บานเลื่อน รางแขวน",
+  "SYNC Slim Synchronized (บานเลื่อนสวน 3 บาน)": "SYNC บานเลื่อนสวน 3 บาน",
+  "U-WALL ระแนงอลูมิเนียมสำหรับตกแต่งผนังกำแพงและเพดาน": "U-WALL ระแนงผนัง / เพดาน",
+  "ระแนงกล่องลายไม้ (Premier aluminium box slats)": "ระแนงกล่องลายไม้"
+ },
+ "kg_override": {
+  "P-007407": 1.39
+ },
+ "inactive_dies": [
+  "P-124941"
+ ],
+ "zero_weight_ok": false,
+ "series_family": {
+  "EURO ชุดบานเลื่อน (เฟรม 4\")": "EURO SERIES",
+  "EURO ชุดบานเปิด / กระทุ้ง / ติดตาย (เฟรม 4\")": "EURO SERIES",
+  "EXTRA PLUS ชุดบานเลื่อน (เฟรม 10 ซม.)": "EXTRA PLUS",
+  "EXTRA PLUS ชุดบานเลื่อน กรอบบานยูโร (เฟรม 4\")": "EXTRA PLUS",
+  "EXTRA PLUS ชุดบานเปิด / กระทุ้ง (เฟรม 10 ซม.)": "EXTRA PLUS",
+  "CLICK LOCK ผนัง / ฝ้า + ลูกฟูก": "งานตกแต่ง / ราวกันตก",
+  "ราวกันตก Smart Railing": "งานตกแต่ง / ราวกันตก",
+  "บานเฟี้ยม No.1 เฟรม 4\"": "บานเฟี้ยม No.1",
+  "บานเฟี้ยม No.1 (เฟรม 62 x 72.5)": "บานเฟี้ยม No.1",
+  "SLIM LINE บานเฟี้ยม": "SLIM LINE / SYNC",
+  "SLIM LINE ประตูบานเปิด": "SLIM LINE / SYNC",
+  "SLIM LINE บานเลื่อน ล้อล่าง": "SLIM LINE / SYNC",
+  "SLIM LINE บานเลื่อน รางแขวน": "SLIM LINE / SYNC",
+  "SYNC บานเลื่อนสวน 3 บาน": "SLIM LINE / SYNC",
+  "U-WALL ระแนงผนัง / เพดาน": "งานตกแต่ง / ราวกันตก",
+  "ระแนงกล่องลายไม้": "งานตกแต่ง / ราวกันตก"
+ }
+}

@@ -1,0 +1,3171 @@
+{
+ "source_pdf": "DOC/ALUMNIUM CATALOG/ALUINCH/: ALUINCH W-SERIE.pdf, J-SERIE.pdf, L-SERIE.pdf, M-SERIE.pdf, EXT SLIDING.pdf, SLIM SLIDING.pdf (= INT FOLDING DOOR.pdf, byte-identical), CABINET.pdf, ACC.pdf",
+ "supplier": "ALUINCH (no company name, address or phone printed in these 8 files)",
+ "brand": "ALUINCH — '...WHERE YOUR DESIGN MEETS YOUR DESIRE ...'",
+ "catalogue_year": "not printed",
+ "pages": 100,
+ "page_index": [
+  {
+   "pdf": "ALUINCH W-SERIE.pdf",
+   "page": 1,
+   "content": "cover",
+   "series": "W"
+  },
+  {
+   "pdf": "ALUINCH W-SERIE.pdf",
+   "page": 2,
+   "content": "other",
+   "series": "W"
+  },
+  {
+   "pdf": "ALUINCH W-SERIE.pdf",
+   "page": 3,
+   "content": "series overview",
+   "series": "W"
+  },
+  {
+   "pdf": "ALUINCH W-SERIE.pdf",
+   "page": 4,
+   "content": "profile table",
+   "series": "W"
+  },
+  {
+   "pdf": "ALUINCH W-SERIE.pdf",
+   "page": 5,
+   "content": "hardware",
+   "series": "W"
+  },
+  {
+   "pdf": "ALUINCH W-SERIE.pdf",
+   "page": 6,
+   "content": "hardware",
+   "series": "W"
+  },
+  {
+   "pdf": "ALUINCH W-SERIE.pdf",
+   "page": 7,
+   "content": "assembly",
+   "series": "W"
+  },
+  {
+   "pdf": "ALUINCH W-SERIE.pdf",
+   "page": 8,
+   "content": "assembly",
+   "series": "W"
+  },
+  {
+   "pdf": "ALUINCH J-SERIE.pdf",
+   "page": 1,
+   "content": "cover",
+   "series": "J"
+  },
+  {
+   "pdf": "ALUINCH J-SERIE.pdf",
+   "page": 2,
+   "content": "other",
+   "series": "J"
+  },
+  {
+   "pdf": "ALUINCH J-SERIE.pdf",
+   "page": 3,
+   "content": "profile table",
+   "series": "J"
+  },
+  {
+   "pdf": "ALUINCH J-SERIE.pdf",
+   "page": 4,
+   "content": "profile table",
+   "series": "J"
+  },
+  {
+   "pdf": "ALUINCH L-SERIE.pdf",
+   "page": 1,
+   "content": "cover",
+   "series": "L"
+  },
+  {
+   "pdf": "ALUINCH L-SERIE.pdf",
+   "page": 2,
+   "content": "other",
+   "series": "L"
+  },
+  {
+   "pdf": "ALUINCH L-SERIE.pdf",
+   "page": 3,
+   "content": "profile table",
+   "series": "L"
+  },
+  {
+   "pdf": "ALUINCH L-SERIE.pdf",
+   "page": 4,
+   "content": "profile table",
+   "series": "L"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 1,
+   "content": "cover",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 2,
+   "content": "other",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 3,
+   "content": "profile table",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 4,
+   "content": "profile table",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 5,
+   "content": "assembly",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 6,
+   "content": "assembly",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 7,
+   "content": "assembly",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 8,
+   "content": "assembly",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 9,
+   "content": "assembly",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH M-SERIE.pdf",
+   "page": 10,
+   "content": "assembly",
+   "series": "M"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 1,
+   "content": "cover",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 2,
+   "content": "other",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 3,
+   "content": "cut formula",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 4,
+   "content": "series overview",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 5,
+   "content": "profile table",
+   "series": "E STANDARD"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 6,
+   "content": "profile table",
+   "series": "E STANDARD"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 7,
+   "content": "profile table",
+   "series": "E ECO + LARGE"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 8,
+   "content": "hardware",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 9,
+   "content": "hardware",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 10,
+   "content": "hardware",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 11,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 12,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 13,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 14,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 15,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 16,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 17,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 18,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 19,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 20,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 21,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 22,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 23,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH EXT SLIDING.pdf",
+   "page": 24,
+   "content": "assembly",
+   "series": "E"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 1,
+   "content": "cover",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 2,
+   "content": "other",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 3,
+   "content": "series overview",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 4,
+   "content": "profile table",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 5,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 6,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 7,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 8,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 9,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 10,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 11,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 12,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 13,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 14,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 15,
+   "content": "profile table",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 16,
+   "content": "hardware",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 17,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 18,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 19,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 20,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 21,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 22,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 23,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 24,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 25,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 26,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 27,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 28,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 29,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH SLIM SLIDING.pdf",
+   "page": 30,
+   "content": "assembly",
+   "series": "X"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 1,
+   "content": "cover",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 2,
+   "content": "other",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 3,
+   "content": "profile table",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 4,
+   "content": "hardware",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 5,
+   "content": "profile table",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 6,
+   "content": "profile table",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 7,
+   "content": "hardware",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 8,
+   "content": "hardware",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 9,
+   "content": "profile table",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 10,
+   "content": "hardware",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 11,
+   "content": "assembly",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 12,
+   "content": "assembly",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 13,
+   "content": "assembly",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 14,
+   "content": "assembly",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 15,
+   "content": "assembly",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 16,
+   "content": "assembly",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 17,
+   "content": "assembly",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH CABINET.pdf",
+   "page": 18,
+   "content": "assembly",
+   "series": "i"
+  },
+  {
+   "pdf": "ALUINCH ACC.pdf",
+   "page": 1,
+   "content": "hardware",
+   "series": "accessories"
+  },
+  {
+   "pdf": "ALUINCH ACC.pdf",
+   "page": 2,
+   "content": "hardware",
+   "series": "accessories"
+  }
+ ],
+ "series": [
+  {
+   "name": "ALUINCH W series — casement / awning window (W-SERIE.pdf, printed pages 11.01-11.08)",
+   "system": "awning",
+   "app_types": [
+    "บานกระทุ้ง",
+    "บานเปิด"
+   ],
+   "frame_size_mm": "40 x 40 (W-01 fixed frame), sash 40 x 53 (W-02); outer frame in the drawings is ALUINCH T-20.01 (T series 20 x 100, not in my files)",
+   "profiles": [
+    {
+     "die_no": "W-01",
+     "name": "บังใบบานเปิด (กรอบนอก) 40x40",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 40,
+     "depth_mm": 40,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "CASEMENT FIXED FRAME, printed size 40 x 40 มม.; wall 1.5 drawn. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "W-02",
+     "name": "กรอบบานเปิด 40x53",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 40,
+     "depth_mm": 53,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "CASEMENT WINDOW FRAME (sash), printed 40 x 53 มม.; takes glazing bead C-03 (C series, not in this file). Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "W-03",
+     "name": "เสากลางบานคู่ 38.5x50",
+     "role_family": "เสากลาง",
+     "kg_per_m": null,
+     "width_mm": 38.5,
+     "depth_mm": 50,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "CASEMENT TRANSOM FRAME, printed 38.5 x 50 มม.; centre post for double casement (p.8). Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [
+    {
+     "type": "AWNING WINDOWS FOR EXTERIOR, single sash (printed 11.07)",
+     "page": 7,
+     "joints": "T-20.01 (T series 20 x 100) outer frame, W-01 fixed frame, W-02 sash with C-03 glazing bead, WH.01 friction hinge. Glass 6-8 mm. Elevation 900 x 2000.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "WH.01 friction hinges for W-series: stainless steel matt, 5.5\", opening 90°, max vent width 1000 mm. No cut angle printed."
+    },
+    {
+     "type": "AWNING WINDOWS FOR EXTERIOR, double sash (printed 11.08)",
+     "page": 8,
+     "joints": "Two W-02 sashes (800 + 800) meeting on W-03 centre post; CH.02 gear handle, WG gear bar, WH.02 linking rod, WH.03 locking points.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "No cut angle printed. Glass 6, 8, 10 mm per p.3."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับหน้าต่าง บานกระทุ้ง (WINDOW HANDLE CASEMENT), white/black, L/R",
+     "code": "CH.01",
+     "per": "per sash",
+     "qty": 1,
+     "page": 5
+    },
+    {
+     "name": "มือจับบานกระทุ้ง แบบเกียร์ (CASEMENT HANDLE FOR GEAR), white/black",
+     "code": "CH.02",
+     "per": "per sash",
+     "qty": 1,
+     "page": 5
+    },
+    {
+     "name": "บานพับหน้าต่าง (PIVOT/FRICTION HINGE)",
+     "code": "WH.01",
+     "per": "per sash",
+     "qty": 2,
+     "page": 5
+    },
+    {
+     "name": "แกนรับมือจับ (LINKING ROD)",
+     "code": "WH.02",
+     "per": "per sash",
+     "qty": null,
+     "page": 5
+    },
+    {
+     "name": "ปุ่มล็อคบาน (ADJUSTABLE LOCKING POINT)",
+     "code": "WH.03",
+     "per": "per point",
+     "qty": null,
+     "page": 5
+    },
+    {
+     "name": "ตัวรับล็อค (ADJUSTABLE SINGLE STRIKER)",
+     "code": "WH.04",
+     "per": "per point",
+     "qty": null,
+     "page": 5
+    },
+    {
+     "name": "แกนล็อคบานเปิดคู่ (TRANSMISSION ROD), double sash only",
+     "code": "WH.05",
+     "per": "per pair",
+     "qty": 1,
+     "page": 6
+    },
+    {
+     "name": "ตัวล็อคกลอน (LOCKING BOLT)",
+     "code": "WH.06",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ล็อคสันบานยาว 300 มม. (CASEMENT FLUSH BOLT), double sash only",
+     "code": "CF-B",
+     "per": "per pair",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ขาค้ำบานเปิด 90° (CRADLE WINDOW LEK 90°)",
+     "code": "WH.07",
+     "per": "per sash",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "เส้นเกียร์สำหรับหน้าต่างบานเปิด, ตัดตามความสูงของบานเปิด",
+     "code": "WG",
+     "per": "per sash",
+     "qty": 1,
+     "page": 6
+    }
+   ],
+   "accessories": [
+    {
+     "name": "RW ยางกันน้ำสำหรับหน้าต่างบานเปิด (black, 50 m roll) / RC ยางอัดบานกระทุ้ง",
+     "code": "RW / RC",
+     "page": "ACC p.1-2"
+    }
+   ],
+   "prices": [],
+   "notes": "Profile page p.4 (printed 11.04): 3 dies, wall 1.5 drawn, tape shows 2.8 m and 6.4 m bars. Glass 6/8/10 mm. No weights."
+  },
+  {
+   "name": "ALUINCH J series — Joinery wood works trims / อลูมิเนียมสำหรับตกแต่ง (J-SERIE.pdf, printed 14.03-14.04)",
+   "system": "other",
+   "app_types": [],
+   "frame_size_mm": null,
+   "profiles": [
+    {
+     "die_no": "UG-20 MM",
+     "name": "ยูอลูมิเนียม 20 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 20,
+     "wall_mm": 2,
+     "std_length_m": 6.4,
+     "page": 3,
+     "confidence": "read",
+     "note": "GLAZING U-CHANAL 20 MM. SIZE 20 x 25 x 2 มม.; ยาว 2.8 เมตร / ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UG-30 MM",
+     "name": "ยูอลูมิเนียม 30 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 25.7,
+     "depth_mm": 32,
+     "wall_mm": 2.6,
+     "std_length_m": 6,
+     "page": 3,
+     "confidence": "read",
+     "note": "GLAZING U-CHANAL 30 MM. SIZE 25.7 x 32 x 2.6 มม.; ยาว 6 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "S.01",
+     "name": "ฉากแขวนรูปติดผนัง",
+     "role_family": "ฉากแขวน",
+     "kg_per_m": null,
+     "width_mm": 5,
+     "depth_mm": 30,
+     "wall_mm": 2.5,
+     "std_length_m": 6.4,
+     "page": 3,
+     "confidence": "read",
+     "note": "SPIT BATTLE FOR PANEL (wall panel hanger). SIZE 30 x 5 x 2.5 มม.; ยาว 6.4 เมตร. Code S.01 may clash with the S series file (other helper). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "T-WALL 10 MM",
+     "name": "ทีอลูมิเนียม 10 มม.",
+     "role_family": "ตัวที",
+     "kg_per_m": null,
+     "width_mm": 10,
+     "depth_mm": 10,
+     "wall_mm": 1,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "T-ALUMINIUM 10 MM. SIZE 10 x 10 x 1 มม.; ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "T-WALL 20 MM",
+     "name": "ทีอลูมิเนียม 20 มม.",
+     "role_family": "ตัวที",
+     "kg_per_m": null,
+     "width_mm": 20,
+     "depth_mm": 10,
+     "wall_mm": 2,
+     "std_length_m": 6,
+     "page": 4,
+     "confidence": "read",
+     "note": "T-ALUMINIUM 20 MM. SIZE 20 x 10 x 2 มม.; ยาว 6 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "T-WALL 22MM",
+     "name": "ทีอลูมิเนียม 22 มม.",
+     "role_family": "ตัวที",
+     "kg_per_m": null,
+     "width_mm": 22,
+     "depth_mm": 10,
+     "wall_mm": 2,
+     "std_length_m": 6,
+     "page": 4,
+     "confidence": "read",
+     "note": "T-ALUMINIUM 22 MM. SIZE 22 x 10 x 2 มม.; ยาว 6 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UA6x10 MM",
+     "name": "ยูอลูมิเนียม 6 x 10 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 10,
+     "depth_mm": 6,
+     "wall_mm": 2,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "U-CHANAL 6 x 10 MM. SIZE 6 x 10 x 2 มม.; ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UA-5 MM",
+     "name": "ยูอลูมิเนียม 5 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 5,
+     "depth_mm": 5,
+     "wall_mm": 1,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "U-CHANAL 5 MM. SIZE 5 x 5 x 1 มม.; ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UA-10 MM",
+     "name": "ยูอลูมิเนียม 10 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 10,
+     "depth_mm": 10,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "U-CHANAL 10 MM. SIZE 10 x 10 x 1.2 มม.; ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UE-5 MM",
+     "name": "ยูอลูมิเนียมมีปีก (แบบโค้ง) 5 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 5,
+     "depth_mm": 5,
+     "wall_mm": 1,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "U-CHANAL WITH EDGE 5 MM. SIZE 5 x 5 x 1 มม.; ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UE-10 MM",
+     "name": "ยูอลูมิเนียมมีปีก (แบบโค้ง) 10 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 10,
+     "depth_mm": 10,
+     "wall_mm": 1,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "U-CHANAL WITH EDGE 10 MM. SIZE 10 x 10 x 1 มม.; ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "U-AS",
+     "name": "อลูมิเนียมใส่สักหลาด",
+     "role_family": "รางสักหลาด",
+     "kg_per_m": null,
+     "width_mm": 10,
+     "depth_mm": 4,
+     "wall_mm": 1.6,
+     "std_length_m": 3,
+     "page": 4,
+     "confidence": "read",
+     "note": "ALUMINIUM DOOR SEAL (carrier for mohair). SIZE 10 x 4 x 1.6 มม.; ยาว 3 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UEA-5 MM",
+     "name": "ยูอลูมิเนียมมีปีก (แบบเหลี่ยม) 5 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 5,
+     "depth_mm": 5,
+     "wall_mm": 1,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "U-CHANAL WITH EDGE 5 MM. SIZE 5 x 5 x 1 มม. (top flange 7 drawn); ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UEA-10 MM",
+     "name": "ยูอลูมิเนียมมีปีก (แบบเหลี่ยม) 10 มม.",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 9.5,
+     "depth_mm": 10,
+     "wall_mm": 1,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "U-CHANAL WITH EDGE 10 MM. SIZE 10 x 9.5 x 1 มม. (top flange 13.5 drawn); ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-WALL 6 MM",
+     "name": "แอลอลูมิเนียม 6 มม.",
+     "role_family": "ตัวแอล",
+     "kg_per_m": null,
+     "width_mm": 6,
+     "depth_mm": 6,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "L-CHANAL 6 MM. SIZE 6 x 6 x 1.2 มม.; ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-WALL 10 MM",
+     "name": "แอลอลูมิเนียม 10 มม.",
+     "role_family": "ตัวแอล",
+     "kg_per_m": null,
+     "width_mm": 10,
+     "depth_mm": 10,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "L-CHANAL 10 MM. SIZE 10 x 10 x 1.2 มม.; ยาว 6.4 เมตร. No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": [],
+   "notes": "Decorative U / T / L channels for wood joinery and glass-in-panel. Each item prints SIZE (w x h x wall) and bar length. No weights, no assembly pages."
+  },
+  {
+   "name": "ALUINCH L series — Aluminium louver / บานเกล็ดอลูมิเนียม (L-SERIE.pdf, printed 15.03-15.04)",
+   "system": "louvre",
+   "app_types": [],
+   "frame_size_mm": "frames L-4259 / L-4489 101.6 x 25 / 32",
+   "profiles": [
+    {
+     "die_no": "L-01",
+     "name": "ฐานรับเกล็ด รุ่น 01",
+     "role_family": "ฐานรับเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 8,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 3,
+     "confidence": "read",
+     "note": "LOUVER-01, ขนาด 25 x 8 มม.; wall not printed. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-02",
+     "name": "เกล็ดช่องลม รุ่น 01",
+     "role_family": "ใบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 24,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 3,
+     "confidence": "read",
+     "note": "LOUVER-02, ขนาด 25 x 24 มม.; wall not printed. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-03",
+     "name": "เกล็ดช่องลม รุ่น 03",
+     "role_family": "ใบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 24,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 3,
+     "confidence": "read",
+     "note": "LOUVER-03, ขนาด 25 x 24 มม.; wall not printed. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-V",
+     "name": "เกล็ดช่องลม (ตัววี)",
+     "role_family": "ใบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 33,
+     "depth_mm": 23,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 3,
+     "confidence": "read",
+     "note": "LOUVER-V, ขนาด 33 x 23 มม.; wall not printed. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-U",
+     "name": "ขอบเกล็ดช่องลม (ตัวยู)",
+     "role_family": "ขอบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 35,
+     "depth_mm": 7,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 3,
+     "confidence": "read",
+     "note": "LOUVER-U, ขนาด 35 x 7 มม.; wall not printed. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-3300",
+     "name": "ขอบเกล็ดช่องลม รุ่น 3300",
+     "role_family": "ขอบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 49,
+     "depth_mm": 20,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 3,
+     "confidence": "read",
+     "note": "LOUVER-3300, ขนาด 49 x 20 มม. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-3705",
+     "name": "เกล็ดช่องลม รุ่น 3705",
+     "role_family": "ใบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 75,
+     "depth_mm": 12,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-3705, ขนาด 75 x 12 มม. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-4368",
+     "name": "เกล็ดช่องลม รุ่น 4368",
+     "role_family": "ใบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 47,
+     "depth_mm": 10,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-4368, ขนาด 47 x 10 มม. Thai text prints 'รุ่น 4668' (typo?). Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-4540",
+     "name": "ขอบเกล็ดช่องลม รุ่น 4540",
+     "role_family": "ขอบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 47,
+     "depth_mm": 10,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-4540, ขนาด 47 x 10 มม. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-4450",
+     "name": "เกล็ดช่องลม รุ่น 4450",
+     "role_family": "ใบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 32,
+     "depth_mm": 25,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-4450, ขนาด 32 x 25 มม. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-3783",
+     "name": "ขอบเกล็ดช่องลม รุ่น 3783",
+     "role_family": "ขอบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 49,
+     "depth_mm": 10,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-3783, ขนาด 49 x 10 มม.; wall not printed (looks 1.2 like neighbours). Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-4451",
+     "name": "ขอบเกล็ดช่องลม รุ่น 4451",
+     "role_family": "ขอบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 32,
+     "depth_mm": 6,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-4451, ขนาด 32 x 6 มม.; wall not printed. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-4259",
+     "name": "ขอบเกล็ดช่องลม รุ่น 4259",
+     "role_family": "ขอบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-4259, ขนาด 101.6 x 25 มม. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-4535",
+     "name": "เกล็ดช่องลม รุ่น 4535",
+     "role_family": "ใบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 45,
+     "depth_mm": 32,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-4535, ขนาด 45 x 32 มม. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "L-4489",
+     "name": "เกล็ดช่องลม รุ่น 4489",
+     "role_family": "ใบเกล็ด",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 32,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 4,
+     "confidence": "read",
+     "note": "LOUVER-4489, ขนาด 101.6 x 32 มม. Bar length 6.0 m (tape on p.4). No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": [],
+   "notes": "Louvre blades (เกล็ด), blade carrier (ฐานรับเกล็ด) and edge frames (ขอบเกล็ด) for louvre doors/windows and vents. None of the app type names fits a louvre (no บานเกล็ด type) so app_types is empty. Bar 6.0 m. No weights."
+  },
+  {
+   "name": "ALUINCH M series — slim sliding wardrobe door system (M-SERIE.pdf, printed 7.01-7.10)",
+   "system": "hanging",
+   "app_types": [
+    "บานเลื่อนรางแขวน",
+    "บานสวิง"
+   ],
+   "frame_size_mm": "stile 38 x 15, rails 37 x 25 / 37 x 24",
+   "profiles": [
+    {
+     "die_no": "M-01",
+     "name": "เฟรมบานเลื่อนแนวตั้ง",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 38,
+     "depth_mm": 15,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 3,
+     "confidence": "read",
+     "note": "VERTICAL SLIDING FRAME. Printed size 9 x 38 มม. but drawing shows overall 38 x 15 (9 body + 6 glass-groove lip). Thick solid-like section with two screw holes; no wall printed. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.4) No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "M-02",
+     "name": "เฟรมบานเลื่อนแนวนอน",
+     "role_family": "ขวางบาน",
+     "kg_per_m": null,
+     "width_mm": 37,
+     "depth_mm": 25,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 3,
+     "confidence": "read",
+     "note": "HORIZONTAL SLIDING FRAME. Printed size 19 x 37 มม.; drawing overall 37 x 25 (19 body + 6 lip), R = 4.5 screw bosses; no wall printed. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "M-03",
+     "name": "ซอยลูกฟักประตู",
+     "role_family": "ซอยลูกฟัก",
+     "kg_per_m": null,
+     "width_mm": 37,
+     "depth_mm": 24,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "DOOR MID RAIL FRAME. Printed size 12 x 37 มม.; drawing overall 37 x 24 (6+12+6); no wall printed. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "MT",
+     "name": "กันแกว่งรางล่าง",
+     "role_family": "รางกันแกว่ง",
+     "kg_per_m": null,
+     "width_mm": 15,
+     "depth_mm": 30,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "SLIDING GUIDE TRACK, ขนาด 15 x 30 มม. (5.2 + 5.2 slots, 16 deep). Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [
+    {
+     "type": "SWING EXTRA SLIM ALUMINIUM DOOR 9 MM THK. WITH FLOOR SPRING (printed 7.05)",
+     "page": 5,
+     "joints": "Pivot door: M-01 stiles, M-02 rails, T-10S/T-20.02 frame (T series), BF 100 floor spring, PT.01 pivot.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "Glass 6-8 mm tempered. Drawing text rotated, read at 150 dpi."
+    },
+    {
+     "type": "SLIDING EXTRA SLIM ALUMINIUM DOOR 9 MM THK. FOR INTERIOR, types 1:1, 0:2, 2 / 3 panels (printed 7.06-7.10)",
+     "page": 6,
+     "joints": "Top-hung: SL.120 / SR.120 / SLC.60 hanging rollers in a ceiling track, M-01 stiles + M-02 rails + M-03 mid rail, MD towing devices, MG bottom guide in MT track. Options -1/-2 = show/hide track in ceiling.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "M.A connector (8 rods, 16 × 3/4\" M5, 8 nuts) = 1 set per door: rails butt between stiles, fixed by rods. No cut angle printed."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "ฉากยึดเฟรมบานเลื่อนตู้ (M-CONNECTOR): ROD 8 pcs, 3/4\" M5 16 pcs, NUTS M5 8 pcs",
+     "code": "M.A",
+     "per": "per door",
+     "qty": 1,
+     "page": 4
+    },
+    {
+     "name": "ไกด์เกี่ยวบานเลื่อนจูงซ้าย (LEFT TOWING DEVICE)",
+     "code": "MD.L",
+     "per": "per door",
+     "qty": 1,
+     "page": 4
+    },
+    {
+     "name": "ไกด์เกี่ยวบานเลื่อนจูงขวา (RIGHT TOWING DEVICE)",
+     "code": "MD.R",
+     "per": "per door",
+     "qty": 1,
+     "page": 4
+    },
+    {
+     "name": "ไกด์ล่างบานเลื่อน (SLIDING BOTTOM GUIDE)",
+     "code": "MG",
+     "per": "per set",
+     "qty": 1,
+     "page": 4
+    }
+   ],
+   "accessories": [],
+   "prices": [],
+   "notes": "For glass 6 / 8 mm. Bars 2.8 m / 6.4 m. Hanging rollers SL.120 / SR.120 / SLC.60 appear only on the drawings (catalogued in the X series hardware)."
+  },
+  {
+   "name": "ALUINCH E series STANDARD SYSTEM — exterior sliding, 3 track 101.6 (EXT SLIDING.pdf, printed 9.01-9.24)",
+   "system": "sliding door",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 2 ตาย 2",
+    "บานเลื่อน 3 บาน",
+    "บานเลื่อนรางล่าง",
+    "บานติดตาย"
+   ],
+   "frame_size_mm": "101.6 x 25 (top/side), 101.6 x 28 (bottom); door frame 25 x 50-73",
+   "profiles": [
+    {
+     "die_no": "E-01",
+     "name": "รางบน 3 ราง",
+     "role_family": "เฟรมบน 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "TOP RAIL 3 TRACK; track pitch 27.6. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-01A",
+     "name": "ฝาปิดรางบน",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 33,
+     "depth_mm": 6,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "CLIP TOP RAIL. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-01F",
+     "name": "ตบร่องรางบน",
+     "role_family": "ตบรางบน",
+     "kg_per_m": null,
+     "width_mm": 33.5,
+     "depth_mm": 22,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "FIX GLASS TOP RAIL (glazing channel for fixed glass in the top rail). Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03",
+     "name": "รางล่าง 3 ราง",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 28,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "BOTTOM RAILS 3 TRACK; track pitch 33.4; heights 28/26. Drawing shows add-ons E-03A (cover, grey) and E-03B (sill extension, grey). Drain holes: flip frame, drill ≥8 cm long every 60 cm (p.4). Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03A",
+     "name": "ฝาครอบปลายรางล่าง (E-03A)",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "check",
+     "note": "Small grey clip-on part shown on the E-03 and E-03L drawings; no name or size printed; '1.2' label sits next to it. Picture = E-03 drawing (shared). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03B",
+     "name": "แผ่นปรับระดับรางล่าง (FOR ADJUST)",
+     "role_family": "ปีกรางล่าง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "check",
+     "note": "Grey sill extension under E-03; p.4 isometric labels 25 / 20 / 56 / 108(?) / 28 MM, p.17 calls it 'FOR ADJUST ALUINCH E.03B' 120 mm. No section dims on the profile page. Picture = E-03 drawing (shared). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03C",
+     "name": "ฝาปิดรางมุ้ง",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 24,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "STRIP OFF SCREEN TRACK. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03D",
+     "name": "ฝาตบธรณี",
+     "role_family": "ตบธรณี",
+     "kg_per_m": null,
+     "width_mm": 38.5,
+     "depth_mm": 24,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "END OF THE SILLS. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04H",
+     "name": "เสากุญแจมีมือจับ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 55,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "DOOR FRAME WITH HANDLE; 25 handle fin; p.12 spec: SIZE 55 x 25 MM, ANODIZED 12(±2) MICRON, ALLOY 6063T5, THICKNESS 1.5 MM. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04BH",
+     "name": "เสาเสียบมีมือจับ",
+     "role_family": "เสาเสียบ",
+     "kg_per_m": null,
+     "width_mm": 65,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "DOOR FRAME WITH HANDLE (meeting stile with handle fin 25). Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04C",
+     "name": "เสากุญแจเข้ามุม",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 72,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "CORNER DOOR FRAME; p.16 spec: SIZE 72 x 25 MM, THICKNESS 1.5 MM. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-05",
+     "name": "เสาเกี่ยว",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 50,
+     "depth_mm": 31,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "DRAG & DROP DOOR FRAME. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-05H",
+     "name": "เสาเกี่ยวมีมือจับ",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 50,
+     "depth_mm": 31,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "DOOR FRAME WITH HANDLE (interlock with handle fin 25). Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-06",
+     "name": "เสาเกี่ยว 2 ทาง",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 50,
+     "depth_mm": 38,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "note": "DOUBLE DRAG DOOR FRAME. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-02A",
+     "name": "รางข้างแบบใส่มุ้ง",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "SIDE RAILS FOR SCREEN; inner 91.5. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-02B",
+     "name": "รางข้างร่องกลาง",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "SIDE RAILS CENTER SLIDING; inner 91.5. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-02C",
+     "name": "รางข้างร่องริม",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "SIDE RAILS FRONT SLIDING; inner 91.5. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03E",
+     "name": "ตบรางล่างกล่องเปิด",
+     "role_family": "ตบรางล่าง",
+     "kg_per_m": null,
+     "width_mm": 38.7,
+     "depth_mm": 30.6,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "BOTTOM FIX GLASS (glazing channel on the bottom rail for fixed glass); add-on E-03F shown grey. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03F",
+     "name": "ตัวกดกระจก E-03F",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "check",
+     "note": "Grey insert on the E-03E drawing (likely glazing bead for bottom fixed glass); no name/size printed. Picture = E-03E drawing (shared). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04A",
+     "name": "เสากุญแจ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 55,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "DOOR FRAME STYLE 1; p.11 spec SIZE 55.5 x 25 MM, ANODIZED 12(±2) MICRON, ALLOY 6063T5, THICKNESS 1.5 MM. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04B",
+     "name": "เสาเสียบ",
+     "role_family": "เสาเสียบ",
+     "kg_per_m": null,
+     "width_mm": 65,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "DOOR FRAME STYLE 2; p.13 spec SIZE 65 x 25 MM, THICKNESS 1.5 MM. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04P",
+     "name": "เสากุญแจใส่ขาเกียร์ล็อค",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 60,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "DOOR FRAME GEAR LOCK. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04GP",
+     "name": "เสากุญแจใส่เกียร์มีมือจับ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 60,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "DOOR FRAME WITH HANDLE (gear lock + 25 handle fins both sides); p.14 spec SIZE 60 x 25 MM, THICKNESS 1.5 MM. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04HH",
+     "name": "เสาเสียบมีมือจับ 2 ทาง",
+     "role_family": "เสาเสียบ",
+     "kg_per_m": null,
+     "width_mm": 65,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "DOOR FRAME WITH 2 HANDLE. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-07",
+     "name": "ขวางประตูเล็ก",
+     "role_family": "ขวางบน-ล่าง",
+     "kg_per_m": null,
+     "width_mm": 23,
+     "depth_mm": 63,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "TOP & BOTTOM DOOR FRAME 1; printed '60 . 80 . 160' = roller classes EHR-60/80/160 used with it (p.8). Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-07A",
+     "name": "ขวางประตูใหญ่",
+     "role_family": "ขวางบน-ล่าง",
+     "kg_per_m": null,
+     "width_mm": 23,
+     "depth_mm": 73,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "TOP & BOTTOM DOOR FRAME 2; printed '120 . 240' = rollers EHR-120/240. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-08",
+     "name": "คิ้วมุ้ง",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 16,
+     "depth_mm": 17,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "SCREEN TRIM. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-09",
+     "name": "คิ้วซอยหลอก",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 5.5,
+     "depth_mm": 20,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "TRIM FRAME (false glazing bar). Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-10",
+     "name": "ซอยกลางบานเลื่อน",
+     "role_family": "ซอยกลาง",
+     "kg_per_m": null,
+     "width_mm": 23,
+     "depth_mm": 30,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "MID WINDOW FRAME. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [
+    {
+     "type": "Glass / sash formulas, standard sliding (printed 9.03)",
+     "page": 3,
+     "joints": "A = ระยะความสูงรวมวงกบ, B = ระยะความสูงกรอบบาน, C = ระยะความสูง ไม่รวมขวางประตู, D = ระยะความกว้างรวมวงกบ, E = ระยะความกว้างไม่รวมวงกบ, F = ระยะตัด ขวางประตู.",
+     "cut_formulas": [
+      {
+       "member": "ขวางประตู, 2 panel [1:1]",
+       "formula_as_printed": "E = ( D - 146 mm. ) / 2",
+       "formula_normalised": "(D - 146) / 2"
+      },
+      {
+       "member": "ความสูงกรอบบาน (all types)",
+       "formula_as_printed": "B = A - 28 mm.",
+       "formula_normalised": "A - 28"
+      },
+      {
+       "member": "ขวางประตู, 3 panel [0:1:1]",
+       "formula_as_printed": "F = ( D - 196 mm. ) / 3",
+       "formula_normalised": "(D - 196) / 3"
+      },
+      {
+       "member": "ขวางประตู, 4 panel [0:1:1:0]",
+       "formula_as_printed": "F = ( D - 309 mm. ) / 4",
+       "formula_normalised": "(D - 309) / 4"
+      },
+      {
+       "member": "ขวางประตู, 4 panel [0:1:1:1]",
+       "formula_as_printed": "F = ( D - 246 mm. ) / 4",
+       "formula_normalised": "(D - 246) / 4"
+      }
+     ],
+     "glass_formula": "ระยะลดกระจกบานเลื่อน: แนวตั้ง = C + 15 MM. หรือ 5 หุน; แนวนอน = F + 18 MM. หรือ 6 หุน (as printed)",
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "*** ใช้คำนวนเฉพาะบานเลื่อน Standard เท่านั้น ***. The 2-panel line prints 'E =' where the others print 'F ='. Drain holes (p.4): flip the frame and drill holes for drainage, length ≥ 8 cm, every 60 cm. No 45°/90° cut rule printed."
+    },
+    {
+     "type": "SLIDING ALUMINIUM DOOR FOR EXTERIOR TYPE 1:1 (printed 9.11-9.12)",
+     "page": 11,
+     "joints": "E-01 top rail / E-03 + E-03B bottom rail / E-02A,E-02B side rails; sashes E-04A (or E-04H) lock stile, E-05/E-06 interlocks, E-07 rails, EHR.30-160 rollers, E-08 screen trim. Frame 25 x 100, door frame 25 x 50, tempered glass 6-10 mm, EH.03 lockset.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "E series assembly pages print for the featured profile: SURFACE ANODIZED 12 (±2) MICRON, MATERIAL ALUMINIUM ALLOY 6063T5, THICKNESS 1.5 MM."
+    },
+    {
+     "type": "DOUBLE SLIDING TYPE 0:1:1:0 (9.13), 0:2 with gear lock E-04GP + EH.T (9.14), 0:2:2:0 with installation/drain detail (9.15), CORNER 0:1:1:0 with E-04C (9.16)",
+     "page": 13,
+     "joints": "F = fixed panel. Corner door: two E-04C corner stiles meet at the corner, frame E-02B + E-04A.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "Sill installation: FFL by others, 30 mm recess, 101.6 rail."
+    },
+    {
+     "type": "SLIDING DOOR WITH FIXED GLASS 1:1 + transom/fixed lights (9.17), WITH FIXED SLIM LINE 1:0 (9.18)",
+     "page": 17,
+     "joints": "Transom/side lights use ALUINCH T-SERIES 20 x 100 frame; E-03B 'FOR ADJUST' sill extension 100/120 mm; slim fixed line uses E-01F + E-03E + E-03F glazing channels and T.25 03.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [
+    {
+     "name": "ล้อบานเลื่อน รับน้ำหนักไม่เกิน 30 กก. : บาน",
+     "code": "EHR-30",
+     "per": "per sash",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ล้อบานเลื่อน ไม่เกิน 45 กก.",
+     "code": "EHR-45",
+     "per": "per sash",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ล้อบานเลื่อน ไม่เกิน 60 กก., ใช้คู่กับเฟรม E.07, E.07E",
+     "code": "EHR-60",
+     "per": "per sash",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ล้อบานเลื่อน ไม่เกิน 80 กก., ใช้คู่กับเฟรม E.07, E.07E",
+     "code": "EHR-80",
+     "per": "per sash",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ล้อบานเลื่อน ไม่เกิน 120 กก., ใช้คู่กับเฟรม E.07A",
+     "code": "EHR-120",
+     "per": "per sash",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ล้อบานเลื่อน ไม่เกิน 160 กก., ใช้คู่กับเฟรม E.07, E.07E (as printed)",
+     "code": "EHR-160",
+     "per": "per sash",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ล้อบานเลื่อน ไม่เกิน 240 กก., ใช้คู่กับเฟรม E.07A",
+     "code": "EHR-240",
+     "per": "per sash",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ฝาครอบสแตนเลส สำหรับ E-03 (COVER SLIDING TRACK) 3 m",
+     "code": "E.03S",
+     "per": "per track",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "เส้นรางสแตนเลสสำหรับ E-03i (ECO COVER SLIDING TRACK) 3 m",
+     "code": "E.03iS",
+     "per": "per track",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ชุดมือจับฝังแบบล็อคอัตโนมัติ (FLUSH HANDLE AUTO LOCK), white/black",
+     "code": "EH-03",
+     "per": "per sash",
+     "qty": 1,
+     "page": 9
+    },
+    {
+     "name": "ชุดมือจับฝังแบบดัมมี่",
+     "code": "EH-03D",
+     "per": "per sash",
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ชุดมือจับฝังมีกุญแจ",
+     "code": "EH-03K",
+     "per": "per sash",
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "เส้นเกียร์ (GEAR LINE)",
+     "code": "WG",
+     "per": "per sash",
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "เพลทรับกลอน (PLATE LOCK)",
+     "code": "EHP / EHP.01 / EHP.02",
+     "per": "",
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ล็อคกลางบานเลื่อน (WINDOW SLIDING LOCK) R/L",
+     "code": "EH-03E (EH-03ER / EH-03EL)",
+     "per": "per sash",
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ชุดมือจับฝังแบบมีกุญแจ (key EH-04)",
+     "code": "EH-04",
+     "per": "per sash",
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "ชุดมือจับฝังแบบไม่มีกุญแจ (dummy)",
+     "code": "EH-04L",
+     "per": "per sash",
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "ชุดล็อคเกียร์ (GEAR SET)",
+     "code": "EHT",
+     "per": "",
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "ชุดตะขอเสริม (ADD-ON HOOK SET)",
+     "code": "EHH",
+     "per": "",
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "มือจับล็อคบานเลื่อน (MULTI-LOCK HANDLE), white/black/grey/champagne",
+     "code": "EH-05L",
+     "per": "",
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "มือจับบานเลื่อนแบบดัมมี่",
+     "code": "EH-05D",
+     "per": "",
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "มือจับล็อคบานเลื่อนแบบมีกุญแจ",
+     "code": "EH-05K",
+     "per": "",
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "ยางกันกระแทก (RUBBER BUMPER)",
+     "code": "EHB",
+     "per": "",
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "ยางกันชนบานเลื่อน",
+     "code": "EHB-01",
+     "per": "",
+     "qty": null,
+     "page": 10
+    }
+   ],
+   "accessories": [
+    {
+     "name": "RE ยางหุ้มบานเลื่อน (GLASS RUBBER FOR E-SERIES) RE 6 MM / RE 8 MM, white/black/grey, 50 m roll",
+     "code": "RE",
+     "page": "ACC p.2"
+    },
+    {
+     "name": "AS-01..AS-08 mohair door seals (สักหลาด)",
+     "code": "AS",
+     "page": "ACC p.2"
+    }
+   ],
+   "prices": [],
+   "notes": "Profile pages 5-6 (printed 9.05-9.06). For glass 6/8/10 mm. E series assembly pages print for the featured profile: SURFACE ANODIZED 12 (±2) MICRON, MATERIAL ALUMINIUM ALLOY 6063T5, THICKNESS 1.5 MM."
+  },
+  {
+   "name": "ALUINCH E series ECO-SYSTEM — 2 track 68 (EXT SLIDING.pdf p.7)",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 3 บาน",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "68 x 25 top, 68 x 10 bottom; sash 25 x 25-47",
+   "profiles": [
+    {
+     "die_no": "E-01E",
+     "name": "รางบน 2 ราง",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 68,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "ECO-SYSTEM TOP RAIL 2 TRACK; pitch 27.6. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03i",
+     "name": "รางล่าง 2 ราง ใช้ภายใน",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 68,
+     "depth_mm": 10,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "ECO-SYSTEM BOTTOM RAIL 2 TRACK (indoor use); 33.4 / 60. Also listed on CABINET p.6 as 'รางล่าง 2 ราง ยาว 2.8/6.4 ม.' (68.2 x 10). Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04E",
+     "name": "เสากุญแจมือจับหน้าต่าง",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 39,
+     "depth_mm": 35,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "WINDOW FRAME KEY; top 30.7; add-on E-04BE shown grey. p.19 spec: 'E.04 E ECO DOOR FRAME SIZE 30 x 25 MM, ANODIZED 12(±2) MICRON, ALLOY 6063T5, THICKNESS 1.5 MM' (differs from drawing 39 x 35 overall). Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-04BE",
+     "name": "ตัวต่อเสากุญแจ E-04BE",
+     "role_family": "เสาเสียบ",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "check",
+     "note": "Grey add-on on the E-04E drawing (wall label '1'); no name/size printed. Picture = E-04E drawing (shared). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-05E",
+     "name": "เสาเกี่ยวหน้าต่าง",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 31.76,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "DRAG WINDOW FRAME. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-06E",
+     "name": "เสาเกี่ยวหน้าต่าง 2 ทาง",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 38.52,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "DOUBLE DRAG WINDOW FRAME. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-07E",
+     "name": "ขวางหน้าต่าง",
+     "role_family": "ขวางบน-ล่าง",
+     "kg_per_m": null,
+     "width_mm": 23,
+     "depth_mm": 47,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "TOP & BOTTOM WINDOW FRAME. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ECO SYSTEM sliding, types 1:1 (9.19), 2:2 (9.20), 1:1:1 (9.21), 1:1 4-panel (9.23), 3:0 (9.24)",
+     "page": 19,
+     "joints": "E-SERIES ECO SYSTEM FRAME 25 x 100 MM, DOOR FRAME 25 x 25 MM; E-04E + E-04BE, EHR 60 rollers, EH.03E window sliding lock.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "E.04 E spec: SIZE 30 x 25 MM, ANODIZED 12 (±2) MICRON, ALLOY 6063T5, THICKNESS 1.5 MM. Heights 1700 window over 900 sill."
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": [],
+   "notes": "Hardware shared with STANDARD (EHR-60/80, EH-03E, E.03iS). Sash walls 1.3."
+  },
+  {
+   "name": "ALUINCH E series LARGE-SYSTEM — 4 track 135 (EXT SLIDING.pdf p.7)",
+   "system": "sliding door",
+   "app_types": [
+    "บานเลื่อนรางล่าง",
+    "บานเลื่อน 3 บาน"
+   ],
+   "frame_size_mm": "135 x 25 / 135 x 29",
+   "profiles": [
+    {
+     "die_no": "E-01L",
+     "name": "รางบน 4 ราง",
+     "role_family": "เฟรมบน 4 ราง",
+     "kg_per_m": null,
+     "width_mm": 135,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "LARGE-SYSTEM TOP RAIL 4 TRACK; pitch 27.6. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-02L",
+     "name": "รางข้างร่องริม 4 ราง",
+     "role_family": "เฟรมข้าง 4 ราง",
+     "kg_per_m": null,
+     "width_mm": 135,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "LARGE-SYSTEM SIDE RAILS FRONT SLIDING; inner 91.7. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03L",
+     "name": "รางล่าง 4 ราง",
+     "role_family": "เฟรมล่าง 4 ราง",
+     "kg_per_m": null,
+     "width_mm": 135,
+     "depth_mm": 29,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "LARGE-SYSTEM BOTTOM RAILS 4 TRACK; pitch 33; heights 29/26; E-03A cover shown grey. Size/wall read from the drawing; Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). (tape p.6/7). No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [
+    {
+     "type": "SLIDING ALUMINIUM DOORS FOR EXTERIOR TYPE 0:3 (printed 9.22)",
+     "page": 22,
+     "joints": "ALUMINIUM FRAME 25 x 135 MM (4 track), DOOR FRAME 25 x 50 MM, EHR 160 rollers, EH.03 lockset.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": [],
+   "notes": "Only frame members are listed; sashes are the STANDARD E-04/E-05/E-07 profiles."
+  },
+  {
+   "name": "ALUINCH X series — extra slim 16 mm interior doors (SLIM SLIDING.pdf = INT FOLDING DOOR.pdf, printed 6.01-6.30)",
+   "system": "other",
+   "app_types": [
+    "บานเลื่อนรางแขวน",
+    "บานสวิง",
+    "บานเปิด",
+    "บานเฟี้ยม",
+    "บานติดตาย"
+   ],
+   "frame_size_mm": "16 x 38 stile, 16/25 x 37 rails, 38 x 62 lock stile, 37 x 100 big rail",
+   "profiles": [
+    {
+     "die_no": "X.01",
+     "name": "เสาประตู",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 38,
+     "depth_mm": 16,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "VERTICAL FRAME ขนาด 16 x 38 มม., สำหรับกระจก 6-8 มม. Solid section (catalogue: 'อลูมิเนียมแบบตัน', Ø9 mm screw holes); no wall thickness applies. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.02",
+     "name": "ขวางประตู บานเปิด",
+     "role_family": "ขวางบาน",
+     "kg_per_m": null,
+     "width_mm": 37,
+     "depth_mm": 16,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "HORIZONTAL FRAME (swing door) ขนาด 16 x 37 มม., กระจก 6-8 มม. Solid section (catalogue: 'อลูมิเนียมแบบตัน', Ø9 mm screw holes); no wall thickness applies. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.03",
+     "name": "ขวางประตู บานเลื่อน",
+     "role_family": "ขวางบาน",
+     "kg_per_m": null,
+     "width_mm": 37,
+     "depth_mm": 25,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "HORIZONTAL FRAME (sliding door) ขนาด 25 x 37 มม., กระจก 6-8 มม. Solid section (catalogue: 'อลูมิเนียมแบบตัน', Ø9 mm screw holes); no wall thickness applies. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.04",
+     "name": "ซอยลูกฟักประตู",
+     "role_family": "ซอยลูกฟัก",
+     "kg_per_m": null,
+     "width_mm": 37,
+     "depth_mm": 16,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "DOOR MID RAIL FRAME ขนาด 16 x 37 มม., กระจก 6-8 มม. Solid section (catalogue: 'อลูมิเนียมแบบตัน', Ø9 mm screw holes); no wall thickness applies. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.T",
+     "name": "มือจับประตูบานเลื่อน (ตัวที)",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 38,
+     "depth_mm": 22,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "T-SHAPE HANDLE ขนาด 22 x 38 มม. (hollow; wall not printed). Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.J",
+     "name": "มือจับอลูมิเนียมตัวเจ",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 20,
+     "depth_mm": 16,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "J-SHAPE HANDLE ขนาด 16 x 20 มม.; solid. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "UA.X",
+     "name": "อลูมิเนียมใส่สักหลาด",
+     "role_family": "รางสักหลาด",
+     "kg_per_m": null,
+     "width_mm": 13,
+     "depth_mm": 4,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "U-CHANEL FOR MOHAIR 13 x 4 มม. (also on p.15). Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.01T",
+     "name": "เสาประตูพิเศษ (กระจก 10 มม.)",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 38,
+     "depth_mm": 16,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "VERTICAL FRAME ขนาด 16 x 38 มม., สำหรับกระจก 10 มม. Solid section (catalogue: 'อลูมิเนียมแบบตัน', Ø9 mm screw holes); no wall thickness applies. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.O",
+     "name": "มือจับประตูบานสวิง",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 38,
+     "depth_mm": 22,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "T-SHAPE HANDLE (swing door) ขนาด 22 x 38 มม. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.03T",
+     "name": "ขวางประตูพิเศษ (กระจก 10 มม.)",
+     "role_family": "ขวางบาน",
+     "kg_per_m": null,
+     "width_mm": 37,
+     "depth_mm": 25,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "HORIZONTAL FRAME ขนาด 25 x 37 มม., สำหรับกระจก 10 มม. Solid section (catalogue: 'อลูมิเนียมแบบตัน', Ø9 mm screw holes); no wall thickness applies. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.05",
+     "name": "เสาประตู สำหรับชุดล็อค",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 38,
+     "depth_mm": 62,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "DOOR FRAME (lock stile) ขนาด 38 x 62 มม., กระจก 6-8 มม.; hollow box under the solid head, wall not printed. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "X.06",
+     "name": "ขวางประตูเฟรมใหญ่",
+     "role_family": "ขวางบาน",
+     "kg_per_m": null,
+     "width_mm": 37,
+     "depth_mm": 100,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 4,
+     "confidence": "read",
+     "note": "HORIZONTAL FRAME (big bottom/top rail) ขนาด 37 x 100 มม., กระจก 6-8 มม.; hollow, wall not printed. Bar lengths printed on the page tape: 2.8 m and 6.4 m (std_length_m = 6.4). No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "XM-01",
+     "name": "รางรับเสาแม่เหล็ก",
+     "role_family": "รางแม่เหล็ก",
+     "kg_per_m": null,
+     "width_mm": 38,
+     "depth_mm": 9,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "note": "MAGNETIC POLE 38 x 9 มม. (6.4 inner lip, 12 centre); wall not printed; drawing is a raster image. Length not printed on p.15; assumed series 2.8/6.4 m. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "XM-02",
+     "name": "รางแม่เหล็ก",
+     "role_family": "รางแม่เหล็ก",
+     "kg_per_m": null,
+     "width_mm": 35,
+     "depth_mm": 7,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "note": "MAGNATIC RAIL 35 x 7 มม. (16.5 / 12.5 / 6); wall not printed; raster drawing. Length not printed on p.15; assumed series 2.8/6.4 m. No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [
+    {
+     "type": "X-SERIES INSTALLATION (printed 6.03)",
+     "page": 3,
+     "joints": "X.03 horizontal butts between X.01 verticals; joined by X.A rod through Ø9 holes + SCREW M6 1\" and SCREW M6 3/4\"; hole spacing 34 / 40 / 74 MM.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "90° butt joint by construction (rails between stiles); no cut angle text printed."
+    },
+    {
+     "type": "Lock preparation, one-way / two-way swing and sliding (printed 6.11-6.12)",
+     "page": 11,
+     "joints": "Notch in X.02 / X.03 for mortise lock: 847 / 838 ±900 ht, 83, 185 / 115 / 197, R = 5.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "ระยะเจาะ... (red notes) read from rotated drawing at low res; check."
+    },
+    {
+     "type": "FOLDING PIVOT EXTRA SLIM DOOR 16 MM with folding hinges (6.17); sliding top-hung options (6.18, 6.23-6.26, 6.29); swing with hinges (6.19, 6.20, 6.30); swing with floor spring BF 100 (6.21, 6.22, 6.27, 6.28 magnetic)",
+     "page": 17,
+     "joints": "Frames T-20.02 / T-10 / T-10S / F-35 / F-20.02 / F-45 (T and F series, other files), SL.120 / SR.120 / SLC.60 rollers, RX glass gasket, XG.01 guide.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "Tempered glass 6-10 mm; door height 2700."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "อุปกรณ์ประกอบบาน (X-CONNECTOR), ROD 8 + 3/4\" M5 16 + 1\" M5 8",
+     "code": "X-A",
+     "per": "per door",
+     "qty": 1,
+     "page": 5
+    },
+    {
+     "name": "อุปกรณ์ประกอบบานจูง (FOLLOWER)",
+     "code": "X-AC",
+     "per": "per door",
+     "qty": 1,
+     "page": 5
+    },
+    {
+     "name": "อุปกรณ์ประกอบบานขนาดเล็ก (SHOT CORE)",
+     "code": "X-AS",
+     "per": "per door",
+     "qty": 1,
+     "page": 5
+    },
+    {
+     "name": "อุปกรณ์ยึดแนวตั้ง สำหรับ X.04",
+     "code": "X-AV",
+     "per": "per row",
+     "qty": 1,
+     "page": 5
+    },
+    {
+     "name": "อุปกรณ์ประกอบบาน สำหรับ X.06",
+     "code": "X-AD",
+     "per": "per door",
+     "qty": 1,
+     "page": 5
+    },
+    {
+     "name": "อุปกรณ์ประกอบบานสำหรับ X.03 และ X.06 (MIXED)",
+     "code": "X-AD/2",
+     "per": "per door",
+     "qty": 1,
+     "page": 5
+    },
+    {
+     "name": "ไกด์พื้นอะคริลิค สำหรับบานเลื่อน X.03 / X.03T",
+     "code": "XG-01 / XG-01T",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ไกด์พื้นทองเหลือง บานเลื่อนขนาดใหญ่",
+     "code": "XG-02",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ไกด์เรือใบ (plastic)",
+     "code": "XG-03",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "อุปกรณ์สำหรับบานเลื่อนจูง X.03",
+     "code": "XW-03 (L/R)",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "อุปกรณ์สำหรับบานเลื่อนจูง X.03T",
+     "code": "XW-03T (L/R)",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "จุดหมุนบนบานเปิดสองทาง (ปรับไม่ได้)",
+     "code": "PT-02",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "จุดหมุนล่างสำหรับบานสวิง (ปรับได้)",
+     "code": "XP-02",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ชุดบานพับจุดหมุนซ่อน",
+     "code": "XP-01C",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "จุดหมุนบานเปิดทางเดียว (HIDDEN PIVOT HINGE)",
+     "code": "i-PX",
+     "per": "per door",
+     "qty": 1,
+     "page": 7
+    },
+    {
+     "name": "กลอนซ่อน (HIDDEN FLUSH BOLTS)",
+     "code": "XFH",
+     "per": "",
+     "qty": null,
+     "page": 7
+    },
+    {
+     "name": "ข้อต่อเสริม สำหรับ XF.H",
+     "code": "XF.C",
+     "per": "",
+     "qty": null,
+     "page": 7
+    },
+    {
+     "name": "มือจับบานเปิดแบบฝัง 14 x 160 มม.",
+     "code": "i-H",
+     "per": "",
+     "qty": null,
+     "page": 7
+    },
+    {
+     "name": "มือจับประตูตัว C CTC 160 / 320",
+     "code": "X-C (XC-160 / XC-320)",
+     "per": "",
+     "qty": null,
+     "page": 7
+    },
+    {
+     "name": "เพลทติดตั้งโช้คสำหรับ X-SERIES",
+     "code": "DC.01P / DC.02EP / DC.02P",
+     "per": "",
+     "qty": null,
+     "page": 7
+    },
+    {
+     "name": "เสื้อกุญแจ (COVER FOR MORTISE LOCK) 82 x 197 มม.",
+     "code": "XH-01 / XH-01D / XH-02 / XH-03 / XH-03D",
+     "per": "",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "เสื้อกุญแจ 82 x 128 มม.",
+     "code": "XH-02A / XH-02AD / XH-03A / XH-03AD",
+     "per": "",
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "magnetic glass door locks (entry / privacy / dummy), black",
+     "code": "XY.A / XY.P / XY.AD / XY.S",
+     "per": "",
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "wood door magnetic locks",
+     "code": "XY.W / XY.E / XY.WD",
+     "per": "",
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "สายสลิงสำหรับบานเลื่อนแขวนและจูง",
+     "code": "XR.S",
+     "per": "per m",
+     "qty": null,
+     "page": 13
+    },
+    {
+     "name": "SEMI-AUTO SLIDING DOOR DOUBLE SCROLL",
+     "code": "SR.B",
+     "per": "set",
+     "qty": 1,
+     "page": 13
+    },
+    {
+     "name": "SEMI-AUTO SLIDING 2 DOORS FOLLOWER",
+     "code": "SRF-2.0 / SRF-2.1",
+     "per": "set",
+     "qty": 1,
+     "page": 13
+    },
+    {
+     "name": "SEMI-AUTO SLIDING 3 DOORS FOLLOWER",
+     "code": "SRF-3.0 / SRF-3.1",
+     "per": "set",
+     "qty": 1,
+     "page": 14
+    },
+    {
+     "name": "SEMI-AUTO SLIDING 4 DOORS FOLLOWER",
+     "code": "SRF-4.0 / SRF-4.1",
+     "per": "set",
+     "qty": 1,
+     "page": 14
+    },
+    {
+     "name": "แม่เหล็ก 1 คู่ (MAGNET FORCE) 10 x 3.8 x 50 มม.",
+     "code": "XM",
+     "per": "pair",
+     "qty": 1,
+     "page": 15
+    },
+    {
+     "name": "เพลทรับรางแม่เหล็ก",
+     "code": "XM.H",
+     "per": "",
+     "qty": null,
+     "page": 15
+    },
+    {
+     "name": "ยางกันกระแทก 6 x 4 มม.",
+     "code": "RM",
+     "per": "",
+     "qty": null,
+     "page": 15
+    },
+    {
+     "name": "บานพับบานเฟี้ยม X-SERIES 45 x 100",
+     "code": "XF-01",
+     "per": "",
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "บานพับบานเฟี้ยมแบบมีมือดึง 45 x 100",
+     "code": "XF-02",
+     "per": "",
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "กลอนล็อคพื้น 16 x 120 ยาว 4\"/8\"",
+     "code": "XF-03",
+     "per": "",
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "ชุดจุดหมุนบานเฟี้ยม",
+     "code": "XF-04",
+     "per": "",
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "ชุดจุดหมุนบานเฟี้ยมสำหรับบานไม้",
+     "code": "XF-05",
+     "per": "",
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "ไกด์บานเฟี้ยม เซาะร่องที่พื้น",
+     "code": "XG-04",
+     "per": "",
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "กลอนซ่อน / ข้อต่อ",
+     "code": "XF.H / XF.C",
+     "per": "",
+     "qty": null,
+     "page": 16
+    }
+   ],
+   "accessories": [
+    {
+     "name": "RX พีวีซีอัดกรอบประตูบาน X-SERIES: RX 6 MM (2.5 m/เส้น), RX 8 MM (2.0 / 2.5 m/เส้น), black",
+     "code": "RX",
+     "page": "ACC p.1"
+    },
+    {
+     "name": "RB ยางลูกโป่งฐานแข็ง (GLASS RUBBER FOR FOLDING) black 100 m",
+     "code": "RB",
+     "page": "ACC p.2"
+    }
+   ],
+   "prices": [],
+   "notes": "For glass 6/8/10 mm (X.01T / X.03T for 10 mm). Sections are solid aluminium with Ø9 mm screw ports. Bars 2.8 / 6.4 m (p.4 tape)."
+  },
+  {
+   "name": "ALUINCH i series — cabinet / closet slim door frames and handles (CABINET.pdf, printed 8.01-8.18)",
+   "system": "other",
+   "app_types": [
+    "บานเปิด",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "10-13 x 38 / 13 x 46 (hinged); 31.2 x 26, 70 x 24.6 (sliding)",
+   "profiles": [
+    {
+     "die_no": "i-01",
+     "name": "เฟรมบานตู้แนวตั้ง",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 13,
+     "depth_mm": 38,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read",
+     "note": "CABINET FRAME VERTICAL, printed ขนาด 10 x 38 มม. (drawing 10 top / 13 bottom x 38); solid-type section; bar length not printed. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-03",
+     "name": "เฟรมบานตู้แนวตั้ง รุ่นเล็ก",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 13,
+     "depth_mm": 24,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read",
+     "note": "CABINET FRAME HORIZONTAL (Thai: แนวตั้ง รุ่นเล็ก), ขนาด 13 x 24 มม.; bar length not printed. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-03H",
+     "name": "เฟรมบานตู้แนวตั้งมีมือจับ",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 30,
+     "depth_mm": 24,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read",
+     "note": "CABINET HANDLE FRAME ขนาด 24 x 30 มม.; bar length not printed. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-04",
+     "name": "ซอยกลางบานตู้",
+     "role_family": "ซอยกลาง",
+     "kg_per_m": null,
+     "width_mm": 12.8,
+     "depth_mm": 10,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read",
+     "note": "CABINET DIVIDER FRAME ขนาด 10 x 12.8 มม.; H-section, 1.3 drawn. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-02",
+     "name": "เฟรมบานตู้แนวนอน",
+     "role_family": "ขวางบาน",
+     "kg_per_m": null,
+     "width_mm": 46,
+     "depth_mm": 24,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read",
+     "note": "CABINET FRAME HORIZONTAL, printed ขนาด 13 x 46 มม. (drawing 46 x 24 incl. glass lip); 'ใช้ร่วมกับบานพับถ้วย 35 mm.' No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i.02H",
+     "name": "เฟรมบานตู้แนวนอนแบบมีมือจับ",
+     "role_family": "ขวางบาน",
+     "kg_per_m": null,
+     "width_mm": 75,
+     "depth_mm": 24,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read",
+     "note": "CABINET HANDLE FRAME ขนาด 24 x 75 มม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-53",
+     "name": "เฟรมเล็กบานตู้",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 20,
+     "depth_mm": 22,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read",
+     "note": "CABINET SLIM FRAME 20 x 22 (13.5 / 6.5); 'ใช้ร่วมกับบานพับถ้วยเล็ก'; glass 6 mm. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-53H",
+     "name": "เฟรมเล็กบานตู้มีมือจับ",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 37,
+     "depth_mm": 22,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read",
+     "note": "CABINET FRAME WITH HANDLE 37 (17 + 20) x 22. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-26",
+     "name": "เฟรมเล็กงบานตู้ (ตัวแบ่ง)",
+     "role_family": "ซอยกลาง",
+     "kg_per_m": null,
+     "width_mm": 20,
+     "depth_mm": 20,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read",
+     "note": "CABINET DIVIDER FRAME 20 x 20 (13.5 / 6.5); 'ใช้ร่วมกับบานพับถ้วยเล็ก'. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "iF-24",
+     "name": "มือจับอลูมิเนียม ตัวยู (iF-24)",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 45,
+     "depth_mm": 19.75,
+     "wall_mm": 2,
+     "std_length_m": 3.0,
+     "page": 5,
+     "confidence": "read",
+     "note": "ALUMINIUM HANDLE U-SHAPE; 29.0 top; wall 2 drawn; ยาว 3 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "iF-25",
+     "name": "มือจับอลูมิเนียม ตัวแอล",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 45,
+     "depth_mm": 20,
+     "wall_mm": 1.8,
+     "std_length_m": 3.0,
+     "page": 5,
+     "confidence": "read",
+     "note": "ALUMINIUM HANDLE L-SHAPE; wall 1.8 drawn; ยาว 3 ม. Printed 'i F- 25'. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-54",
+     "name": "เฟรมบานเลื่อนตู้มีมือจับ",
+     "role_family": "เสาบาน",
+     "kg_per_m": null,
+     "width_mm": 31.2,
+     "depth_mm": 26,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 6,
+     "confidence": "read",
+     "note": "CABINET SLIDING HANDLE 31.2 x 26 (16.15 / 6.5 / 8.5); ยาว 6 ม.; glass 6 mm. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-55",
+     "name": "เฟรมบานเลื่อนตู้แนวนอน",
+     "role_family": "ขวางบาน",
+     "kg_per_m": null,
+     "width_mm": 70,
+     "depth_mm": 24.6,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 6,
+     "confidence": "read",
+     "note": "CABINET SLIDING FRAME 70 x 24.6 (23.9 / 15.6); ยาว 6 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-SDC",
+     "name": "รางตัวยูร่องเดี่ยว แบบตื้น",
+     "role_family": "รางล่าง",
+     "kg_per_m": null,
+     "width_mm": 16.7,
+     "depth_mm": 10.8,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 6,
+     "confidence": "read",
+     "note": "BOTTOM SLIDING TRACK (shallow); top 2.5 + 5.7 + 8.5, inner 6.3, 10.8 deep; ยาว 6 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-SDL",
+     "name": "รางตัวยูร่องเดี่ยว แบบลึก",
+     "role_family": "รางล่าง",
+     "kg_per_m": null,
+     "width_mm": 14.6,
+     "depth_mm": 16.7,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "note": "BOTTOM SLIDING TRACK (deep); top 2.6 + 5 + 7, inner 6, 16.7 deep; 'ยาว' printed with no number. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "E-03i",
+     "name": "รางล่าง 2 ราง (ใช้กับตู้)",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 68.2,
+     "depth_mm": 10,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 6,
+     "confidence": "read",
+     "note": "Same die as E series ECO E-03i; listed here as BOTTOM RAIL 2 TRACK ยาว 2.8/6.4 ม., 68.2 x 10 (33.4 / 14.2 / 8.5). Picture shared with the E series row. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-56",
+     "name": "ซอยกลางบานเลื่อนตู้",
+     "role_family": "ซอยกลาง",
+     "kg_per_m": null,
+     "width_mm": 19.8,
+     "depth_mm": 24.6,
+     "wall_mm": 1.8,
+     "std_length_m": 6.0,
+     "page": 6,
+     "confidence": "read",
+     "note": "CABINET MULLION FRAME 19.8 x 24.6 (15.6 / 6.5); '1.8' drawn on the top flange; ยาว 6 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "i-57",
+     "name": "เสากลางบานเลื่อนสลับ",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 31.2,
+     "depth_mm": 26,
+     "wall_mm": null,
+     "std_length_m": 3.0,
+     "page": 6,
+     "confidence": "read",
+     "note": "CABINET SLIDING FRAME 31.2 x 26 (16.15 / 6.5 / 8.5); ยาว 3 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "iF-20",
+     "name": "มือจับอลูมิเนียม ตัวยู (iF-20)",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 19.5,
+     "depth_mm": 31.6,
+     "wall_mm": 2,
+     "std_length_m": 2.5,
+     "page": 9,
+     "confidence": "read",
+     "note": "ALUMINIUM HANDLE U-SHAPE (wood furniture, barbed fixing leg); 2 + 17.5 wide, 31.6 high (21 / 10.6), 11.8 lip; ยาว 2.5 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "iF-21",
+     "name": "มือจับอลูมิเนียม สี่เหลี่ยมคางหมู",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 23.5,
+     "depth_mm": 37,
+     "wall_mm": null,
+     "std_length_m": 3.0,
+     "page": 9,
+     "confidence": "read",
+     "note": "ALUMINIUM HANDLE TRAPEZIUM-SHAPE 23.5 x 37.0 (20.2 / 10.1 / 8.0); ยาว 3.0 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "iF-22",
+     "name": "มือจับอลูมิเนียม ทรงยาว",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 21.75,
+     "depth_mm": 43.4,
+     "wall_mm": null,
+     "std_length_m": 3.0,
+     "page": 9,
+     "confidence": "read",
+     "note": "ALUMINIUM HANDLE BIAS-SHAPE 21.75 x 43.4 (38.18 / 23.2 / 16.3; lip 3.0); ยาว 3.0 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "iF-23",
+     "name": "มือจับอลูมิเนียม ตัวซี",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 19.5,
+     "depth_mm": 35.9,
+     "wall_mm": 2.0,
+     "std_length_m": 3.1,
+     "page": 9,
+     "confidence": "read",
+     "note": "ALUMINIUM HANDLE C-SHAPE 19.5 x 35.9 (9.0 / 10.0 / 9.75); 2.0 lip drawn; ยาว 3.1 ม. No weight printed anywhere in the catalogue."
+    },
+    {
+     "die_no": "iF-30",
+     "name": "มือจับอลูมิเนียม ตัวยู (iF-30)",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 19.5,
+     "depth_mm": 40.6,
+     "wall_mm": 2,
+     "std_length_m": 2.5,
+     "page": 9,
+     "confidence": "read",
+     "note": "ALUMINIUM HANDLE U-SHAPE 2 + 17.5 x 40.6 (30 / 10.6), 11.8 lip; ยาว 2.5 ม. No weight printed anywhere in the catalogue."
+    }
+   ],
+   "assembly": [
+    {
+     "type": "PIVOT CABINET AND CLOSET SLIM DOORS WITH TOP & BOTTOM HINGES (printed 8.11, 8.13, 8.15, 8.17)",
+     "page": 11,
+     "joints": "i-01 / i-02 frames, iP pivot hinges, options inset / full overlay; handle i-H / iH-01.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "Glass 6-8 mm. Corner connectors i.A / i.AS / i.02PE join the frame corners; cut angle not printed."
+    },
+    {
+     "type": "SLIDING SWITCH FOR CABINET AND CLOSET SLIM DOORS (printed 8.12, 8.14, 8.16, 8.18)",
+     "page": 12,
+     "joints": "i-54 / i-55 / i-56 / i-57 frames on i.R rollers, i-SDC / i-SDL / E-03i bottom tracks; options -1 / -2.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [
+    {
+     "name": "อุปกรณ์ประกอบบานตู้ (แบบมอบ i-02)",
+     "code": "i.A",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "อุปกรณ์ประกอบบานตู้ (แบบมอบ i-03)",
+     "code": "i.AS",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "อุปกรณ์เข้ามุม (i-02) 34 x 34 มม.",
+     "code": "i.02PE",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "บานพับจุดหมุน",
+     "code": "iP.1 / iP.L / iP.R",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "CABINET PIVOT HING",
+     "code": "iP.2 / iP.3",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "MAGNETIC DOOR STOP",
+     "code": "iM-01 / iM-02 / iM-03",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับฝังบานตู้ 160 มม. (aluminium piece, section 14 x 14)",
+     "code": "i-H",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับบานเปิดตู้ ยาว 174 มม. (section 13 x 14)",
+     "code": "iH-01",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับบานเปิดตู้ ยาว 160 มม. (section 15 x 20.5)",
+     "code": "iH-02",
+     "per": "",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มุมเฟรมเล็กบานตู้ 35 x 35",
+     "code": "i.PE",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ชุดล้อบานเลื่อนตู้",
+     "code": "i.R",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "แป้นสี่เหลี่ยม 6 รู หนา 3 มม.",
+     "code": "i-55PE",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "แป้นต่อกลาง 3 รู หนา 3 มม.",
+     "code": "i-56PE",
+     "per": "",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "บานพับถ้วยสำหรับบานอลูมิเนียม (full / half / inset, soft close)",
+     "code": "i-3015-1-ON / i-3015-2-MI / i-3015-3-IN, i-3017-*",
+     "per": "",
+     "qty": null,
+     "page": 7
+    },
+    {
+     "name": "บานพับถ้วย 35 มม. (concealed)",
+     "code": "i-3011-* / i-3012-*",
+     "per": "",
+     "qty": null,
+     "page": 7
+    },
+    {
+     "name": "FLAP STAY HINGE open-up / open-down",
+     "code": "i-NSDX-35 / i-NSDX-10",
+     "per": "",
+     "qty": null,
+     "page": 7
+    },
+    {
+     "name": "กุญแจบานเลื่อนตู้ / กุญแจบานเปิดตู้",
+     "code": "i-KS / i-KP (i-KP-22 / i-KP-32)",
+     "per": "",
+     "qty": null,
+     "page": 7
+    }
+   ],
+   "accessories": [],
+   "prices": [],
+   "notes": "Furniture doors, not windows; app_types are the nearest Thai type names. Handles iF-20…iF-30 are for wood furniture (barbed leg)."
+  }
+ ],
+ "finishes_noted": [
+  "No colour chart for profiles in these files.",
+  "E series assembly pages: SURFACE ANODIZED 12 (±2) MICRON, MATERIAL ALUMINIUM ALLOY 6063T5 (featured profiles E.04A / E.04H / E.04B / E.04GP / E.04C / E.04E).",
+  "Photos show white/silver, black and bronze-brown frames, but no named finishes.",
+  "Hardware colours: WHITE / BLACK (CH.01, CH.02, EH-03, EH-04), WHITE / BLACK / GREY / CHAMPAGNE (EH-05), black (XY locks).",
+  "Rubbers (ACC): RG/RC/RE/RD white, black, grey; RX, RW, RB black."
+ ],
+ "new_families": [
+  "กรอบนอกบานกระทุ้ง",
+  "กรอบในบานกระทุ้ง",
+  "เสากลาง",
+  "ตัวยู",
+  "ตัวที",
+  "ตัวแอล",
+  "ฉากแขวน",
+  "รางสักหลาด",
+  "ฐานรับเกล็ด",
+  "ใบเกล็ด",
+  "ขอบเกล็ด",
+  "เสาบาน",
+  "ขวางบาน",
+  "ซอยลูกฟัก",
+  "รางกันแกว่ง",
+  "เฟรมบน 3 ราง",
+  "เฟรมล่าง 3 ราง",
+  "เฟรมข้าง 3 ราง",
+  "เฟรมบน 4 ราง",
+  "เฟรมล่าง 4 ราง",
+  "เฟรมข้าง 4 ราง",
+  "ตบรางบน",
+  "ตบรางล่าง",
+  "ปีกรางล่าง",
+  "เสาเสียบ",
+  "ขวางบน-ล่าง",
+  "ซอยกลาง",
+  "มือจับ",
+  "รางแม่เหล็ก",
+  "รางล่าง"
+ ],
+ "open_questions": [
+  "แคตตาล็อก ALUINCH ทั้ง 8 ไฟล์ไม่มีน้ำหนัก (กก./ม. หรือ กก./เส้น) เลยสักตัว — kg_per_m เป็น null ทุกแถว (114 แถว) ต้องขอตารางน้ำหนักจาก ALUINCH",
+  "ไม่มีราคาและไม่มีชื่อบริษัท/ที่อยู่/เบอร์โทรในไฟล์ — ต้องขอข้อมูลผู้ขาย",
+  "ความหนา (wall) ไม่ได้พิมพ์สำหรับหน้าตัดตัน (X series, M-01..M-03) และอีกหลายตัว (L-01/02/03/V/U/3783/4451, i-01/03/03H/02/02H/53/53H/26/54/55/57, i-SDC/SDL, iF-21/22) — ต้องถาม",
+  "E-03A, E-03B, E-03F, E-04BE เห็นแค่เป็นชิ้นสีเทาบนรูปของตัวหลัก ไม่มีชื่อ/ขนาดของตัวเอง — ต้องถามว่าเป็นอลูมิเนียมขายแยกหรือไม่ และขนาดเท่าไหร่",
+  "สูตรบานเลื่อน 2 บาน พิมพ์ 'E = (D-146)/2' ส่วนสูตรอื่นใช้ F — น่าจะหมายถึง F (ระยะตัดขวางประตู) ช่วยยืนยัน",
+  "M-01 / M-02 / M-03 / i-01 / i-02: ขนาดที่พิมพ์ในข้อความ (เช่น 9 x 38) ไม่ตรงกับขนาดรวมในรูป (38 x 15) — ในไฟล์ใช้ขนาดตามรูป",
+  "E-04E: รูปหน้าตัดวัดได้ 39 x 35 แต่หน้า 9.19 พิมพ์ 'SIZE 30 x 25 MM' — อันไหนถูก",
+  "L-4368 ภาษาไทยพิมพ์ 'รุ่น 4668' — น่าจะพิมพ์ผิด",
+  "รหัส S.01 (J series) และ E-03i (ซ้ำใน E กับ CABINET) อาจชนกับรหัสใน S series ของไฟล์อื่น"
+ ],
+ "unreadable_pages": [],
+ "notes": "Text layers are outlined (only dimension numbers survive), so all codes, names and sizes were read from page images (100-260 dpi). 'ALUINCH INT FOLDING DOOR.pdf' is byte-identical (same MD5 613753c0…) to 'ALUINCH SLIM SLIDING.pdf' and was read once as the X series. ACC.pdf (2 pages) holds only rubbers/mohair; they are recorded under each series' accessories, not as profiles. width_mm = horizontal overall dimension on the drawing, depth_mm = vertical. 'page' = page number inside that series' own PDF. Pictures: DOC/ALUMNIUM CATALOG/_extracted/aluinch-b-sections/ (one PNG per distinct die; E-03A/E-03B share the E-03 drawing, E-03F the E-03E drawing, E-04BE the E-04E drawing; E-03i in the i series reuses the E picture). Hardware handles i-H / iH-01 / iH-02 (cut pieces 160/174 mm) are kept as hardware."
+}
