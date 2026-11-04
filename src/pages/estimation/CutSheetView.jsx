@@ -8,7 +8,8 @@ import { useState } from 'react'
 import { fmtDate } from '../../lib/supabase.js'
 import { groupIdenticalBars, MIN_OFFCUT_M } from '../../lib/cutPlan.js'
 import { isOffcutKept, roleTh, NO_DIE_TEXT } from '../../lib/stickers.js'
-import { barNosLabel, openingColorIndex, splitRowsByKeep } from './projectBomHelpers.js'
+import { barNosLabel, openingColorIndex, splitRowsByKeep, endsText, pieceClipPath } from './projectBomHelpers.js'
+import { ProfilePicture } from '../../components/ProfileImage.jsx'
 import { codesText } from './offcutHelpers.js'
 import InlineError from './InlineError.jsx'
 import MissingDieNotice from './MissingDieNotice.jsx'
@@ -39,12 +40,16 @@ function BarRow({ bar, label, fullLength, colorOf, keep, pending, fromStock }) {
         maxWidth: `${(100 * L) / fullLength}%`, ...(fromStock ? { outline: '3px solid var(--yellow)', outlineOffset: -3 } : {}),
       }}>
         {bar.pieces.map((p, i) => (
-          <div key={i} title={`${p.opening_no} ${roleTh(p.role_name)}${p.item_name ? ` · ${p.item_name}` : ''}`} style={{
-            flex: `0 0 ${(100 * p.length_m) / L}%`, background: PALETTE[colorOf(p.opening_no) % PALETTE.length], color: '#1d2420',
-            borderRight: '2px solid var(--text)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
-            fontSize: 11, lineHeight: 1.15, overflow: 'hidden', minWidth: 0, textAlign: 'center', padding: '0 2px', whiteSpace: 'nowrap',
+          <div key={i} title={`${p.opening_no} ${roleTh(p.role_name)}${p.item_name ? ` · ${p.item_name}` : ''} · ตัด ${endsText(p.end_a, p.end_b)}`} style={{
+            flex: `0 0 ${(100 * p.length_m) / L}%`, borderRight: '2px solid var(--text)', minWidth: 0, display: 'flex',
           }}>
-            <b className="font-mono">{mm(p.length_m)}</b><span>{p.opening_no} {roleTh(p.role_name)}</span>
+            <div style={{
+              flex: 1, minWidth: 0, background: PALETTE[colorOf(p.opening_no) % PALETTE.length], color: '#1d2420', clipPath: pieceClipPath(p.end_a, p.end_b),
+              display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+              fontSize: 11, lineHeight: 1.15, overflow: 'hidden', textAlign: 'center', padding: '0 2px', whiteSpace: 'nowrap',
+            }}>
+              <span><b className="font-mono">{mm(p.length_m)}</b> {endsText(p.end_a, p.end_b)}</span><span>{p.opening_no} {roleTh(p.role_name)}</span>
+            </div>
           </div>
         ))}
         {left > 1e-9 && (
@@ -58,15 +63,18 @@ function BarRow({ bar, label, fullLength, colorOf, keep, pending, fromStock }) {
   )
 }
 
-function GroupSheet({ g, colorOf, keepOf, pending }) {
+function GroupSheet({ g, colorOf, keepOf, pending, imageUrl }) {
   const L = Number(g.length_m)
   const rows = splitRowsByKeep(groupIdenticalBars(g.bars), no => keepOf(g, String(no)))
   return (
     <div style={{ display: 'grid', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <ProfilePicture url={imageUrl} alt={g.die_no || g.name || ''} width={150} />
+          <div>
           <DieTag die={g.die_no} />{g.name || '?'}{g.finish_name ? ` · ${g.finish_name}` : ''} · เส้น <b className="font-mono">{f2(L)}</b> ม.
           {g.custom && <> <span style={{ ...tag, background: 'rgba(255,209,102,0.2)', color: 'var(--yellow)' }}>สั่งพิเศษ</span></>}
+          </div>
         </div>
         <div className="font-mono" style={muted}>
           {g.offcutBars.length > 0 ? `เศษสต็อก ${g.offcutBars.length} + ` : ''}{g.bars.length} เส้นใหม่{g.no_weight ? '' : ` · ${f2(g.kg)} กก.`}
@@ -105,7 +113,7 @@ function CutError({ error, onClose }) {
   return <InlineError title={error.action === 'void' ? 'ยกเลิกใบตัดไม่ได้' : 'ยืนยันใบตัดไม่ได้'} onClose={onClose}>{error.message}</InlineError>
 }
 
-export default function CutSheetView({ plan, issued, codes, flipped, settings, canEdit, onIssue, onVoid, busy, error = null, onDismissError, missingDie = null }) {
+export default function CutSheetView({ plan, issued, codes, flipped, settings, canEdit, onIssue, onVoid, busy, error = null, onDismissError, missingDie = null, imageUrls = {} }) {
   const [confirming, setConfirming] = useState(null) // 'issue' | 'void' | null
   const shown = issued ? issued.plan : plan
   const colors = openingColorIndex(shown)
@@ -122,7 +130,7 @@ export default function CutSheetView({ plan, issued, codes, flipped, settings, c
     <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <div style={{ fontWeight: 700 }}>ใบตัด — แยกตามหน้าตัด</div>
-        <span style={muted}>เศษสต็อกตัดก่อน แล้วค่อยเส้นใหม่ · เส้นที่ตัดเหมือนกันรวมแถว · ตัวเลข = มม.</span>
+        <span style={muted}>เศษสต็อกตัดก่อน แล้วค่อยเส้นใหม่ · เส้นที่ตัดเหมือนกันรวมแถว · ตัวเลข = มม. · ตรง / 45 / ตรง-45 = แบบตัด หัว-ท้าย</span>
       </div>
       {error && <CutError error={error} onClose={onDismissError} />}
       <MissingDieNotice missing={missingDie} />
@@ -166,7 +174,7 @@ export default function CutSheetView({ plan, issued, codes, flipped, settings, c
           </div>
           {shown.groups.length === 0
             ? <div style={muted}>ไม่มีเส้นอลูมิเนียมที่ต้องตัด</div>
-            : shown.groups.map(g => <GroupSheet key={g.key} g={g} colorOf={colorOf} keepOf={keepOf} pending={codesPending} />)}
+            : shown.groups.map(g => <GroupSheet key={g.key} g={g} colorOf={colorOf} keepOf={keepOf} pending={codesPending} imageUrl={imageUrls[g.profile_id || String(g.key).split('|')[0]]} />)}
         </>
       )}
     </div>

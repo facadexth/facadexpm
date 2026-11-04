@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
   cutGroupInfo, cutGroupKgPerM, cutGroupOverrides, cutGroupPricePerKg, lengthCompare, customLengthSummaryModel, bestLengthsByProfile, bomStockBasis, sectionOneStockBasis,
-  barNosLabel, openingColorIndex, toggleKey, splitRowsByKeep, offcutLayoutFingerprint, summarySource, section1Rows,
+  barNosLabel, openingColorIndex, endsText, pieceClipPath, toggleKey, splitRowsByKeep, offcutLayoutFingerprint, summarySource, section1Rows,
   withLiveDieNos, missingDieNos, shortLengthRows,
 } from './projectBomHelpers.js'
 import { buildCutPlan, issuePayload, rangeLengths } from '../../lib/cutPlan.js'
@@ -526,5 +526,22 @@ describe('shortLengthRows', () => {
   it('an infeasible market bar is still listed (it says ตัดไม่ได้)', () => {
     const rs = [r(7), r(6.4, { isStock: true, status: 'infeasible' })]
     expect(shortLengthRows(rs).map(x => x.length_m)).toEqual([7, 6.4])
+  })
+})
+
+describe('endsText / pieceClipPath', () => {
+  it('names both ends head then tail, one word when they match', () => {
+    expect(endsText('square', 'square')).toBe('ตรง')
+    expect(endsText('miter45', 'miter45')).toBe('45')
+    expect(endsText('square', 'miter45')).toBe('ตรง-45')
+    expect(endsText('miter45', 'square')).toBe('45-ตรง')
+    expect(endsText('notch', 'square')).toBe('บาก-ตรง')
+    expect(endsText(undefined, null)).toBe('ตรง')
+  })
+  it('slants only the 45° ends', () => {
+    expect(pieceClipPath('square', 'square')).toBeUndefined()
+    expect(pieceClipPath('notch', 'square')).toBeUndefined()
+    expect(pieceClipPath('miter45', 'miter45', '10px')).toBe('polygon(10px 0, calc(100% - 10px) 0, 100% 100%, 0 100%)')
+    expect(pieceClipPath('square', 'miter45', '10px')).toBe('polygon(0px 0, calc(100% - 10px) 0, 100% 100%, 0 100%)')
   })
 })

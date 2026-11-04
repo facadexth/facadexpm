@@ -14,6 +14,9 @@ import { supabase } from '../../lib/supabase.js'
 import { jointDeductionMm } from '../../lib/assembly.js'
 import { profileSketchSvg } from '../../lib/profileSketch.js'
 import { sketchShapeFor, sameShapeProfiles } from '../../lib/catalogTypeForm.js'
+import { useImageUrls } from '../../lib/profileImages.js'
+import { ProfileThumb } from '../../components/ProfileImage.jsx'
+import ProfileImageCard from './ProfileImageCard.jsx'
 
 const PROFILE_FIELDS = [
   { key: 'name', label: 'ชื่อหน้าตัด', type: 'text', required: true, placeholder: 'เช่น กล่องร่อง' },
@@ -62,6 +65,7 @@ export default function ProfilesTab({ canEdit }) {
   const [providerId, setProviderId] = useState('')
   const [profileId, setProfileId] = useState('')
   const [seriesId, setSeriesId] = useState('')
+  const imageUrls = useImageUrls((profiles.data || []).filter(p => p.provider_id === providerId).map(p => p.image_path))
 
   const error = providers.error || profiles.error || finishes.error || variants.error || series.error || seriesProfiles.error
   if (error) return <div style={{ color: 'var(--red)' }}>โหลดข้อมูลไม่สำเร็จ: {error}</div>
@@ -137,6 +141,9 @@ export default function ProfilesTab({ canEdit }) {
               deleteWarning="ลบแล้วจะลบความยาว/สี การผูกกับซีรีส์ และราคาของหน้าตัดนี้ทั้งหมดด้วย (ย้อนกลับไม่ได้) ถ้าแค่เลิกใช้ ให้ปิด “ใช้งานอยู่” แทน"
               addLabel="+ เพิ่มหน้าตัด" emptyText="โรงรีดนี้ยังไม่มีหน้าตัด" beforeDelete={removeProfileFiles}
               columns={[
+                { key: 'image_path', label: 'รูป', render: r => (
+                  <ProfileThumb url={imageUrls[r.image_path]} alt={r.drawing_no || r.name} title={`${r.drawing_no ? `${r.drawing_no} · ` : ''}${profileName[r.id]}`} />
+                ) },
                 { key: 'name', label: 'ชื่อ', render: r => (
                   <span><strong>{r.name}</strong>{r.family ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>กลุ่ม: {r.family}</div> : null}</span>
                 ) },
@@ -180,6 +187,8 @@ export default function ProfilesTab({ canEdit }) {
                     { key: 'length_m', label: 'ยาว (ม.)' },
                   ]}
                 />
+                <ProfileImageCard key={pickedProfile.id} profile={pickedProfile} label={profileName[pickedProfile.id]} url={imageUrls[pickedProfile.image_path]}
+                  tenantId={tenant?.id} canEdit={canEdit} onChanged={profiles.refetch} />
                 <div className="card" style={{ padding: 14, marginBottom: 16 }}>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>ภาพหน้าตัดคร่าวๆ จากมิติ · {profileName[pickedProfile.id]}</div>
                   {sketch
