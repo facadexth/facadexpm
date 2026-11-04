@@ -25,6 +25,7 @@ import { PLATFORM_BOT_BASIC_ID, platformBotLabel } from '../lib/platformLineBot.
 import PendingMark from '../components/PendingMark.jsx'
 import { isIssueOpen } from '../lib/pendingRules.js'
 import CardTable from '../components/CardTable.jsx'
+import { changeWorkerLine } from '../lib/workerLineRelink.js'
 const CC_COMMAND_MAP = { title: 'พิมพ์', sub: ['ทำอะไร'], actions: 'last' }
 const CC_ISSUE_MAP = { title: 'พนักงาน', status: 'สถานะ', sub: ['ไซต์งาน', 'วันที่แจ้ง'], actions: 'last' }
 const CC_UNLINKED_MAP = { title: 'LINE User ID', sub: ['พบครั้งแรก'], actions: 'last' }
@@ -269,6 +270,23 @@ export default function CommunicationCenter({ navState }) {
       const updated = { ...worker, line_link_code: code }
       setWorkers(ws => ws.map(w => (w.id === worker.id ? updated : w)))
       setLinkModalWorker(updated)
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setGeneratingFor(null)
+    }
+  }
+  // เปลี่ยน LINE: cut the old LINE now + issue a new code (see workerLineRelink.js).
+  const [changeLineWorker, setChangeLineWorker] = useState(null)
+  const handleChangeLine = async () => {
+    const worker = changeLineWorker
+    if (!worker) return
+    setGeneratingFor(worker.id)
+    try {
+      const updated = await changeWorkerLine(supabase, worker.id, generateLinkCode())
+      setWorkers(ws => ws.map(w => (w.id === worker.id ? { ...w, ...updated } : w)))
+      setChangeLineWorker(null)
+      setLinkModalWorker({ ...worker, ...updated })
     } catch (e) {
       alert('Error: ' + e.message)
     } finally {
@@ -852,9 +870,13 @@ export default function CommunicationCenter({ navState }) {
                         : statusBadge(false, '', '❌ ยังไม่เชื่อม')}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      {!w.line_user_id && (
+                      {!w.line_user_id ? (
                         <button className="btn btn-sm btn-ghost" disabled={generatingFor === w.id} onClick={() => handleShowLink(w)}>
                           {generatingFor === w.id ? '⏳...' : w.line_link_code ? '🔗 ดูลิงก์' : '🔗 สร้างลิงก์เชื่อมต่อ'}
+                        </button>
+                      ) : (
+                        <button className="btn btn-sm btn-ghost" disabled={generatingFor === w.id} onClick={() => setChangeLineWorker(w)}>
+                          {generatingFor === w.id ? '⏳...' : '🔄 เปลี่ยน LINE'}
                         </button>
                       )}
                     </td>
@@ -1080,6 +1102,23 @@ export default function CommunicationCenter({ navState }) {
           message="ลบผู้ส่งข้อความนี้ออกจากรายการ? ใช้เมื่อไม่ใช่ทีมงานจริง (เช่น สแปมหรือลูกค้าที่ทักผิดกลุ่ม)"
           onConfirm={handleDismissSender}
           onCancel={() => setDismissSender(null)}
+        />
+      )}
+
+      {changeLineWorker && (
+        <ConfirmDialog
+          title={`🔄 เปลี่ยน LINE ของ ${changeLineWorker.nickname || changeLineWorker.name}`}
+          message={
+            <>
+              <div style={{ color: 'var(--red)', fontWeight: 600 }}>LINE เดิมจะใช้ไม่ได้ทันที</div>
+              <div>{changeLineWorker.nickname || changeLineWorker.name} จะเช็คอิน เบิกเงิน ขอลา หรือดูสลิปจาก LINE เดิมไม่ได้อีก จนกว่าจะเชื่อม LINE ใหม่</div>
+              <div style={{ marginTop: 8 }}>ระบบจะสร้างรหัสใหม่ให้ ส่งให้เปิดจาก LINE ใหม่</div>
+            </>
+          }
+          danger
+          confirmDisabled={generatingFor === changeLineWorker.id}
+          onConfirm={handleChangeLine}
+          onCancel={() => setChangeLineWorker(null)}
         />
       )}
 
