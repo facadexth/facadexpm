@@ -1,0 +1,109 @@
+# Generates the KC Fuji "market" import (supabase/datafix/2026-11-04-import-fuji-market.sql) into the existing FUJI extruder.
+# KC prints weight per BAR as a range per wall thickness and finish; owner 2026-11-04 chose: midpoint of the PAINTED range
+# (anodised when no painted value), divided by the bar length (6.4 m unless printed). One profile row per thickness.
+import json, uuid, os, re
+from PIL import Image, ImageDraw, ImageFont
+ROOT='/Users/plfx/code/FacadeXPM/facadex-app'
+X=ROOT+'/DOC/ALUMNIUM CATALOG/_extracted/fuji-market-sections'
+OUT=os.path.dirname(os.path.abspath(__file__))
+T='1b9affc4-2136-4ed1-b168-a36e6624e743'
+d=json.load(open(ROOT+'/docs/catalogs/fuji/kc-fuji-market-catalogue.json'))
+man={re.sub(r'\s+','',m['die']).upper():m for m in json.load(open(X+'/manifest.json')) if m.get('file')}
+prov=str(uuid.uuid5(uuid.UUID('6f1c2a90-0000-4000-8000-000000f0f1f1'),'provider'))   # FUJI, from 2026-11-04-import-fuji-eurotech.gen.py
+ns=uuid.UUID('6f1c2a90-0000-4000-8000-000000f0f1f2')
+uid=lambda *k: str(uuid.uuid5(ns,'|'.join(map(str,k))))
+SER={2:('ฟูจิ ตัวตลาด','ฟูจิตลาด ชุดบานเลื่อน 4" (F70xx / F715x)',['บานเลื่อนสวน 2 บาน','บานเลื่อน 2 ตาย 2']),
+     3:('ฟูจิ ตัวตลาด','ฟูจิตลาด ชุดบานสวิง / กล่อง 4" (F90xx) + บานแขวน',['บานสวิง','บานสวิงเดี่ยว','บานสวิงคู่','บานเปิด','บานติดตาย','บานเลื่อนรางแขวน']),
+     4:('ฟูจิ ตัวตลาด','ฟูจิตลาด ชุดบานกระทุ้ง ยูเนี่ยน (F3100)',['บานกระทุ้ง','บานเปิด']),
+     5:('STANDARD','ฟูจิตลาด เส้นมาตรฐาน (ลูกฟูก กล่อง ฉาก ตัวยู ท่อ เส้นแบน)',[]),
+     6:('ฟูจิ ตัวตลาด','ฟูจิตลาด ชุดตู้กับข้าว',[])}
+FAM=[('STANDARD',2,'{0.8,1.0,1.2}'),('ฟูจิ ตัวตลาด',3,None)]
+q=lambda s: "'"+str(s).replace("'","''")+"'" if s is not None else 'NULL'
+num=lambda v: 'NULL' if v in (None,'') else repr(round(float(v),4))
+def mid(v):
+    xs=[float(x) for x in re.findall(r'\d+(?:\.\d+)?', str(v))]
+    return sum(xs[:2])/len(xs[:2]) if xs else None
+def parse(k, wall):
+    """key -> (rank, thickness); rank 0 = painted/coated, 1 = anodised / unknown finish"""
+    k=k.strip().lower(); rank=0 if k.startswith(('paint','coat')) else 1
+    m=re.search(r'(\d+(?:\.\d+)?)', k)
+    if 'thin' in k or 'medium' in k or 'thick' in k: return None
+    if k.startswith('t<'): return (rank, wall)
+    return (rank, float(m.group(1)) if m else wall)
+rows=[]; skipped=[]
+for i,(fam,sname,types) in SER.items():
+    for p in d['series'][i]['profiles']:
+        die=p['die_no'].strip(); L=float(p.get('std_length_m') or 6.4)
+        if p.get('kg_per_m'):
+            rows.append(dict(p, die=die, t=p.get('wall_mm'), kgm=float(p['kg_per_m']), sid=uid('series',sname), basis='kg/m printed')); continue
+        best={}
+        for k,v in (p.get('kg_per_bar') or {}).items():
+            r=parse(k, p.get('wall_mm'))
+            if not r or mid(v) is None: continue
+            rank,t=r
+            if t not in best or rank < best[t][0]: best[t]=(rank, mid(v)/L, k, v)
+        if not best:
+            # only thin/medium/thick words: one row at the printed wall, middle word
+            kb=p.get('kg_per_bar') or {}
+            v=kb.get('medium') or kb.get('paint_thin') or kb.get('anod_thin') or next(iter(kb.values()), None)
+            if v and mid(v): best[p.get('wall_mm')]=(1, mid(v)/L, 'medium', v)
+        if not best: skipped.append(die); continue
+        for t,(rank,kgm,k,v) in sorted(best.items(), key=lambda x: (x[0] is None, x[0] or 0)):
+            rows.append(dict(p, die=die, t=t, kgm=kgm, sid=uid('series',sname), basis=f'{k} {v} kg/bar ÷ {L:g} m'))
+seen={}; links=[]
+for r in rows:
+    key=(r['die'], r['t'])
+    if key not in seen:
+        r['id']=uid('profile',*key); seen[key]=r
+    links.append((r['sid'], seen[key]['id'], r.get('role_family') or r['name']))
+links=list(dict.fromkeys(links)); profiles=list(seen.values())
+font=ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc',30)
+os.makedirs(OUT+'/img',exist_ok=True); imgs=[]
+def label(t):
+    if t in (None,''): return 't = ?'
+    v=float(t); return 't = '+(f'{v:.1f}' if round(v,1)==v else f'{v:g}')+' mm'
+for p in profiles:
+    m=man.get(re.sub(r'\s+','',p['die']).upper())
+    if not m: p['image_path']=None; continue
+    im=Image.open(X+'/'+m['file']).convert('RGB'); w,h=im.size; band=48
+    o=Image.new('RGB',(w,h+band),'white'); o.paste(im,(0,0)); dr=ImageDraw.Draw(o); lb=label(p['t'])
+    dr.text(((w-dr.textlength(lb,font=font))/2,h+6),lb,fill='black',font=font)
+    fn=p['id']+'.png'; o.save(OUT+'/img/'+fn,optimize=True)
+    p['image_path']=f'{T}/profiles/{p["id"]}.png'; imgs.append({'id':p['id'],'file':fn,'code':p['die']})
+json.dump(imgs,open(OUT+'/list.json','w'))
+L=["-- Owner 2026-11-04: Fuji market range bought via KC (KC ฟูจิแคตตาลอกตัวตลาด.pdf) into the FUJI extruder. EcoTech A/C-CLASS",
+"-- are skipped (already imported from the Eurotech catalogue). Weight per bar range -> owner choice 1: midpoint of the painted",
+"-- range (anodised if none) / bar length; one row per wall thickness. Colours and kg prices are the FUJI extruder's (SMS rates).",
+"-- Generated by 2026-11-04-import-fuji-market.gen.py; refuses to run twice.",
+"BEGIN;",
+f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM alu_providers WHERE id = {q(prov)}) THEN RAISE EXCEPTION 'FUJI extruder missing'; END IF;",
+f"  IF EXISTS (SELECT 1 FROM alu_series_families WHERE id = {q(uid('family','ฟูจิ ตัวตลาด'))}) THEN RAISE EXCEPTION 'Fuji market already imported'; END IF; END $$;"]
+for f,o,th in FAM:
+    L.append(f"INSERT INTO alu_series_families (id, tenant_id, provider_id, name, thickness_options, sort_order, active) VALUES ({q(uid('family',f))}, {q(T)}, {q(prov)}, {q(f)}, {q(th) if th else 'NULL'}, {o}, true);")
+for i,(fam,sname,types) in SER.items():
+    sid=uid('series',sname)
+    L.append(f"INSERT INTO alu_series (id, tenant_id, provider_id, name, is_base, active, series_family_id) VALUES ({q(sid)}, {q(T)}, {q(prov)}, {q(sname)}, false, true, {q(uid('family',fam))});")
+    for t in types:
+        L.append(f"INSERT INTO alu_series_types (tenant_id, series_id, type_id) SELECT {q(T)}, {q(sid)}, id FROM door_window_types WHERE tenant_id = {q(T)} AND name = {q(t)};")
+for p in profiles:
+    L.append(f"-- {p['die']} t={p['t']}: {p['basis']}")
+    L.append("INSERT INTO alu_profiles (id, tenant_id, provider_id, name, drawing_no, family, thickness_mm, linear_weight_kg_per_m, default_length_m, width_mm, depth_mm, active, image_path) VALUES "
+             f"({q(p['id'])}, {q(T)}, {q(prov)}, {q(p['name'])}, {q(p['die'])}, {q(p.get('role_family') or p['name'])}, {num(p['t'])}, {num(p['kgm'])}, {num(p.get('std_length_m') or 6.4)}, {num(p.get('width_mm'))}, {num(p.get('depth_mm'))}, true, {q(p['image_path'])});")
+for sid,pid,fam in links:
+    L.append(f"INSERT INTO alu_series_profiles (tenant_id, series_id, profile_id, family) VALUES ({q(T)}, {q(sid)}, {q(pid)}, {q(fam)});")
+ids=', '.join(q(p['id']) for p in profiles); nt=sum(len(v[2]) for v in SER.values())
+L.append(f"""DO $$ DECLARE a int; b int; c int; d int; f int; BEGIN
+  SELECT count(*) INTO a FROM alu_series s JOIN alu_series_families fm ON fm.id = s.series_family_id WHERE fm.id IN ({q(uid('family','STANDARD'))}, {q(uid('family','ฟูจิ ตัวตลาด'))});
+  SELECT count(*) INTO b FROM alu_profiles WHERE id IN ({ids});
+  SELECT count(*) INTO c FROM alu_series_profiles WHERE profile_id IN ({ids});
+  SELECT count(*) INTO d FROM alu_series_types st JOIN alu_series s ON s.id = st.series_id WHERE s.series_family_id IN ({q(uid('family','STANDARD'))}, {q(uid('family','ฟูจิ ตัวตลาด'))});
+  SELECT count(*) INTO f FROM alu_profiles WHERE id IN ({ids}) AND image_path IS NOT NULL;
+  IF a <> {len(SER)} OR b <> {len(profiles)} OR c <> {len(links)} OR d <> {nt} OR f <> {len(imgs)} THEN
+    RAISE EXCEPTION 'count mismatch: series % profiles % links % types % images %', a, b, c, d, f; END IF;
+END $$;""")
+L.append(f"SELECT s.name series, (SELECT count(*) FROM alu_series_profiles sp WHERE sp.series_id = s.id) profile_rows FROM alu_series s WHERE s.series_family_id IN ({q(uid('family','STANDARD'))}, {q(uid('family','ฟูจิ ตัวตลาด'))}) ORDER BY s.name;")
+L.append("COMMIT;")
+open(ROOT+'/supabase/datafix/2026-11-04-import-fuji-market.sql','w').write('\n'.join(L)+'\n')
+print('dies',len({p['die'] for p in profiles}),'rows',len(profiles),'links',len(links),'imgs',len(imgs),'skipped',skipped,'no t',sum(1 for p in profiles if p['t'] in (None,'')))
+import statistics; print('kg/m range',min(p['kgm'] for p in profiles),max(p['kgm'] for p in profiles))
+for p in profiles[:4]: print(p['die'],p['t'],round(p['kgm'],4),p['basis'])
