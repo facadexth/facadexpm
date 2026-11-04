@@ -1,0 +1,101 @@
+{
+ "slug": "2026-11-05-import-aluinch",
+ "owner_note": "Owner 2026-11-04/05: \"i add aluinch\" (sent twice after being offered: import now with weight 0, or wait for a weight table) — ALUINCH as an extruder, prices like SMS (170, wood grain 350). The catalogues print NO weights, so every profile has weight 0 and shows the red ไม่มีน้ำหนัก badge until ALUINCH sends a weight table.",
+ "provider_name": "ALUINCH",
+ "short_name": "AI",
+ "finishes": [
+  [
+   "อบขาว",
+   170
+  ],
+  [
+   "อบดำ",
+   170
+  ],
+  [
+   "สีชุบ (อโนไดซ์)",
+   170
+  ],
+  [
+   "ลายไม้สักทอง",
+   350
+  ]
+ ],
+ "parts": [
+  {
+   "json": "docs/catalogs/aluinch/aluinch-part-a.json",
+   "sections": "DOC/ALUMNIUM CATALOG/_extracted/aluinch-a-sections"
+  },
+  {
+   "json": "docs/catalogs/aluinch/aluinch-part-b.json",
+   "sections": "DOC/ALUMNIUM CATALOG/_extracted/aluinch-b-sections"
+  }
+ ],
+ "families": {
+  "ผนังกระจก / ประตูภายใน": [
+   0,
+   null
+  ],
+  "บานเลื่อนภายนอก (E)": [
+   1,
+   null
+  ],
+  "หน้าต่าง": [
+   2,
+   null
+  ],
+  "บานเฟี้ยม": [
+   3,
+   null
+  ],
+  "ประตูภายใน / ตู้": [
+   4,
+   null
+  ],
+  "งานตกแต่ง / บานเกล็ด": [
+   5,
+   null
+  ]
+ },
+ "series_rename": {
+  "T series (ALUINCH T-SERIE.pdf) — กล่อง 101.6 x 20/25 สำหรับผนังกระจก/ผนังเบา (glass 6-12 mm with rubber, 15 mm with silicone; wall frame 64-65 mm)": "T ผนังกระจก กล่อง 101.6 x 20/25",
+  "F series (ALUINCH F-SERIE.pdf) — mini 45 mm partition (glass 6-12 mm with rubber, 15 mm with silicone)": "F ผนังกระจก mini 45",
+  "V series (ALUINCH V-SERIE.pdf) — วงกบทับผนัง (door casing that wraps a wall end)": "V วงกบทับผนัง",
+  "D series (ALUINCH D-SERIE.pdf) — ประตูอลูมิเนียม Slim 60 mm / Strong 100 mm (glass 6, 8, 10, 12 mm)": "D ประตู Slim 60 / Strong 100",
+  "S series (ALUINCH S-SERIE.pdf) — บัวเชิงผนัง (wall skirting) 50 / 100 / 150 / 200 mm": "S บัวเชิงผนัง",
+  "B series (ALUINCH B-SERIE.pdf) — บานเฟี้ยม (folding doors/windows), glass 6, 8, 10, 12 mm": "B บานเฟี้ยม",
+  "C series (ALUINCH C-SERIE.pdf) — บานกระทุ้ง/บานเปิด (awning & casement windows, glass 6, 8, 10 mm)": "C บานกระทุ้ง / บานเปิด",
+  "H series (ALUINCH H-SERIE.pdf) — หน้าต่างบานยก (hung / vertical sliding window that also tilts in), glass 6, 8, 10 mm": "H หน้าต่างบานยก",
+  "ALUINCH W series — casement / awning window (W-SERIE.pdf, printed pages 11.01-11.08)": "W บานกระทุ้ง / บานเปิด",
+  "ALUINCH J series — Joinery wood works trims / อลูมิเนียมสำหรับตกแต่ง (J-SERIE.pdf, printed 14.03-14.04)": "J คิ้วตกแต่ง U / T / L",
+  "ALUINCH L series — Aluminium louver / บานเกล็ดอลูมิเนียม (L-SERIE.pdf, printed 15.03-15.04)": "L บานเกล็ด",
+  "ALUINCH M series — slim sliding wardrobe door system (M-SERIE.pdf, printed 7.01-7.10)": "M บานเลื่อนตู้เสื้อผ้า",
+  "ALUINCH E series STANDARD SYSTEM — exterior sliding, 3 track 101.6 (EXT SLIDING.pdf, printed 9.01-9.24)": "E STANDARD บานเลื่อน 3 ราง 101.6",
+  "ALUINCH E series ECO-SYSTEM — 2 track 68 (EXT SLIDING.pdf p.7)": "E ECO บานเลื่อน 2 ราง 68",
+  "ALUINCH E series LARGE-SYSTEM — 4 track 135 (EXT SLIDING.pdf p.7)": "E LARGE บานเลื่อน 4 ราง 135",
+  "ALUINCH X series — extra slim 16 mm interior doors (SLIM SLIDING.pdf = INT FOLDING DOOR.pdf, printed 6.01-6.30)": "X ประตูภายใน Extra slim 16",
+  "ALUINCH i series — cabinet / closet slim door frames and handles (CABINET.pdf, printed 8.01-8.18)": "i บานตู้ / ตู้เสื้อผ้า"
+ },
+ "series_family": {
+  "T ผนังกระจก กล่อง 101.6 x 20/25": "ผนังกระจก / ประตูภายใน",
+  "F ผนังกระจก mini 45": "ผนังกระจก / ประตูภายใน",
+  "V วงกบทับผนัง": "ผนังกระจก / ประตูภายใน",
+  "D ประตู Slim 60 / Strong 100": "ผนังกระจก / ประตูภายใน",
+  "S บัวเชิงผนัง": "งานตกแต่ง / บานเกล็ด",
+  "B บานเฟี้ยม": "บานเฟี้ยม",
+  "C บานกระทุ้ง / บานเปิด": "หน้าต่าง",
+  "H หน้าต่างบานยก": "หน้าต่าง",
+  "W บานกระทุ้ง / บานเปิด": "หน้าต่าง",
+  "J คิ้วตกแต่ง U / T / L": "งานตกแต่ง / บานเกล็ด",
+  "L บานเกล็ด": "งานตกแต่ง / บานเกล็ด",
+  "M บานเลื่อนตู้เสื้อผ้า": "ประตูภายใน / ตู้",
+  "E STANDARD บานเลื่อน 3 ราง 101.6": "บานเลื่อนภายนอก (E)",
+  "E ECO บานเลื่อน 2 ราง 68": "บานเลื่อนภายนอก (E)",
+  "E LARGE บานเลื่อน 4 ราง 135": "บานเลื่อนภายนอก (E)",
+  "X ประตูภายใน Extra slim 16": "ประตูภายใน / ตู้",
+  "i บานตู้ / ตู้เสื้อผ้า": "ประตูภายใน / ตู้"
+ },
+ "kg_override": {},
+ "inactive_dies": [],
+ "zero_weight_ok": true
+}
