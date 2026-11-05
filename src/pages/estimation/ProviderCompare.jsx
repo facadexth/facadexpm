@@ -9,11 +9,14 @@ import { itemsAffectedByDefaultFamily } from '../../lib/estimationInherit.js'
 import { finishChoices, draftFromProject, reconcileDraft, buildPatch, applySeriesKey } from './projectDefaults.js'
 import { familyChoices, familyLabel, projectFamilyKey } from '../../lib/seriesFamily.js'
 import InlineError from './InlineError.jsx'
+import { useImageUrls } from '../../lib/profileImages.js'
+import ProviderLogo from '../../components/ProviderLogo.jsx'
 import { comparisonRows, compareStatusText, itemsWithForeignColour } from './projectBomHelpers.js'
 
 export default function ProviderCompare({ project, items, base, index, seriesTypes, canEdit, onApplied }) {
   const providers = useMemo(() => Object.values(index.providers).filter(p => p.active !== false).sort((a, b) => String(a.name).localeCompare(String(b.name), 'th')), [index])
   const primaryId = project.primary_provider_id || null
+  const logoUrls = useImageUrls(providers.map(p => p.logo_path))
   // picks[providerId] = { seriesKey, finishId } (seriesKey = a ซีรีส์หลัก key); the main extruder row always uses the project's own defaults
   const baseMissing = !primaryId || !providers.some(p => p.id === primaryId)
   const [picks, setPicks] = useState({})
@@ -77,7 +80,7 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
               const fixed = p.id === primaryId
               return (
                 <tr key={p.id}>
-                  <td>{p.name}{fixed ? ' (หลัก)' : ''}</td>
+                  <td><span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><ProviderLogo url={logoUrls[p.logo_path]} name={p.name} width={56} height={26} /><span>{p.name}{fixed ? ' (หลัก)' : ''}</span></span></td>
                   <td>{fixed ? (familyLabel(index, pick.seriesKey) || '—') : (
                     <select className="input input-sm" value={pick.seriesKey} onChange={e => setPick(p.id, { seriesKey: e.target.value, finishId: '' })}>
                       <option value="">— เลือก —</option>

@@ -11,6 +11,10 @@ import { parseThicknessOptions, formatThicknessOptions } from '../../lib/seriesF
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { typeFields, typeErrorText } from './TypesTab.jsx'
 import { typePickerOptions } from '../../lib/catalogTypeForm.js'
+import { useTenant } from '../../hooks/useTenant.js'
+import { useImageUrls } from '../../lib/profileImages.js'
+import ProviderLogo from '../../components/ProviderLogo.jsx'
+import ProviderLogoCard from './ProviderLogoCard.jsx'
 
 const BASIS_LABEL = { per_kg: 'ต่อกก.', per_piece: 'ต่อเส้น', both: 'ทั้งสองแบบ' }
 
@@ -55,6 +59,8 @@ export default function HierarchyTab({ canEdit }) {
   const [seriesId, setSeriesId] = useState('')
   const [addingType, setAddingType] = useState(false)
   const [savingType, setSavingType] = useState(false)
+  const { tenant } = useTenant()
+  const logoUrls = useImageUrls((providers.data || []).map(p => p.logo_path))
 
   const providerById = Object.fromEntries((providers.data || []).map(p => [p.id, p]))
   const seriesOfProvider = (series.data || []).filter(s => s.provider_id === providerId)
@@ -105,11 +111,13 @@ export default function HierarchyTab({ canEdit }) {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
+      <div>
       <CatalogCrud
         title="🏭 โรงรีด" table="alu_providers" fields={PROVIDER_FIELDS} rows={providers.data}
         onChanged={providers.refetch} canEdit={canEdit} deleteWarning="ลบไม่ได้ถ้ายังมีซีรีส์ หน้าตัด สี อุปกรณ์ หรือราคาของโรงรีดนี้อยู่ ให้ปิด “ใช้งานอยู่” แทน"
         addLabel="+ เพิ่มโรงรีด" emptyText="ยังไม่มีโรงรีด"
         columns={[
+          { key: 'logo_path', label: 'โลโก้', render: r => <ProviderLogo url={logoUrls[r.logo_path]} name={r.name} /> },
           { key: 'name', label: 'ชื่อ', render: r => <strong>{r.name}</strong> },
           { key: 'short_name', label: 'ชื่อย่อ' },
           { key: 'price_basis', label: 'คิดราคา', render: r => BASIS_LABEL[r.price_basis] },
@@ -117,6 +125,11 @@ export default function HierarchyTab({ canEdit }) {
         ]}
         rowActions={r => pickBtn(r.id === providerId, () => { setProviderId(r.id); setSeriesId('') })}
       />
+      {providerById[providerId] && (
+        <ProviderLogoCard key={providerId} provider={providerById[providerId]} url={logoUrls[providerById[providerId].logo_path]}
+          tenantId={tenant?.id} canEdit={canEdit} onChanged={providers.refetch} />
+      )}
+      </div>
 
       <div>
         {providerId && providerById[providerId] ? (

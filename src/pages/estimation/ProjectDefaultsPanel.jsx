@@ -5,6 +5,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import InlineError from './InlineError.jsx'
+import { useImageUrls } from '../../lib/profileImages.js'
+import ProviderLogo from '../../components/ProviderLogo.jsx'
 import { itemsAffectedByDefaultFamily } from '../../lib/estimationInherit.js'
 import { packagesForSeriesIds } from '../../lib/projectHardware.js'
 import { DESCRIPTION_TOKENS, buildItemDescription } from '../../lib/descriptionFormat.js'
@@ -33,6 +35,8 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
 
   // Reset only for another project or after our own successful save, never on a plain refetch (unsaved edits stay).
   const [saveTick, setSaveTick] = useState(0)
+  const primaryProvider = index.providers[draft.primary_provider_id] || null
+  const logoUrls = useImageUrls(primaryProvider ? [primaryProvider.logo_path] : [])
   useEffect(() => { setDraft(reconcileDraft(draftFromProject(project), index, seriesTypes)) }, [project.id, saveTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const change = (k, v) => setDraft(d => reconcileDraft({ ...d, [k]: v }, index, seriesTypes))
@@ -96,6 +100,7 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
       <div className="card" style={{ padding: '12px 16px', display: 'grid', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ fontWeight: 700 }}>ค่าเริ่มต้นของโปรเจกต์</div>
+          {primaryProvider?.logo_path && <ProviderLogo url={logoUrls[primaryProvider.logo_path]} name={primaryProvider.name} width={56} height={26} />}
           {dirty
             ? <span className="badge" style={{ color: 'var(--red)' }}>มีค่าที่ยังไม่บันทึก</span>
             : <span className="badge badge-paid">✓ บันทึกแล้ว</span>}
@@ -121,10 +126,13 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
         <Field label="โรงรีดหลัก">
-          <select className="input" disabled={dis} value={draft.primary_provider_id} onChange={e => change('primary_provider_id', e.target.value)}>
-            <option value="">ไม่กำหนด (เลือกต่อรายการ)</option>
-            {Object.values(index.providers).filter(p => p.active !== false).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {primaryProvider && <ProviderLogo url={logoUrls[primaryProvider.logo_path]} name={primaryProvider.name} width={64} height={30} />}
+            <select className="input" style={{ flex: 1, minWidth: 0 }} disabled={dis} value={draft.primary_provider_id} onChange={e => change('primary_provider_id', e.target.value)}>
+              <option value="">ไม่กำหนด (เลือกต่อรายการ)</option>
+              {Object.values(index.providers).filter(p => p.active !== false).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
         </Field>
         <Field label="ซีรีส์หลัก" hint="แต่ละรายการได้ชุดที่ตรงประเภทบานเอง เปลี่ยนในรายการได้">
           <select className="input" disabled={dis} value={seriesKey} onChange={e => changeSeries(e.target.value)}>

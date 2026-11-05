@@ -17,6 +17,7 @@ import { sketchShapeFor, sameShapeProfiles } from '../../lib/catalogTypeForm.js'
 import { useImageUrls } from '../../lib/profileImages.js'
 import { ProfileThumb } from '../../components/ProfileImage.jsx'
 import ProfileImageCard from './ProfileImageCard.jsx'
+import ProviderLogo from '../../components/ProviderLogo.jsx'
 
 const PROFILE_FIELDS = [
   { key: 'name', label: 'ชื่อหน้าตัด', type: 'text', required: true, placeholder: 'เช่น กล่องร่อง' },
@@ -65,6 +66,7 @@ export default function ProfilesTab({ canEdit }) {
   const [providerId, setProviderId] = useState('')
   const [profileId, setProfileId] = useState('')
   const [seriesId, setSeriesId] = useState('')
+  const logoUrls = useImageUrls((providers.data || []).filter(p => p.id === providerId).map(p => p.logo_path))
   const imageUrls = useImageUrls((profiles.data || []).filter(p => p.provider_id === providerId).map(p => p.image_path))
 
   const error = providers.error || profiles.error || finishes.error || variants.error || series.error || seriesProfiles.error
@@ -121,11 +123,14 @@ export default function ProfilesTab({ canEdit }) {
     <div>
       <div style={{ marginBottom: 12 }}>
         <label className="label">เลือกโรงรีด</label>
-        <select className="input" style={{ maxWidth: 320 }} value={providerId}
-          onChange={e => { setProviderId(e.target.value); setProfileId(''); setSeriesId('') }}>
-          <option value="">— เลือกโรงรีด —</option>
-          {withInactiveTag(providers.data, p => p.name).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', maxWidth: 400 }}>
+          {provider && <ProviderLogo url={logoUrls[provider.logo_path]} name={provider.name} width={64} height={30} />}
+          <select className="input" style={{ maxWidth: 320 }} value={providerId}
+            onChange={e => { setProviderId(e.target.value); setProfileId(''); setSeriesId('') }}>
+            <option value="">— เลือกโรงรีด —</option>
+            {withInactiveTag(providers.data, p => p.name).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6, maxWidth: 560 }}>
           สีเป็นของแต่ละโรงรีด ไม่ใช้ร่วมกัน · หน้าตัด 1 แถว = 1 ความหนา (ความหนาและน้ำหนักอยู่แถวเดียวกัน) · ราคาต่อกก. กรอกที่แท็บ "ราคา"
         </div>
