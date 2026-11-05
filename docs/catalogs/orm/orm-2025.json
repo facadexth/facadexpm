@@ -1,0 +1,5658 @@
+{
+ "source_pdf": [
+  "DOC/ALUMNIUM CATALOG/ORM/เล่มราคา-ORM-อัพเดต-2025.10.23.pdf (price book, authority)",
+  "DOC/ALUMNIUM CATALOG/ORM/แคตล็อคหน้าตัด ORM.pdf (section catalogue, Update 01/02/2023)",
+  "DOC/ALUMNIUM CATALOG/ORM/รวมหน้าตัดอลูมิเนียม-ORM-2026.pdf (one-page section overview 2026)",
+  "DOC/ALUMNIUM CATALOG/ORM/ORM-Catalog-Color-2568.pdf (colour brochure)"
+ ],
+ "supplier": "บริษัท ไทยเม็ททอล อลูมิเนียม จำกัด",
+ "brand": "ORM",
+ "catalogue_year": "2025 (price book Ver.3 ORM 2025/4, updated 23/10/2025)",
+ "finishes_noted": [
+  "Cotton White สีขาว (powder coat, gloss 90-99%)",
+  "Space Black สีดำ (gloss 25-35%)",
+  "Aero Metallic Grey สีเทาเมทัลลิค แอโร่ (old grey, gloss 4-8%)",
+  "Galaxy Grey สีกาแลคซี่ เกรย์ (new grey, gloss 3-13%; the main stocked colour)",
+  "Champagne Grey สีแชมเปญ เกรย์ (new, gloss 7-17%)",
+  "AL-WOOD woodgrain: Oriental Teak สีสักทอง, Danish Oak สีโอ๊ค เดนมาร์ก",
+  "MILL ตัวดิบ (unpainted)",
+  "ชุบขาว (plated/anodised white) — priced only on 804-03, 810-06, 810-07, 813-01..03",
+  "Powder 60-80 micron, AAMA, PowderTech vertical line up to 7.2 m bars; wall 1.2/1.5/2.0 mm; frames 9 cm and 4 in"
+ ],
+ "price_columns": [
+  "พ่นขาว คอตตอนไวท์",
+  "พ่นดำ สเปซแบล็ค",
+  "พ่นเทา เมทัลลิค/กาแลคซี่",
+  "พ่นเทา แชมเปญเกรย์",
+  "ลายไม้ สักทอง/โอ๊คเดนมาร์ก",
+  "ตัวดิบ MILL"
+ ],
+ "series": [
+  {
+   "name": "801 บานเลื่อนเอเชีย 9 ซม. (เอเชียน ทรอป)",
+   "group": "801",
+   "pages": [
+    2,
+    3,
+    4
+   ],
+   "app_types": [
+    "บานเลื่อน",
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 2 ตาย 2"
+   ],
+   "profiles": [
+    {
+     "die_no": "801-01",
+     "name": "เฟรมล่างบานเลื่อนธรณีต่ำ 9 ซม.",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 31.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1168,
+      "พ่นดำ สเปซแบล็ค": 1191,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1300,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2285,
+      "ตัวดิบ MILL": 1107
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-01",
+     "name": "เฟรมล่างบานเลื่อนธรณีต่ำ 9 ซม.",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 31.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1394,
+      "พ่นดำ สเปซแบล็ค": 1421,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1504,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1314
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-02",
+     "name": "เฟรมล่างบานเลื่อนธรณีสูง 9 ซม.",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 50.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1405,
+      "พ่นดำ สเปซแบล็ค": 1433,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1552,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2695,
+      "ตัวดิบ MILL": 1333
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "801-02",
+     "name": "เฟรมล่างบานเลื่อนธรณีสูง 9 ซม.",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 50.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1594,
+      "พ่นดำ สเปซแบล็ค": 1625,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1803,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "801-03",
+     "name": "เฟรมบนบานเลื่อน 9 ซม.",
+     "role_family": "เฟรมบน",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1114,
+      "พ่นดำ สเปซแบล็ค": 1136,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1233,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2213,
+      "ตัวดิบ MILL": 1063
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-03",
+     "name": "เฟรมบนบานเลื่อน 9 ซม.",
+     "role_family": "เฟรมบน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1363,
+      "พ่นดำ สเปซแบล็ค": 1390,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1502,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1297
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-04",
+     "name": "เฟรมข้างบานเลื่อน 20 มม.",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 20.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 751,
+      "พ่นดำ สเปซแบล็ค": 766,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 826,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1436,
+      "ตัวดิบ MILL": 703
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-04",
+     "name": "เฟรมข้างบานเลื่อน 20 มม.",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 20.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 887,
+      "พ่นดำ สเปซแบล็ค": 904,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 969,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 817
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-05",
+     "name": "เฟรมข้างบานเลื่อน 30 มม.",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 881,
+      "พ่นดำ สเปซแบล็ค": 898,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 957,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1692,
+      "ตัวดิบ MILL": 837
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-05",
+     "name": "เฟรมข้างบานเลื่อน 30 มม.",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1053,
+      "พ่นดำ สเปซแบล็ค": 1074,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1164,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1003
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-06",
+     "name": "เสากุญแจ/เกี่ยว 53 มม.",
+     "role_family": "เสากุญแจ/เสาเกี่ยว",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 53.0,
+     "depth_mm": 25.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 833,
+      "พ่นดำ สเปซแบล็ค": 849,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 908,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1596,
+      "ตัวดิบ MILL": 788
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-06",
+     "name": "เสากุญแจ/เกี่ยว 53 มม.",
+     "role_family": "เสากุญแจ/เสาเกี่ยว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 53.0,
+     "depth_mm": 25.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 955,
+      "พ่นดำ สเปซแบล็ค": 974,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1045,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-07",
+     "name": "เสากุญแจ/เกี่ยว 65 มม.",
+     "role_family": "เสากุญแจ/เสาเกี่ยว",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 25.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1014,
+      "พ่นดำ สเปซแบล็ค": 1034,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1093,
+      "พ่นเทา แชมเปญเกรย์": 1148,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1972,
+      "ตัวดิบ MILL": 957
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-07",
+     "name": "เสากุญแจ/เกี่ยว 65 มม.",
+     "role_family": "เสากุญแจ/เสาเกี่ยว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 25.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1196,
+      "พ่นดำ สเปซแบล็ค": 1219,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1268,
+      "พ่นเทา แชมเปญเกรย์": 1332,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1090
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-08",
+     "name": "ขวางล่าง/ขวางบนบานเลื่อน",
+     "role_family": "ขวางบน-ล่าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 22.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 876,
+      "พ่นดำ สเปซแบล็ค": 893,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 942,
+      "พ่นเทา แชมเปญเกรย์": 990,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1679,
+      "ตัวดิบ MILL": 831
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-08",
+     "name": "ขวางล่าง/ขวางบนบานเลื่อน",
+     "role_family": "ขวางบน-ล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 22.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1060,
+      "พ่นดำ สเปซแบล็ค": 1081,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1121,
+      "พ่นเทา แชมเปญเกรย์": 1178,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 975
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-09",
+     "name": "ตบเสาเกี่ยว 53 มม.",
+     "role_family": "ตบเสาเกี่ยว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 31.26,
+     "depth_mm": 31.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 398,
+      "พ่นดำ สเปซแบล็ค": 405,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 454,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 764,
+      "ตัวดิบ MILL": 371
+     },
+     "stocked": [],
+     "page": 2,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-10",
+     "name": "ตบเสาเกี่ยว 65 มม.",
+     "role_family": "ตบเสาเกี่ยว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 39.0,
+     "depth_mm": 31.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 487,
+      "พ่นดำ สเปซแบล็ค": 496,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 512,
+      "พ่นเทา แชมเปญเกรย์": 538,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 954,
+      "ตัวดิบ MILL": 461
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-11",
+     "name": "ตบเสาเกี่ยวสองทาง 53 มม.",
+     "role_family": "ตบเสาเกี่ยวสองทาง",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 31.26,
+     "depth_mm": 37.55,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 535,
+      "พ่นดำ สเปซแบล็ค": 545,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 604,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1036,
+      "ตัวดิบ MILL": 504
+     },
+     "stocked": [],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-12",
+     "name": "ตบเสาเกี่ยวสองทาง 65 มม.",
+     "role_family": "ตบเสาเกี่ยวสองทาง",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 39.0,
+     "depth_mm": 37.55,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 622,
+      "พ่นดำ สเปซแบล็ค": 634,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 684,
+      "พ่นเทา แชมเปญเกรย์": 719,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1155,
+      "ตัวดิบ MILL": 588
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-13",
+     "name": "ตบธรณีต่ำ",
+     "role_family": "ตบธรณี",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 35.54,
+     "depth_mm": 14.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 16,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 334,
+      "พ่นดำ สเปซแบล็ค": 340,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 361,
+      "พ่นเทา แชมเปญเกรย์": 380,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 599,
+      "ตัวดิบ MILL": 315
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-14",
+     "name": "ตบธรณีสูง",
+     "role_family": "ตบธรณี",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 35.54,
+     "depth_mm": 34.3,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 533,
+      "พ่นดำ สเปซแบล็ค": 543,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 590,
+      "พ่นเทา แชมเปญเกรย์": 620,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 979,
+      "ตัวดิบ MILL": 502
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-19",
+     "name": "สแน็บ",
+     "role_family": "สแน็บ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 17.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 5,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 881,
+      "พ่นดำ สเปซแบล็ค": 898,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 962,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1590,
+      "ตัวดิบ MILL": 831
+     },
+     "stocked": [],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-20",
+     "name": "ซอยกลางบานเลื่อน",
+     "role_family": "ซอยกลาง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 32.0,
+     "depth_mm": 22.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 616,
+      "พ่นดำ สเปซแบล็ค": 628,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 694,
+      "พ่นเทา แชมเปญเกรย์": 729,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1116,
+      "ตัวดิบ MILL": 574
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-21",
+     "name": "สแน็บ 9 ซม. / 4 นิ้ว",
+     "role_family": "สแน็บ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 11.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 916,
+      "พ่นดำ สเปซแบล็ค": 934,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1041,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1566,
+      "ตัวดิบ MILL": 843
+     },
+     "stocked": [],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-22",
+     "name": "ชุดเข้ามุม 90 องศา",
+     "role_family": "เข้ามุม 90",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 25.5,
+     "depth_mm": 25.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 619,
+      "พ่นดำ สเปซแบล็ค": 631,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 703,
+      "พ่นเทา แชมเปญเกรย์": 739,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1402,
+      "ตัวดิบ MILL": 570
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-23",
+     "name": "ฝาปิดเดือยเสากุญแจ เอเชีย",
+     "role_family": "ฝาปิดเดือย",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": 13.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 40,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 162,
+      "พ่นดำ สเปซแบล็ค": 165,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 176,
+      "พ่นเทา แชมเปญเกรย์": 185,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 235,
+      "ตัวดิบ MILL": 149
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 3,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-24",
+     "name": "เดือยเสากุญแจบานเลื่อนเอเชียปี 22",
+     "role_family": "เดือยเสากุญแจ",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 13.9,
+     "depth_mm": 13.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 202,
+      "พ่นดำ สเปซแบล็ค": 206,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 221,
+      "พ่นเทา แชมเปญเกรย์": 233,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 318,
+      "ตัวดิบ MILL": 191
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 4,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-25",
+     "name": "ชนกลางบานเลื่อน เอเชีย ปี 22",
+     "role_family": "ชนกลาง",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 24.6,
+     "depth_mm": 20.8,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 314,
+      "พ่นดำ สเปซแบล็ค": 320,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 351,
+      "พ่นเทา แชมเปญเกรย์": 369,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 505,
+      "ตัวดิบ MILL": 292
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 4,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-26",
+     "name": "ขวางล่าง/ขวางบนบานเลื่อน 75 มม.",
+     "role_family": "ขวางบน-ล่าง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 75.0,
+     "depth_mm": 22.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1681,
+      "พ่นดำ สเปซแบล็ค": 1714,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1765,
+      "พ่นเทา แชมเปญเกรย์": 1854,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2608,
+      "ตัวดิบ MILL": 1439
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 4,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-27",
+     "name": "เสากุญแจ/เกี่ยว 75 มม.",
+     "role_family": "เสากุญแจ/เสาเกี่ยว",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 75.0,
+     "depth_mm": 25.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1747,
+      "พ่นดำ สเปซแบล็ค": 1781,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1835,
+      "พ่นเทา แชมเปญเกรย์": 1927,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2709,
+      "ตัวดิบ MILL": 1496
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 4,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-28",
+     "name": "ตบเสาเกี่ยว 75 มม.",
+     "role_family": "ตบเสาเกี่ยว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 45.6,
+     "depth_mm": 31.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 544,
+      "พ่นดำ สเปซแบล็ค": 554,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 572,
+      "พ่นเทา แชมเปญเกรย์": 601,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 862,
+      "ตัวดิบ MILL": 475
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 4,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-29",
+     "name": "เฟรมล่างบานเลื่อน ภายใน 9 ซม. 2 ราง",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 6.85,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 837,
+      "พ่นดำ สเปซแบล็ค": 853,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 879,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1312,
+      "ตัวดิบ MILL": 744
+     },
+     "stocked": [],
+     "page": 4,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-30",
+     "name": "เฟรมล่างบานเลื่อนธรณีสูง 9 ซม. มีท่อระบายน้ำ",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 50.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2428,
+      "พ่นดำ สเปซแบล็ค": 2476,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2549,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3821,
+      "ตัวดิบ MILL": 2125
+     },
+     "stocked": [],
+     "page": 4,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "801-31",
+     "name": "ตบธรณีสูง 9 ซม. / 4 นิ้ว มีท่อระบายน้ำ",
+     "role_family": "ตบธรณี",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 35.5,
+     "depth_mm": 16.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 468,
+      "พ่นดำ สเปซแบล็ค": 477,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 492,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 738,
+      "ตัวดิบ MILL": 408
+     },
+     "stocked": [],
+     "page": 4,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "801-32",
+     "name": "เดือยเสากุญแจบานเลื่อนเอเชีย (ร่องใส่ยางกันเสียง)",
+     "role_family": "เดือยเสากุญแจ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 25.5,
+     "depth_mm": 18.35,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 16,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 396,
+      "พ่นดำ สเปซแบล็ค": 408,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 419,
+      "พ่นเทา แชมเปญเกรย์": 448,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 644,
+      "ตัวดิบ MILL": 350
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 4,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "801-33",
+     "name": "ชนกลางบานเลื่อนเอเชีย (ร่องใส่ยางกันเสียง)",
+     "role_family": "ชนกลาง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 28.0,
+     "depth_mm": 29.2,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 488,
+      "พ่นดำ สเปซแบล็ค": 500,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 511,
+      "พ่นเทา แชมเปญเกรย์": 546,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 793,
+      "ตัวดิบ MILL": 425
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 4,
+     "confidence": "read",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "name": "802 บานเลื่อน 3 ราง / ติดตาย 4 นิ้ว (เอเชียน ทรอป)",
+   "group": "802",
+   "pages": [
+    5,
+    6
+   ],
+   "app_types": [
+    "บานเลื่อน 3 บาน",
+    "บานติดตาย"
+   ],
+   "profiles": [
+    {
+     "die_no": "802-01",
+     "name": "3 ราง เฟรมล่างบานเลื่อน ธรณีต่ำ 4 นิ้ว",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1405,
+      "พ่นดำ สเปซแบล็ค": 1433,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1455,
+      "พ่นเทา แชมเปญเกรย์": 1528,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2452,
+      "ตัวดิบ MILL": 1212
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-02",
+     "name": "3 ราง เฟรมล่างบานเลื่อน ธรณีสูง 4 นิ้ว",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 50.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1448,
+      "พ่นดำ สเปซแบล็ค": 1476,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1515,
+      "พ่นเทา แชมเปญเกรย์": 1591,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2525,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "802-03",
+     "name": "3ราง เฟรมบนบานเลื่อน 4 นิ้ว",
+     "role_family": "เฟรมบน",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1401,
+      "พ่นดำ สเปซแบล็ค": 1429,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1474,
+      "พ่นเทา แชมเปญเกรย์": 1548,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2455,
+      "ตัวดิบ MILL": 1211
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-04",
+     "name": "3ราง เฟรมข้างบานเลื่อน 20 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 20.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 936,
+      "พ่นดำ สเปซแบล็ค": 954,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 975,
+      "พ่นเทา แชมเปญเกรย์": 1024,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1629,
+      "ตัวดิบ MILL": 804
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-05",
+     "name": "3ราง เฟรมข้างบานเลื่อน 30 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1146,
+      "พ่นดำ สเปซแบล็ค": 1168,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1211,
+      "พ่นเทา แชมเปญเกรย์": 1272,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2006,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-06",
+     "name": "เฟรมบานตาย 4 นิ้ว",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1066,
+      "พ่นดำ สเปซแบล็ค": 1087,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1157,
+      "พ่นเทา แชมเปญเกรย์": 1215,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2080,
+      "ตัวดิบ MILL": 1025
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-06",
+     "name": "เฟรมบานตาย 4 นิ้ว",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1269,
+      "พ่นดำ สเปซแบล็ค": 1294,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1410,
+      "พ่นเทา แชมเปญเกรย์": 1481,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1203
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-06",
+     "name": "เฟรมบานตาย 4 นิ้ว",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1781,
+      "พ่นดำ สเปซแบล็ค": 1816,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1871,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2817,
+      "ตัวดิบ MILL": 1618
+     },
+     "stocked": [],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-07",
+     "name": "ตบบานตาย 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 83.2,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 660,
+      "พ่นดำ สเปซแบล็ค": 673,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 727,
+      "พ่นเทา แชมเปญเกรย์": 764,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1123,
+      "ตัวดิบ MILL": 609
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-08",
+     "name": "ตบบานตายชุดบานเลื่อน 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1086,
+      "พ่นดำ สเปซแบล็ค": 1107,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1187,
+      "พ่นเทา แชมเปญเกรย์": 1247,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2006,
+      "ตัวดิบ MILL": 1036
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "Printed in both 802 series (pages 5 and 7) with identical prices; listed in both series. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-09",
+     "name": "3 ราง ตบเฟรมข้างบานตาย 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 982,
+      "พ่นดำ สเปซแบล็ค": 1001,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1113,
+      "พ่นเทา แชมเปญเกรย์": 1169,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1816,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 5,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-18",
+     "name": "สแน็บ 4 นิ้ว",
+     "role_family": "สแน็บ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 17.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1057,
+      "พ่นดำ สเปซแบล็ค": 1078,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1087,
+      "พ่นเทา แชมเปญเกรย์": 1142,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1834,
+      "ตัวดิบ MILL": 994
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 6,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-19",
+     "name": "3 ราง ตบธรณีต่ำเฟรมล่างบานเลื่อน 4 นิ้ว",
+     "role_family": "ตบธรณี",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 36.95,
+     "depth_mm": 18.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 438,
+      "พ่นดำ สเปซแบล็ค": 446,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 500,
+      "พ่นเทา แชมเปญเกรย์": 525,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 680,
+      "ตัวดิบ MILL": 403
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 6,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-21",
+     "name": "3 ราง เฟรมล่างบานเลื่อนธรณีสูง 4 นิ้ว มีท่อระบายน้ำ",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 50.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2524,
+      "พ่นดำ สเปซแบล็ค": 2574,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2650,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3974,
+      "ตัวดิบ MILL": 2211
+     },
+     "stocked": [],
+     "page": 6,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-22",
+     "name": "3 ราง ตบธรณีสูง 4 นิ้ว มีท่อระบายน้ำ",
+     "role_family": "ตบธรณี",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 36.95,
+     "depth_mm": 27.65,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 540,
+      "พ่นดำ สเปซแบล็ค": 550,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 567,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 851,
+      "ตัวดิบ MILL": 472
+     },
+     "stocked": [],
+     "page": 6,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-23",
+     "name": "3 ราง เฟรมล่างบานเลื่อน ภายใน 4 นิ้ว ปี 24",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 6.85,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 0,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 933,
+      "พ่นดำ สเปซแบล็ค": 951,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 980,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 6,
+     "confidence": "check",
+     "note": "เส้น/มัด printed as 0 (kept as 0) — ask supplier. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-24",
+     "name": "3 ราง ตบธรณีสูงเฟรมล่างบานเลื่อน 4 นิ้ว",
+     "role_family": "ตบธรณี",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 36.96,
+     "depth_mm": 40.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 843,
+      "พ่นดำ สเปซแบล็ค": 861,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 880,
+      "พ่นเทา แชมเปญเกรย์": 924,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1306,
+      "ตัวดิบ MILL": 780
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 6,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "802 บานเลื่อนเอเชีย 4 นิ้ว (เอเชียน ทรอป)",
+   "group": "802",
+   "pages": [
+    7
+   ],
+   "app_types": [
+    "บานเลื่อน",
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 2 ตาย 2"
+   ],
+   "profiles": [
+    {
+     "die_no": "802-11",
+     "name": "เฟรมล่างบานเลื่อน ธรณีต่ำ 4 นิ้ว",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 31.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1417,
+      "พ่นดำ สเปซแบล็ค": 1445,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1537,
+      "พ่นเทา แชมเปญเกรย์": 1614,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2646,
+      "ตัวดิบ MILL": 1350
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-11",
+     "name": "เฟรมล่างบานเลื่อน ธรณีต่ำ 4 นิ้ว",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 31.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1563,
+      "พ่นดำ สเปซแบล็ค": 1594,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1636,
+      "พ่นเทา แชมเปญเกรย์": 1718,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1398
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-12",
+     "name": "เฟรมล่างบานเลื่อน ธรณีสูง 4 นิ้ว",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 50.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1548,
+      "พ่นดำ สเปซแบล็ค": 1578,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1693,
+      "พ่นเทา แชมเปญเกรย์": 1778,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2952,
+      "ตัวดิบ MILL": 1484
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-12",
+     "name": "เฟรมล่างบานเลื่อน ธรณีสูง 4 นิ้ว",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 50.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1688,
+      "พ่นดำ สเปซแบล็ค": 1721,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1860,
+      "พ่นเทา แชมเปญเกรย์": 1953,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1595
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-13",
+     "name": "เฟรมบนบานเลื่อน 4 นิ้ว",
+     "role_family": "เฟรมบน",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1321,
+      "พ่นดำ สเปซแบล็ค": 1347,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1423,
+      "พ่นเทา แชมเปญเกรย์": 1495,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2466,
+      "ตัวดิบ MILL": 1249
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-13",
+     "name": "เฟรมบนบานเลื่อน 4 นิ้ว",
+     "role_family": "เฟรมบน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1448,
+      "พ่นดำ สเปซแบล็ค": 1476,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1610,
+      "พ่นเทา แชมเปญเกรย์": 1691,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1367
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-15",
+     "name": "เฟรมข้างบานเลื่อน 30 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1023,
+      "พ่นดำ สเปซแบล็ค": 1043,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1115,
+      "พ่นเทา แชมเปญเกรย์": 1171,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1890,
+      "ตัวดิบ MILL": 979
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-15",
+     "name": "เฟรมข้างบานเลื่อน 30 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1134,
+      "พ่นดำ สเปซแบล็ค": 1156,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1254,
+      "พ่นเทา แชมเปญเกรย์": 1317,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1075
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-16",
+     "name": "ตบเฟรมข้างบานตาย 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 973,
+      "พ่นดำ สเปซแบล็ค": 992,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1076,
+      "พ่นเทา แชมเปญเกรย์": 1130,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1707,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-17",
+     "name": "เฟรมข้างบานเลื่อน 20 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 20.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 972,
+      "พ่นดำ สเปซแบล็ค": 991,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1019,
+      "พ่นเทา แชมเปญเกรย์": 1070,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1468,
+      "ตัวดิบ MILL": 887
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-17",
+     "name": "เฟรมข้างบานเลื่อน 20 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 20.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 989,
+      "พ่นดำ สเปซแบล็ค": 1008,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1053,
+      "พ่นเทา แชมเปญเกรย์": 1106,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-08",
+     "name": "ตบบานตายชุดบานเลื่อน 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1086,
+      "พ่นดำ สเปซแบล็ค": 1107,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1187,
+      "พ่นเทา แชมเปญเกรย์": 1247,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2006,
+      "ตัวดิบ MILL": 1036
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "Printed in both 802 series (pages 5 and 7) with identical prices; listed in both series. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "802-20",
+     "name": "เฟรมล่างบานเลื่อนธรณีสูง 4 นิ้วมีท่อระบายน้ำ",
+     "role_family": "เฟรมล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 49.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2679,
+      "พ่นดำ สเปซแบล็ค": 2732,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2811,
+      "พ่นเทา แชมเปญเกรย์": 2952,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4215,
+      "ตัวดิบ MILL": 2345
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 7,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "803 บานติดตาย / บานกระทุ้ง 9 ซม./4 นิ้ว (เอเชียน ทรอป)",
+   "group": "803",
+   "pages": [
+    8,
+    9
+   ],
+   "app_types": [
+    "บานติดตาย",
+    "บานกระทุ้ง"
+   ],
+   "profiles": [
+    {
+     "die_no": "803-01",
+     "name": "เฟรมบานตาย 9 ซม.",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 25.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1032,
+      "พ่นดำ สเปซแบล็ค": 1052,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1106,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1942,
+      "ตัวดิบ MILL": 976
+     },
+     "stocked": [],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-01",
+     "name": "เฟรมบานตาย 9 ซม.",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 25.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1256,
+      "พ่นดำ สเปซแบล็ค": 1281,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1376,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-02",
+     "name": "กรอบบานกระทุ้งไม่มีเสากลาง",
+     "role_family": "เสากลาง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 63.0,
+     "depth_mm": 43.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1017,
+      "พ่นดำ สเปซแบล็ค": 1037,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1115,
+      "พ่นเทา แชมเปญเกรย์": 1171,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1851,
+      "ตัวดิบ MILL": 1030
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-03",
+     "name": "ซอยกลางบานกระทุ้ง",
+     "role_family": "ซอยกลาง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 43.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1173,
+      "พ่นดำ สเปซแบล็ค": 1196,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1296,
+      "พ่นเทา แชมเปญเกรย์": 1361,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2035,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-04",
+     "name": "คิ้วบานตาย/บานกระทุ้งร่อง 12.6 มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 27.4,
+     "depth_mm": 24.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 435,
+      "พ่นดำ สเปซแบล็ค": 443,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 482,
+      "พ่นเทา แชมเปญเกรย์": 507,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 778,
+      "ตัวดิบ MILL": 410
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-05",
+     "name": "คิ้วบานตาย/บานกระทุ้งร่อง 16.9 มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 23.0,
+     "depth_mm": 24.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 430,
+      "พ่นดำ สเปซแบล็ค": 438,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 475,
+      "พ่นเทา แชมเปญเกรย์": 499,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 761,
+      "ตัวดิบ MILL": 405
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-06",
+     "name": "ตบบานตาย 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 71.6,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 623,
+      "พ่นดำ สเปซแบล็ค": 635,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 684,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1113,
+      "ตัวดิบ MILL": 592
+     },
+     "stocked": [],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-07",
+     "name": "ตบบานตายชุดบานเลื่อน 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 965,
+      "พ่นดำ สเปซแบล็ค": 984,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1078,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1777,
+      "ตัวดิบ MILL": 918
+     },
+     "stocked": [],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-08",
+     "name": "ตบเฟรมข้างบานตาย 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 920,
+      "พ่นดำ สเปซแบล็ค": 938,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1015,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1717,
+      "ตัวดิบ MILL": 871
+     },
+     "stocked": [],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-09",
+     "name": "กรอบบานกระทุ้ง",
+     "role_family": "กรอบบานกระทุ้ง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 43.7,
+     "depth_mm": 43.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 963,
+      "พ่นดำ สเปซแบล็ค": 982,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1017,
+      "พ่นเทา แชมเปญเกรย์": 1068,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1835,
+      "ตัวดิบ MILL": 918
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-10",
+     "name": "กรอบบานกระทุ้งตัวใหญ่",
+     "role_family": "กรอบบานกระทุ้ง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 43.7,
+     "depth_mm": 51.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1218,
+      "พ่นดำ สเปซแบล็ค": 1242,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1376,
+      "พ่นเทา แชมเปญเกรย์": 1445,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2271,
+      "ตัวดิบ MILL": 1157
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 8,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-11",
+     "name": "คิ้วบังฝน",
+     "role_family": "คิ้วบังฝน",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 18.0,
+     "depth_mm": 13.2,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 219,
+      "พ่นดำ สเปซแบล็ค": 223,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 236,
+      "พ่นเทา แชมเปญเกรย์": 248,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 371,
+      "ตัวดิบ MILL": 206
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 9,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-14",
+     "name": "ตบเรียบเฟรมบานตาย 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 71.6,
+     "depth_mm": 5.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 429,
+      "พ่นดำ สเปซแบล็ค": 437,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 494,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 404
+     },
+     "stocked": [],
+     "page": 9,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "803-15",
+     "name": "ฝาตบเฟรมบานตาย ร่องซีกรู๊ฟ 9 ซม.",
+     "role_family": "ฝาตบ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 59.0,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 658,
+      "พ่นดำ สเปซแบล็ค": 671,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 730,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1046,
+      "ตัวดิบ MILL": 606
+     },
+     "stocked": [],
+     "page": 9,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-16",
+     "name": "เฟรมบานตายร่องซีกรู๊ฟ 9 ซม.",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 25.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1631,
+      "พ่นดำ สเปซแบล็ค": 1663,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1823,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2630,
+      "ตัวดิบ MILL": 1499
+     },
+     "stocked": [],
+     "page": 9,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "803-17",
+     "name": "เสากลางบานตาย เอเชีย 4 นิ้ว",
+     "role_family": "เสากลาง",
+     "wall_mm": 1.8,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 69.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2754,
+      "พ่นดำ สเปซแบล็ค": 2811,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2892,
+      "พ่นเทา แชมเปญเกรย์": 3064,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4462,
+      "ตัวดิบ MILL": 2415
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 9,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "812 บานติดตาย/บานกระทุ้ง/บานเปิดยูโร ฟรอนทูร่า แกรนด์ 9 ซม./4 นิ้ว",
+   "group": "812",
+   "pages": [
+    10,
+    11
+   ],
+   "app_types": [
+    "บานติดตาย",
+    "บานกระทุ้ง",
+    "บานเปิด",
+    "บานเปิดข้าง"
+   ],
+   "profiles": [
+    {
+     "die_no": "812-05",
+     "name": "เสาแบ่งกลางยูโร",
+     "role_family": "เสากลาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 88.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2681,
+      "พ่นดำ สเปซแบล็ค": 2734,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2978,
+      "พ่นเทา แชมเปญเกรย์": 3127,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4776,
+      "ตัวดิบ MILL": 2472
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-06",
+     "name": "เสาข้างยูโร",
+     "role_family": "เสาข้าง (วงกบ)",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 66.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1876,
+      "พ่นดำ สเปซแบล็ค": 1913,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2235,
+      "พ่นเทา แชมเปญเกรย์": 2347,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3368,
+      "ตัวดิบ MILL": 1763
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-07",
+     "name": "กรอบบานหน้าต่างยูโร",
+     "role_family": "กรอบบาน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 43.9,
+     "depth_mm": 75.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1418,
+      "พ่นดำ สเปซแบล็ค": 1446,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1640,
+      "พ่นเทา แชมเปญเกรย์": 2104,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2477,
+      "ตัวดิบ MILL": 1331
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-07",
+     "name": "กรอบบานหน้าต่างยูโร",
+     "role_family": "กรอบบาน",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 43.9,
+     "depth_mm": 75.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1908,
+      "พ่นดำ สเปซแบล็ค": 1946,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2003,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3005,
+      "ตัวดิบ MILL": 1735
+     },
+     "stocked": [],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-08",
+     "name": "กรอบบานประตูยูโร",
+     "role_family": "กรอบบาน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 43.9,
+     "depth_mm": 100.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1732,
+      "พ่นดำ สเปซแบล็ค": 1766,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2019,
+      "พ่นเทา แชมเปญเกรย์": 2581,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3167,
+      "ตัวดิบ MILL": 1642
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-08",
+     "name": "กรอบบานประตูยูโร",
+     "role_family": "กรอบบาน",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 43.9,
+     "depth_mm": 100.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2342,
+      "พ่นดำ สเปซแบล็ค": 2388,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2458,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3682,
+      "ตัวดิบ MILL": 2130
+     },
+     "stocked": [],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-09",
+     "name": "กรอบบานไม่มีเสากลางยูโร",
+     "role_family": "เสากลาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 43.8,
+     "depth_mm": 75.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1520,
+      "พ่นดำ สเปซแบล็ค": 1550,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1732,
+      "พ่นเทา แชมเปญเกรย์": 1819,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2742,
+      "ตัวดิบ MILL": 1424
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-10",
+     "name": "คิ้วบานยูโรร่อง 12.7 มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 27.2,
+     "depth_mm": 26.48,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 483,
+      "พ่นดำ สเปซแบล็ค": 492,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 540,
+      "พ่นเทา แชมเปญเกรย์": 567,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 853,
+      "ตัวดิบ MILL": 456
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-11",
+     "name": "คิ้วบานยูโร ร่อง 26 มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 14.0,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 16,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 385,
+      "พ่นดำ สเปซแบล็ค": 392,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 438,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 367
+     },
+     "stocked": [],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-13",
+     "name": "ฝาตบเฟรมบานตาย ร่องซีกรู๊ฟ 4 นิ้ว",
+     "role_family": "ฝาตบ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 70.6,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 724,
+      "พ่นดำ สเปซแบล็ค": 738,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 803,
+      "พ่นเทา แชมเปญเกรย์": 844,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1106,
+      "ตัวดิบ MILL": 667
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 10,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-14",
+     "name": "เฟรมบานตายร่องซีกรู๊ฟ 1-3/4 นิ้ว",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2562,
+      "พ่นดำ สเปซแบล็ค": 2613,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2690,
+      "พ่นเทา แชมเปญเกรย์": 2825,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4032,
+      "ตัวดิบ MILL": 2331
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 10,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "812-15",
+     "name": "เฟรมบานตายร่องซีกรู๊ฟ 4 นิ้ว ปี 25",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1648,
+      "พ่นดำ สเปซแบล็ค": 1681,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1729,
+      "พ่นเทา แชมเปญเกรย์": 1816,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2657,
+      "ตัวดิบ MILL": 1502
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 11,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-16",
+     "name": "กรอบนอกบานประตูเปิด ร่องซีกรู๊ฟ ฟรอนทูร่า แกรนด์",
+     "role_family": "กรอบนอก (วงกบ)",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 47.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1736,
+      "พ่นดำ สเปซแบล็ค": 1771,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1822,
+      "พ่นเทา แชมเปญเกรย์": 1932,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2823,
+      "ตัวดิบ MILL": 1518
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 11,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "812-17",
+     "name": "เสากลางบานตาย ร่องซีกรู๊ฟ 4 นิ้ว",
+     "role_family": "เสากลาง",
+     "wall_mm": 1.8,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 47.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2898,
+      "พ่นดำ สเปซแบล็ค": 2955,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 3041,
+      "พ่นเทา แชมเปญเกรย์": 3225,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4692,
+      "ตัวดิบ MILL": 2535
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 11,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "804 บานเลื่อนยูโร 2,3 ราง (พาโน สูท)",
+   "group": "804",
+   "pages": [
+    12,
+    13
+   ],
+   "app_types": [
+    "บานเลื่อน",
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 3 บาน",
+    "บานเลื่อน 2 ตาย 2"
+   ],
+   "profiles": [
+    {
+     "die_no": "804-03",
+     "name": "รางล้อเฟรมล่าง",
+     "role_family": "รางล้อ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 15.4,
+     "depth_mm": 10.55,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": null,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 12,
+     "confidence": "check",
+     "note": "Only price printed: ชุบขาว = 209 THB/bar across all colour columns; no painted prices. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing.",
+     "other_prices": {
+      "ชุบขาว": 209
+     }
+    },
+    {
+     "die_no": "804-11",
+     "name": "ร่องกระจก 13.4 มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": 13.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 24,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 232,
+      "พ่นดำ สเปซแบล็ค": 236,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 255,
+      "พ่นเทา แชมเปญเกรย์": 268,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 353,
+      "ตัวดิบ MILL": 202
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 12,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-12",
+     "name": "ร่องกระจก 9.5 มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": 9.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 24,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 198,
+      "พ่นดำ สเปซแบล็ค": 201,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 222,
+      "พ่นเทา แชมเปญเกรย์": 234,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 342,
+      "ตัวดิบ MILL": 185
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 12,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-13",
+     "name": "ตบธรณี บานเลื่อนยูโร",
+     "role_family": "ตบธรณี",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 46.74,
+     "depth_mm": 19.1,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 483,
+      "พ่นดำ สเปซแบล็ค": 492,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 538,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 445
+     },
+     "stocked": [],
+     "page": 12,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "804-15",
+     "name": "เสากุญแจ/ขวางบานเลื่อนยูโร ปี 22",
+     "role_family": "กรอบบานเลื่อน (เสา+ขวาง)",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 28.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1170,
+      "พ่นดำ สเปซแบล็ค": 1193,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1267,
+      "พ่นเทา แชมเปญเกรย์": 1331,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2016,
+      "ตัวดิบ MILL": 1094
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 12,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-16",
+     "name": "ฝาปิดเดือยเสากุญแจ ยูโร",
+     "role_family": "ฝาปิดเดือย",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": 15.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 30,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 152,
+      "พ่นดำ สเปซแบล็ค": 155,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 264,
+      "พ่นเทา แชมเปญเกรย์": 278,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 384,
+      "ตัวดิบ MILL": 140
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 12,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-17",
+     "name": "ชุดเข้ามุม 90 องศายูโร",
+     "role_family": "เข้ามุม 90",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 28.0,
+     "depth_mm": 20.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 997,
+      "พ่นดำ สเปซแบล็ค": 1016,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1176,
+      "พ่นเทา แชมเปญเกรย์": 1235,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1749,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 12,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-18",
+     "name": "เดือยเสากุญแจ บานเลื่อนยูโร ปี 22",
+     "role_family": "เดือยเสากุญแจ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 13.1,
+     "depth_mm": 15.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 206,
+      "พ่นดำ สเปซแบล็ค": 210,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 232,
+      "พ่นเทา แชมเปญเกรย์": 244,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 334,
+      "ตัวดิบ MILL": 192
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 12,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-19",
+     "name": "ชนกลางบานเลื่อนยูโร ปี 22",
+     "role_family": "ชนกลาง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 24.0,
+     "depth_mm": 18.89,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 309,
+      "พ่นดำ สเปซแบล็ค": 315,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 353,
+      "พ่นเทา แชมเปญเกรย์": 371,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 557,
+      "ตัวดิบ MILL": 286
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 12,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-20",
+     "name": "เสากุญแจ/ขวางบานเลื่อนยูโร 80 มม.",
+     "role_family": "กรอบบานเลื่อน (เสา+ขวาง)",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 80.0,
+     "depth_mm": 28.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1944,
+      "พ่นดำ สเปซแบล็ค": 1982,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2038,
+      "พ่นเทา แชมเปญเกรย์": 2140,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3038,
+      "ตัวดิบ MILL": 1668
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 12,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-21",
+     "name": "ตบเสาเกี่ยวบานเลื่อนยูโร 80 มม.",
+     "role_family": "ตบเสาเกี่ยว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 49.8,
+     "depth_mm": 34.2,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 770,
+      "พ่นดำ สเปซแบล็ค": 785,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 810,
+      "พ่นเทา แชมเปญเกรย์": 851,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 990,
+      "ตัวดิบ MILL": 563
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 13,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-22",
+     "name": "คิ้วบานเลื่อนยูโร 80 มม. ร่อง 12. มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 13.5,
+     "depth_mm": 13.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 24,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 355,
+      "พ่นดำ สเปซแบล็ค": 362,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 373,
+      "พ่นเทา แชมเปญเกรย์": 392,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 441,
+      "ตัวดิบ MILL": 269
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 13,
+     "confidence": "check",
+     "note": "Name printed literally \"ร่อง 12. มม.\" (a digit seems missing; drawing shows 13.30/15.20). Overview-2026 dims (13.50/9.50/13.00 x 13.00) differ from the price-book thumbnail (13.30x15.20 / 9.58x13.20 / 15.20x11.23); width/depth uncertain. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-23",
+     "name": "คิ้วบานเลื่อนยูโร 80 มม. ร่อง 16 มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 9.5,
+     "depth_mm": 13.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 24,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 272,
+      "พ่นดำ สเปซแบล็ค": 277,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 284,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 405,
+      "ตัวดิบ MILL": 250
+     },
+     "stocked": [],
+     "page": 13,
+     "confidence": "read",
+     "note": "Overview-2026 dims (13.50/9.50/13.00 x 13.00) differ from the price-book thumbnail (13.30x15.20 / 9.58x13.20 / 15.20x11.23); width/depth uncertain. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-24",
+     "name": "คิ้วบานเลื่อนยูโร 80 มม. ร่อง 22 มม.",
+     "role_family": "คิ้ว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 13.0,
+     "depth_mm": null,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 32,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 202,
+      "พ่นดำ สเปซแบล็ค": 206,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 211,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 297,
+      "ตัวดิบ MILL": 187
+     },
+     "stocked": [],
+     "page": 13,
+     "confidence": "read",
+     "note": "Overview-2026 dims (13.50/9.50/13.00 x 13.00) differ from the price-book thumbnail (13.30x15.20 / 9.58x13.20 / 15.20x11.23); width/depth uncertain. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "804-25",
+     "name": "เดือยเสากุญแจบานเลื่อนยูโร (ร่องใส่ยางกันเสียง)",
+     "role_family": "เดือยเสากุญแจ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 28.0,
+     "depth_mm": 15.8,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 414,
+      "พ่นดำ สเปซแบล็ค": 425,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 431,
+      "พ่นเทา แชมเปญเกรย์": 460,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 667,
+      "ตัวดิบ MILL": 362
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 13,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "804-26",
+     "name": "ชนกลางบานเลื่อนยูโร (ร่องใส่ยางกันเสียง)",
+     "role_family": "ชนกลาง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 25.5,
+     "depth_mm": 28.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 460,
+      "พ่นดำ สเปซแบล็ค": 471,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 483,
+      "พ่นเทา แชมเปญเกรย์": 511,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 747,
+      "ตัวดิบ MILL": 402
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 13,
+     "confidence": "read",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "name": "811 บานเลื่อนยูโร 2,3 ราง (พาโน สูท)",
+   "group": "811",
+   "pages": [
+    14,
+    15
+   ],
+   "app_types": [
+    "บานเลื่อน",
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 3 บาน",
+    "บานเลื่อน 2 ตาย 2"
+   ],
+   "profiles": [
+    {
+     "die_no": "811-01",
+     "name": "เฟรมบน-ล่างบานเลื่อนยูโร 3 ราง 4 นิ้ว",
+     "role_family": "เฟรมบน-ล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 45.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 1,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2599,
+      "พ่นดำ สเปซแบล็ค": 2650,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2690,
+      "พ่นเทา แชมเปญเกรย์": 3209,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4568,
+      "ตัวดิบ MILL": 2323
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-01",
+     "name": "เฟรมบน-ล่างบานเลื่อนยูโร 3 ราง 4 นิ้ว",
+     "role_family": "เฟรมบน-ล่าง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 45.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2850,
+      "พ่นดำ สเปซแบล็ค": 2907,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 3056,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 5372,
+      "ตัวดิบ MILL": 2527
+     },
+     "stocked": [],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-02",
+     "name": "เฟรมบน-ล่างบานเลื่อนยูโร 2 ราง",
+     "role_family": "เฟรมบน-ล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 45.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1657,
+      "พ่นดำ สเปซแบล็ค": 1690,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1843,
+      "พ่นเทา แชมเปญเกรย์": 2411,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3032,
+      "ตัวดิบ MILL": 1561
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "811-02",
+     "name": "เฟรมบน-ล่างบานเลื่อนยูโร 2 ราง",
+     "role_family": "เฟรมบน-ล่าง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 45.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2188,
+      "พ่นดำ สเปซแบล็ค": 2231,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2296,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3442,
+      "ตัวดิบ MILL": 1989
+     },
+     "stocked": [],
+     "page": 14,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "811-03",
+     "name": "เฟรมข้าง บานเลื่อนยูโร 3 ราง 4 นิ้ว",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 28.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1019,
+      "พ่นดำ สเปซแบล็ค": 1039,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1150,
+      "พ่นเทา แชมเปญเกรย์": 1718,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1904,
+      "ตัวดิบ MILL": 967
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-03",
+     "name": "เฟรมข้าง บานเลื่อนยูโร 3 ราง 4 นิ้ว",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 28.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1557,
+      "พ่นดำ สเปซแบล็ค": 1588,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1636,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2463,
+      "ตัวดิบ MILL": 1415
+     },
+     "stocked": [],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-04",
+     "name": "เฟรมข้าง บานเลื่อนยูโร 2 ราง 64.8 มม.",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 28.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 800,
+      "พ่นดำ สเปซแบล็ค": 816,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 887,
+      "พ่นเทา แชมเปญเกรย์": 1438,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1443,
+      "ตัวดิบ MILL": 750
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-04",
+     "name": "เฟรมข้าง บานเลื่อนยูโร 2 ราง 64.8 มม.",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 28.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1310,
+      "พ่นดำ สเปซแบล็ค": 1336,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1369,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2001,
+      "ตัวดิบ MILL": 1205
+     },
+     "stocked": [],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-06",
+     "name": "ตัวต่อรางข้างบานเลื่อนยูโร 2 และ 3 ราง",
+     "role_family": "ตัวต่อราง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 17.15,
+     "depth_mm": 28.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 398,
+      "พ่นดำ สเปซแบล็ค": 405,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 443,
+      "พ่นเทา แชมเปญเกรย์": 466,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 793,
+      "ตัวดิบ MILL": 368
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-07",
+     "name": "ตบเสาเกี่ยวบานเลื่อนยูโร 2 และ 3 ราง",
+     "role_family": "ตบเสาเกี่ยว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 38.9,
+     "depth_mm": 34.2,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 470,
+      "พ่นดำ สเปซแบล็ค": 479,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 530,
+      "พ่นเทา แชมเปญเกรย์": 557,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 824,
+      "ตัวดิบ MILL": 437
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-08",
+     "name": "ตบเสาเกี่ยวสองทางยูโร 2 และ 3 ราง",
+     "role_family": "ตบเสาเกี่ยวสองทาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 38.9,
+     "depth_mm": 40.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 756,
+      "พ่นดำ สเปซแบล็ค": 771,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 836,
+      "พ่นเทา แชมเปญเกรย์": 878,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1352,
+      "ตัวดิบ MILL": 709
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-09",
+     "name": "ฝาปิดเฟรมบนล่างบานเลื่อนยูโร 2 และ 3 ราง",
+     "role_family": "ฝาปิด",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 15.4,
+     "depth_mm": null,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 30,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 173,
+      "พ่นดำ สเปซแบล็ค": 176,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 190,
+      "พ่นเทา แชมเปญเกรย์": 200,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 301,
+      "ตัวดิบ MILL": 159
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-10",
+     "name": "ตบเฟรมบานตายยูโร 2 ราง 64.8 มม.",
+     "role_family": "ตบบานตาย",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 22.2,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 782,
+      "พ่นดำ สเปซแบล็ค": 797,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 854,
+      "พ่นเทา แชมเปญเกรย์": 897,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2002,
+      "ตัวดิบ MILL": 738
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-11",
+     "name": "เฟรมบานตายยูโร 2 ราง 64.8 มม.",
+     "role_family": "เฟรมบานตาย",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 22.2,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 817,
+      "พ่นดำ สเปซแบล็ค": 833,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 908,
+      "พ่นเทา แชมเปญเกรย์": 954,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1927,
+      "ตัวดิบ MILL": 760
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 14,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-13",
+     "name": "บังใบบังปูนบานยูโร ปี 22",
+     "role_family": "บังใบ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 10.4,
+     "depth_mm": 43.22,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 16,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 392,
+      "พ่นดำ สเปซแบล็ค": 399,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 428,
+      "พ่นเทา แชมเปญเกรย์": 450,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 579,
+      "ตัวดิบ MILL": 361
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 15,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-14",
+     "name": "ตัวต่อรางล่างบานเลื่อนยูโร 2 และ 3 ราง ปี 22",
+     "role_family": "ตัวต่อราง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 24.2,
+     "depth_mm": 26.88,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 577,
+      "พ่นดำ สเปซแบล็ค": 588,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 663,
+      "พ่นเทา แชมเปญเกรย์": 697,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1069,
+      "ตัวดิบ MILL": 535
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 15,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-15",
+     "name": "ตบธรณีบานเลื่อนยูโร พาโนสูท 2 และ 3 ราง",
+     "role_family": "ตบธรณี",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 31.8,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 759,
+      "พ่นดำ สเปซแบล็ค": 776,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 791,
+      "พ่นเทา แชมเปญเกรย์": 831,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1160,
+      "ตัวดิบ MILL": 707
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 15,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "811-16",
+     "name": "ตบบานตายบานเลื่อนยูโร พาโนสูท 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1334,
+      "พ่นดำ สเปซแบล็ค": 1362,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1401,
+      "พ่นเทา แชมเปญเกรย์": 1472,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2161,
+      "ตัวดิบ MILL": 1214
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 15,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "805 ประตูบานเฟี้ยม",
+   "group": "805",
+   "pages": [
+    16,
+    17
+   ],
+   "app_types": [
+    "บานเฟี้ยม"
+   ],
+   "profiles": [
+    {
+     "die_no": "805-01",
+     "name": "รางบนบานเฟี้ยม 9 ซม.",
+     "role_family": "รางบน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 75.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 1,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 3385,
+      "พ่นดำ สเปซแบล็ค": 3452,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 3891,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 6612,
+      "ตัวดิบ MILL": 3216
+     },
+     "stocked": [],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-02",
+     "name": "รางข้างบานเฟี้ยม 9 ซม.",
+     "role_family": "รางข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 41.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1254,
+      "พ่นดำ สเปซแบล็ค": 1279,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1420,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2392,
+      "ตัวดิบ MILL": 1196
+     },
+     "stocked": [],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-03",
+     "name": "รางล่างบานเฟี้ยม 9 ซม.",
+     "role_family": "รางล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 42.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1636,
+      "พ่นดำ สเปซแบล็ค": 1668,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1844,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2934,
+      "ตัวดิบ MILL": 1550
+     },
+     "stocked": [],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-05",
+     "name": "คิ้วบานเฟี้ยม",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 19.7,
+     "depth_mm": 17.9,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 285,
+      "พ่นดำ สเปซแบล็ค": 290,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 319,
+      "พ่นเทา แชมเปญเกรย์": 335,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 511,
+      "ตัวดิบ MILL": 268
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-06",
+     "name": "บังใบเฟี้ยม",
+     "role_family": "บังใบ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 15.5,
+     "depth_mm": 25.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 373,
+      "พ่นดำ สเปซแบล็ค": 380,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 407,
+      "พ่นเทา แชมเปญเกรย์": 428,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 645,
+      "ตัวดิบ MILL": 357
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-10",
+     "name": "ซอยกลางเฟี้ยม",
+     "role_family": "ซอยกลาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 52.0,
+     "depth_mm": 63.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1610,
+      "พ่นดำ สเปซแบล็ค": 1642,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1788,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2940,
+      "ตัวดิบ MILL": 1521
+     },
+     "stocked": [],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-11",
+     "name": "เสากลางเฟี้ยมบานคู่",
+     "role_family": "เสากลาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 52.0,
+     "depth_mm": 25.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1200,
+      "พ่นดำ สเปซแบล็ค": 1224,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1296,
+      "พ่นเทา แชมเปญเกรย์": 1361,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2430,
+      "ตัวดิบ MILL": 1140
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-12",
+     "name": "รางบนบานเฟี้ยม 4 นิ้ว",
+     "role_family": "รางบน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 75.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 1,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 4214,
+      "พ่นดำ สเปซแบล็ค": 4298,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 4424,
+      "พ่นเทา แชมเปญเกรย์": 4646,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 7013,
+      "ตัวดิบ MILL": 3713
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-13",
+     "name": "รางข้างบานเฟี้ยม 4 นิ้ว",
+     "role_family": "รางข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 41.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1360,
+      "พ่นดำ สเปซแบล็ค": 1387,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1548,
+      "พ่นเทา แชมเปญเกรย์": 1626,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2750,
+      "ตัวดิบ MILL": 1298
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-14",
+     "name": "รางล่างบานเฟี้ยม 4 นิ้ว",
+     "role_family": "รางล่าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 42.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1863,
+      "พ่นดำ สเปซแบล็ค": 1900,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2113,
+      "พ่นเทา แชมเปญเกรย์": 2219,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3369,
+      "ตัวดิบ MILL": 1776
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 16,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-15",
+     "name": "รางล่างบานเฟี้ยมไม่มีบังใบ 4 นิ้ว",
+     "role_family": "รางล่าง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 16.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1463,
+      "พ่นดำ สเปซแบล็ค": 1492,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1641,
+      "พ่นเทา แชมเปญเกรย์": 1724,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2565,
+      "ตัวดิบ MILL": 1396
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 17,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-16",
+     "name": "มุม 90 องศาบานเฟี้ยม",
+     "role_family": "เข้ามุม 90",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 50.28,
+     "depth_mm": 53.15,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1341,
+      "พ่นดำ สเปซแบล็ค": 1367,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1477,
+      "พ่นเทา แชมเปญเกรย์": 1551,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2077,
+      "ตัวดิบ MILL": 1233
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 17,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-17",
+     "name": "กรอบบานเฟี้ยมร่องซีกรุ๊ป ปี 22",
+     "role_family": "กรอบบาน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 52.0,
+     "depth_mm": 65.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1809,
+      "พ่นดำ สเปซแบล็ค": 1845,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2026,
+      "พ่นเทา แชมเปญเกรย์": 2128,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3259,
+      "ตัวดิบ MILL": 1713
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 17,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "805-18",
+     "name": "รางล่างบานเฟี้ยมไม่มีบังใบ 9 ซม. (รถเหยียบได้)",
+     "role_family": "รางล่าง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 16.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1327,
+      "พ่นดำ สเปซแบล็ค": 1353,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1471,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2385,
+      "ตัวดิบ MILL": 1300
+     },
+     "stocked": [],
+     "page": 17,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "806 ประตูบานสวิง",
+   "group": "806",
+   "pages": [
+    18
+   ],
+   "app_types": [
+    "บานสวิง",
+    "บานสวิงคู่",
+    "บานสวิงเดี่ยว"
+   ],
+   "profiles": [
+    {
+     "die_no": "806-01",
+     "name": "เฟรมข้างสวิง",
+     "role_family": "เฟรมข้าง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 38.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1274,
+      "พ่นดำ สเปซแบล็ค": 1299,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1344,
+      "พ่นเทา แชมเปญเกรย์": 1412,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2534,
+      "ตัวดิบ MILL": 1140
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 18,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "806-02",
+     "name": "กล่องแจ็คสัน",
+     "role_family": "กล่องแจ็คสัน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 48.95,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1636,
+      "พ่นดำ สเปซแบล็ค": 1668,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1830,
+      "พ่นเทา แชมเปญเกรย์": 1922,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3221,
+      "ตัวดิบ MILL": 1587
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 18,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "806-03",
+     "name": "ฝาแจ็คสัน",
+     "role_family": "ฝาปิด",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": null,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 839,
+      "พ่นดำ สเปซแบล็ค": 855,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 891,
+      "พ่นเทา แชมเปญเกรย์": 936,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1635,
+      "ตัวดิบ MILL": 828
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 18,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "806-04",
+     "name": "กรอบในบานสวิง",
+     "role_family": "กรอบบาน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 76.2,
+     "depth_mm": 44.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1979,
+      "พ่นดำ สเปซแบล็ค": 2018,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2107,
+      "พ่นเทา แชมเปญเกรย์": 2213,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3429,
+      "ตัวดิบ MILL": 1736
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 18,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "806-05",
+     "name": "ตบเสาบานสวิง",
+     "role_family": "ตบเสาบาน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 40.6,
+     "depth_mm": null,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 354,
+      "พ่นดำ สเปซแบล็ค": 361,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 381,
+      "พ่นเทา แชมเปญเกรย์": 401,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 713,
+      "ตัวดิบ MILL": 328
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 18,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "806-06",
+     "name": "แป้นรับหางปลา",
+     "role_family": "แป้นรับหางปลา",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 40.4,
+     "depth_mm": null,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 337,
+      "พ่นดำ สเปซแบล็ค": 343,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 365,
+      "พ่นเทา แชมเปญเกรย์": 384,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 676,
+      "ตัวดิบ MILL": 310
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 18,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "806-07",
+     "name": "คิ้วเหลี่ยมประตูสวิง",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 16.85,
+     "depth_mm": 17.9,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 280,
+      "พ่นดำ สเปซแบล็ค": 285,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 311,
+      "พ่นเทา แชมเปญเกรย์": 327,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 508,
+      "ตัวดิบ MILL": 263
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 18,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "806-09",
+     "name": "ซอยกลางประตูสวิง",
+     "role_family": "ซอยกลาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 50.8,
+     "depth_mm": 44.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1417,
+      "พ่นดำ สเปซแบล็ค": 1445,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1531,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2943,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 18,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "806-10",
+     "name": "ธรณีสวิง",
+     "role_family": "ธรณี",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 13.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1394,
+      "พ่นดำ สเปซแบล็ค": 1421,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1519,
+      "พ่นเทา แชมเปญเกรย์": 1595,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3015,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 18,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "807 ประตูบานเปิด ฟรอนทูร่า 9 ซม./ 4 นิ้ว",
+   "group": "807",
+   "pages": [
+    19,
+    20
+   ],
+   "app_types": [
+    "บานเปิด",
+    "บานเปิดข้าง"
+   ],
+   "profiles": [
+    {
+     "die_no": "807-01",
+     "name": "กรอบในบานประตูเปิด",
+     "role_family": "กรอบบาน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 74.7,
+     "depth_mm": 37.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1526,
+      "พ่นดำ สเปซแบล็ค": 1556,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1664,
+      "พ่นเทา แชมเปญเกรย์": 1748,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2759,
+      "ตัวดิบ MILL": 1354
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 19,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-02",
+     "name": "คิ้วเหลี่ยมประตูเปิด",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 12.2,
+     "depth_mm": 14.9,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 228,
+      "พ่นดำ สเปซแบล็ค": 232,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 254,
+      "พ่นเทา แชมเปญเกรย์": 267,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 413,
+      "ตัวดิบ MILL": 218
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 19,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "807-04",
+     "name": "บังใบประตูเปิด",
+     "role_family": "บังใบ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 18.9,
+     "depth_mm": 19.2,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 12,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 254,
+      "พ่นดำ สเปซแบล็ค": 259,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 284,
+      "พ่นเทา แชมเปญเกรย์": 299,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 527,
+      "ตัวดิบ MILL": 239
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 19,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "807-05",
+     "name": "กรอบนอกบานประตูเปิด 9 ซม. ฟรอนทูร่า",
+     "role_family": "กรอบนอก (วงกบ)",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 44.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1412,
+      "พ่นดำ สเปซแบล็ค": 1440,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1486,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2459,
+      "ตัวดิบ MILL": 1240
+     },
+     "stocked": [],
+     "page": 19,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-06",
+     "name": "ซอยกลางช่องแสงประตูเปิด 9 ซม.",
+     "role_family": "ซอยกลาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 44.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2067,
+      "พ่นดำ สเปซแบล็ค": 2108,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2119,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4103,
+      "ตัวดิบ MILL": 1797
+     },
+     "stocked": [],
+     "page": 19,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-07",
+     "name": "คิ้วซอยกลางช่องแสงประตูเปิด",
+     "role_family": "คิ้ว",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 41.1,
+     "depth_mm": 12.88,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 385,
+      "พ่นดำ สเปซแบล็ค": 392,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 427,
+      "พ่นเทา แชมเปญเกรย์": 449,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 705,
+      "ตัวดิบ MILL": 364
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 19,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-08",
+     "name": "แบ่งกลางบานประตูเปิด",
+     "role_family": "ซอยกลาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 74.7,
+     "depth_mm": 37.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1523,
+      "พ่นดำ สเปซแบล็ค": 1553,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1572,
+      "พ่นเทา แชมเปญเกรย์": 1651,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3013,
+      "ตัวดิบ MILL": 1326
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 19,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-09",
+     "name": "บังใบร่องซีกรุ๊ฟ ชุดบานเปิด",
+     "role_family": "บังใบ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 43.19,
+     "depth_mm": 22.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 565,
+      "พ่นดำ สเปซแบล็ค": 576,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 624,
+      "พ่นเทา แชมเปญเกรย์": 656,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1137,
+      "ตัวดิบ MILL": 535
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 19,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "807-10",
+     "name": "กรอบนอกบานประตูเปิด 4 นิ้วฟรอนทูร่า",
+     "role_family": "กรอบนอก (วงกบ)",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1420,
+      "พ่นดำ สเปซแบล็ค": 1448,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1583,
+      "พ่นเทา แชมเปญเกรย์": 1663,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2486,
+      "ตัวดิบ MILL": 1327
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 19,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-11",
+     "name": "ซอยกลางช่องแสงประตูเปิด 4 นิ้ว (วงกบไม้)",
+     "role_family": "ซอยกลาง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2376,
+      "พ่นดำ สเปซแบล็ค": 2423,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2632,
+      "พ่นเทา แชมเปญเกรย์": 2764,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4196,
+      "ตัวดิบ MILL": 2186
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 19,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-12",
+     "name": "กรอบในบานประตูเปิด 5 นิ้ว",
+     "role_family": "กรอบบาน",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 125.0,
+     "depth_mm": 37.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 2752,
+      "พ่นดำ สเปซแบล็ค": 2807,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2926,
+      "พ่นเทา แชมเปญเกรย์": 3073,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 4362,
+      "ตัวดิบ MILL": 2474
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 20,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-13",
+     "name": "ลูกฟูกเรียบใหญ่ประตูบานเปิด",
+     "role_family": "ลูกฟูก",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 109.0,
+     "depth_mm": 21.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1914,
+      "พ่นดำ สเปซแบล็ค": 1955,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2012,
+      "พ่นเทา แชมเปญเกรย์": 2133,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 3087,
+      "ตัวดิบ MILL": 1679
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 20,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "807-14",
+     "name": "ตัวยูรับลูกฟูกเรียบใหญ่ประตูบานเปิด",
+     "role_family": "ตัวยูรับลูกฟูก",
+     "wall_mm": 1.0,
+     "kg_per_m": null,
+     "width_mm": 11.0,
+     "depth_mm": 23.3,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 24,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 276,
+      "พ่นดำ สเปซแบล็ค": 281,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 281,
+      "พ่นเทา แชมเปญเกรย์": 299,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 402,
+      "ตัวดิบ MILL": 247
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 20,
+     "confidence": "read",
+     "note": "Black price equals galaxy price (281) as printed. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "809 เคอร์เทนวอลล์ (สติ๊กวอลล์)",
+   "group": "809",
+   "pages": [
+    21
+   ],
+   "app_types": [
+    "STICK WALL"
+   ],
+   "profiles": [
+    {
+     "die_no": "809-01",
+     "name": "เสา 6 นิ้ว (สติ๊กวอลล์)",
+     "role_family": "เสา (มัลเลี่ยน)",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 132.0,
+     "depth_mm": 63.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 1,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 4397,
+      "พ่นดำ สเปซแบล็ค": 4484,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 4994,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "809-02",
+     "name": "เสา 4 นิ้ว (สติ๊กวอลล์)",
+     "role_family": "เสา (มัลเลี่ยน)",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 63.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 1,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 3834,
+      "พ่นดำ สเปซแบล็ค": 3910,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 4355,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 3528
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "809-03",
+     "name": "ทรานซั่ม 4 นิ้ว (สติ๊กวอลล์)",
+     "role_family": "ทรานซั่ม",
+     "wall_mm": 2.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 63.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 1,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 3110,
+      "พ่นดำ สเปซแบล็ค": 3172,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 3537,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "809-04",
+     "name": "สลิ้บทรานซั่ม (สติ๊กวอลล์)",
+     "role_family": "สลิปทรานซั่ม",
+     "wall_mm": 3.0,
+     "kg_per_m": null,
+     "width_mm": 74.0,
+     "depth_mm": 56.95,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": null,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 2775
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "809-05",
+     "name": "กรอบในกระทุ้ง ปีกยาว (สติ๊กวอลล์)",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 40.0,
+     "depth_mm": 78.6,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1821,
+      "พ่นดำ สเปซแบล็ค": 1857,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2068,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1675
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "809-06",
+     "name": "กรอบในกระทุ้ง ปีกสั้น (สติ๊กวอลล์)",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 40.0,
+     "depth_mm": 54.32,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1597,
+      "พ่นดำ สเปซแบล็ค": 1628,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1813,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1470
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "809-07",
+     "name": "ฝาปิด-ทรานซั่ม 4 นิ้ว (สติ๊กวอลล์)",
+     "role_family": "ฝาปิด",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 83.2,
+     "depth_mm": 7.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 879,
+      "พ่นดำ สเปซแบล็ค": 896,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1001,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 808
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "809-08",
+     "name": "เพลทเช่อร์เพลท (สติ๊กวอลล์)",
+     "role_family": "เพรสเชอร์เพลท",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 63.5,
+     "depth_mm": 10.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 881,
+      "พ่นดำ สเปซแบล็ค": 898,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1004,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 811
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "809-09",
+     "name": "ฝาปิด-เพลทเช่อร์เพลท (สติ๊กวอลล์)",
+     "role_family": "ฝาปิด",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 23.16,
+     "depth_mm": 6.58,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 30,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 267,
+      "พ่นดำ สเปซแบล็ค": 272,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 289,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 248
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": ""
+    },
+    {
+     "die_no": "809-10",
+     "name": "กรอบนอกกระทุ้ง (สติ๊กวอลล์)",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 46.5,
+     "depth_mm": 32.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 802,
+      "พ่นดำ สเปซแบล็ค": 818,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 927,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 760
+     },
+     "stocked": [],
+     "page": 21,
+     "confidence": "read",
+     "note": "width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    }
+   ]
+  },
+  {
+   "name": "810 กลุ่มมาตรฐาน",
+   "group": "810",
+   "pages": [
+    22,
+    23,
+    24,
+    25,
+    26
+   ],
+   "app_types": [],
+   "profiles": [
+    {
+     "die_no": "810-01",
+     "name": "กรอบมุ้งบานเลื่อน",
+     "role_family": "กรอบมุ้ง",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 42.9,
+     "depth_mm": 12.9,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 503,
+      "พ่นดำ สเปซแบล็ค": 513,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 547,
+      "พ่นเทา แชมเปญเกรย์": 575,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-02",
+     "name": "เส้นคาดกลางมุ้งบานเลื่อน",
+     "role_family": "เส้นคาดมุ้ง",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 20.0,
+     "depth_mm": 7.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 126,
+      "พ่นดำ สเปซแบล็ค": 128,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 144,
+      "พ่นเทา แชมเปญเกรย์": 152,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-03",
+     "name": "ชนกลางมุ้งบานเลื่อน",
+     "role_family": "ชนกลางมุ้ง",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 18.5,
+     "depth_mm": 20.1,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 246,
+      "พ่นดำ สเปซแบล็ค": 250,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 268,
+      "พ่นเทา แชมเปญเกรย์": 282,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-04",
+     "name": "[] 1-3/4x1-3/4 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 44.45,
+     "depth_mm": 44.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 836,
+      "พ่นดำ สเปซแบล็ค": 852,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 906,
+      "พ่นเทา แชมเปญเกรย์": 952,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-05",
+     "name": "ชนกลางรางแขวน",
+     "role_family": "ชนกลางรางแขวน",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 57.5,
+     "depth_mm": 28.3,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 697,
+      "พ่นดำ สเปซแบล็ค": 710,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 773,
+      "พ่นเทา แชมเปญเกรย์": 812,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-06",
+     "name": "ก้านซี-กรุ๊ฟ",
+     "role_family": "ซีกรู๊ฟ",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 19.5,
+     "depth_mm": null,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 276,
+      "พ่นดำ สเปซแบล็ค": 281,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": null,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 267,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "check",
+     "note": "ชุบขาว = 267 THB/bar printed across the champagne/wood/mill columns; those 3 columns set null. Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing.",
+     "other_prices": {
+      "ชุบขาว": 267
+     }
+    },
+    {
+     "die_no": "810-07",
+     "name": "ร่องซี-กรุ๊ฟ",
+     "role_family": "ซีกรู๊ฟ",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 23.8,
+     "depth_mm": 6.3,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": null,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "check",
+     "note": "Only price printed: ชุบขาว = 230 THB/bar across all colour columns. Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing.",
+     "other_prices": {
+      "ชุบขาว": 230
+     }
+    },
+    {
+     "die_no": "810-08",
+     "name": "ฉากย้ำมุม",
+     "role_family": "ฉากย้ำมุม",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 50.0,
+     "depth_mm": 50.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": null,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1604
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-09",
+     "name": "คิ้วลอยเทล่างเหลี่ยม",
+     "role_family": "คิ้ว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 39.3,
+     "depth_mm": 15.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 401,
+      "พ่นดำ สเปซแบล็ค": 409,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 443,
+      "พ่นเทา แชมเปญเกรย์": 466,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 22,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-10",
+     "name": "คิ้วลอยเทบนเหลี่ยม",
+     "role_family": "คิ้ว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 16.05,
+     "depth_mm": 15.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 285,
+      "พ่นดำ สเปซแบล็ค": 290,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 321,
+      "พ่นเทา แชมเปญเกรย์": 338,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-11",
+     "name": "คิ้วลูกฟัก",
+     "role_family": "คิ้ว",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 4.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 16,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 294,
+      "พ่นดำ สเปซแบล็ค": 299,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 328,
+      "พ่นเทา แชมเปญเกรย์": 345,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 267
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-12",
+     "name": "รางแขวนใหญ่",
+     "role_family": "รางแขวน",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 47.2,
+     "depth_mm": 35.2,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 5,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 811,
+      "พ่นดำ สเปซแบล็ค": 827,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 908,
+      "พ่นเทา แชมเปญเกรย์": 954,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-13",
+     "name": "เส้นประตูมีริม",
+     "role_family": "เส้นมีริม",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 35.86,
+     "depth_mm": 14.86,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 273,
+      "พ่นดำ สเปซแบล็ค": 278,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 342,
+      "พ่นเทา แชมเปญเกรย์": 360,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-14",
+     "name": "เส้นหน้าต่างมีริม",
+     "role_family": "เส้นมีริม",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 26.2,
+     "depth_mm": 14.6,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 212,
+      "พ่นดำ สเปซแบล็ค": 216,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 285,
+      "พ่นเทา แชมเปญเกรย์": 300,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-15",
+     "name": "เส้นเสียบมุ้งบานเลื่อน",
+     "role_family": "เส้นเสียบมุ้ง",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 15.65,
+     "depth_mm": 14.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 330,
+      "พ่นดำ สเปซแบล็ค": 336,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 359,
+      "พ่นเทา แชมเปญเกรย์": 377,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 306
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-16",
+     "name": "ลูกฟูกเรียบ 2 หน้า",
+     "role_family": "ลูกฟูก",
+     "wall_mm": 1.0,
+     "kg_per_m": null,
+     "width_mm": 104.0,
+     "depth_mm": 8.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 7,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 841,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1015,
+      "พ่นเทา แชมเปญเกรย์": 1066,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-18",
+     "name": "สติฟฟิเนอร์เสริมเสาบานเลื่อน",
+     "role_family": "สติฟฟิเนอร์",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 15.0,
+     "depth_mm": 40.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 639,
+      "พ่นดำ สเปซแบล็ค": 651,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 716,
+      "พ่นเทา แชมเปญเกรย์": 752,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1191,
+      "ตัวดิบ MILL": 605
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-19",
+     "name": "ฝาปิดสติฟฟิเนอร์",
+     "role_family": "ฝาปิด",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 15.0,
+     "depth_mm": null,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 40,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 138,
+      "พ่นดำ สเปซแบล็ค": 140,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 145,
+      "พ่นเทา แชมเปญเกรย์": 153,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 226,
+      "ตัวดิบ MILL": 126
+     },
+     "stocked": [],
+     "page": 23,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-20",
+     "name": "สติฟฟิเนอร์เสริมเสาบานเลื่อน 60 มม.",
+     "role_family": "สติฟฟิเนอร์",
+     "wall_mm": 2.0,
+     "kg_per_m": null,
+     "width_mm": 15.0,
+     "depth_mm": 60.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1287,
+      "พ่นดำ สเปซแบล็ค": 1312,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1352,
+      "พ่นเทา แชมเปญเกรย์": 1420,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2028,
+      "ตัวดิบ MILL": 1128
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-21",
+     "name": "ก.ร่องดัดโค้ง",
+     "role_family": "กล่องร่อง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1620,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1700,
+      "พ่นเทา แชมเปญเกรย์": 1785,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-22",
+     "name": "[] 1x1 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.0,
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 25.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 296,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 311,
+      "พ่นเทา แชมเปญเกรย์": 327,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-23",
+     "name": "[] 1x1-3/4 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 44.45,
+     "depth_mm": 25.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 698,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 732,
+      "พ่นเทา แชมเปญเกรย์": 769,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-24",
+     "name": "[] 1x4 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1250,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1311,
+      "พ่นเทา แชมเปญเกรย์": 1377,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-25",
+     "name": "[] 1-3/4x4 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.2,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1472,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1544,
+      "พ่นเทา แชมเปญเกรย์": 1622,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-26",
+     "name": "L 1/2x4 นิ้ว",
+     "role_family": "ฉาก L",
+     "wall_mm": 1.0,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 12.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 415,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 468,
+      "พ่นเทา แชมเปญเกรย์": 492,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-27",
+     "name": "กรอบมุ้งนิรภัยใส่เสาบานเลื่อนเอเชีย/ยูโร",
+     "role_family": "กรอบมุ้ง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 22.5,
+     "depth_mm": 36.05,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 915,
+      "พ่นดำ สเปซแบล็ค": 934,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 960,
+      "พ่นเทา แชมเปญเกรย์": 1008,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1469,
+      "ตัวดิบ MILL": 804
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-28",
+     "name": "กรอบมุ้งนิรภัยบานกระทุ้งเอเชีย/ยูโร",
+     "role_family": "กรอบมุ้ง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 29.5,
+     "depth_mm": 62.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 1236,
+      "พ่นดำ สเปซแบล็ค": 1262,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 1297,
+      "พ่นเทา แชมเปญเกรย์": 1376,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 2001,
+      "ตัวดิบ MILL": 1082
+     },
+     "stocked": [],
+     "page": 24,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-29",
+     "name": "ตบหนีบมุ้งนิรภัยบานเลื่อน-บานกระทุ้ง เอเชีย/ยูโร",
+     "role_family": "ตบมุ้ง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 18.96,
+     "depth_mm": 11.97,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 24,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 263,
+      "พ่นดำ สเปซแบล็ค": 269,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 275,
+      "พ่นเทา แชมเปญเกรย์": 289,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 420,
+      "ตัวดิบ MILL": 232
+     },
+     "stocked": [],
+     "page": 25,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark)."
+    },
+    {
+     "die_no": "810-30",
+     "name": "ตบกรอบมุ้งนิรภัยบานเลื่อน-บานกระทุ้ง เอเชีย/ยูโร",
+     "role_family": "ตบมุ้ง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 12.32,
+     "depth_mm": 18.48,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 30,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 221,
+      "พ่นดำ สเปซแบล็ค": 226,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 232,
+      "พ่นเทา แชมเปญเกรย์": 244,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 354,
+      "ตัวดิบ MILL": 194
+     },
+     "stocked": [],
+     "page": 25,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-31",
+     "name": "กรอบมุ้งบานเลื่อน มีมือจับ เอเชีย",
+     "role_family": "กรอบมุ้ง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 43.6,
+     "depth_mm": 33.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 8,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 837,
+      "พ่นดำ สเปซแบล็ค": 854,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 878,
+      "พ่นเทา แชมเปญเกรย์": 922,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1351,
+      "ตัวดิบ MILL": 734
+     },
+     "stocked": [],
+     "page": 25,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-32",
+     "name": "กรอบมุ้งบานเลื่อน เอเชีย",
+     "role_family": "กรอบมุ้ง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 43.6,
+     "depth_mm": 13.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 665,
+      "พ่นดำ สเปซแบล็ค": 679,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 699,
+      "พ่นเทา แชมเปญเกรย์": 734,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 1073,
+      "ตัวดิบ MILL": 584
+     },
+     "stocked": [],
+     "page": 25,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-33",
+     "name": "ตบกรอบมุ้งบานเลื่อนใส่สักหลาดเอเชีย",
+     "role_family": "ตบมุ้ง",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 20.2,
+     "depth_mm": 16.8,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 22,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 296,
+      "พ่นดำ สเปซแบล็ค": 302,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 311,
+      "พ่นเทา แชมเปญเกรย์": 327,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": 479,
+      "ตัวดิบ MILL": 259
+     },
+     "stocked": [],
+     "page": 25,
+     "confidence": "read",
+     "note": "Page header: 810-01..810-33 woodgrain and galaxy colours kept in stock at \"TM\" (no per-cell * mark). width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing."
+    },
+    {
+     "die_no": "810-34",
+     "name": "L 1/2x1/2 นิ้ว",
+     "role_family": "ฉาก L",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 12.7,
+     "depth_mm": 12.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 50,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 107,
+      "พ่นเทา แชมเปญเกรย์": 113,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 25,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-35",
+     "name": "L 1/2x2 นิ้ว",
+     "role_family": "ฉาก L",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 50.8,
+     "depth_mm": 12.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 264,
+      "พ่นเทา แชมเปญเกรย์": 278,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 25,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-36",
+     "name": "L 1/2x3 นิ้ว",
+     "role_family": "ฉาก L",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 76.2,
+     "depth_mm": 12.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 302,
+      "พ่นเทา แชมเปญเกรย์": 318,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 25,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-38",
+     "name": "U 3/8x3/8 นิ้ว",
+     "role_family": "ราง U",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 9.53,
+     "depth_mm": 9.53,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 50,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 103,
+      "พ่นเทา แชมเปญเกรย์": 109,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 25,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-39",
+     "name": "Z 1-3/4 นิ้ว",
+     "role_family": "Z",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 42.5,
+     "depth_mm": 42.5,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 304,
+      "พ่นเทา แชมเปญเกรย์": 320,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 26,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-40",
+     "name": "U 1/2x1-3/4 นิ้ว",
+     "role_family": "ราง U",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 44.45,
+     "depth_mm": 12.75,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 10,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 271,
+      "พ่นเทา แชมเปญเกรย์": 285,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 26,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-41",
+     "name": "Z 1 นิ้ว",
+     "role_family": "Z",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 23.0,
+     "depth_mm": 32.3,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 20,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 155,
+      "พ่นเทา แชมเปญเกรย์": 163,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 26,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-43",
+     "name": "[] 4x4 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 3.1,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 101.6,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 1,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 5765,
+      "พ่นเทา แชมเปญเกรย์": 6054,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 26,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-44",
+     "name": "[] 1x1-3/4 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.0,
+     "kg_per_m": null,
+     "width_mm": 44.45,
+     "depth_mm": 25.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 495,
+      "พ่นเทา แชมเปญเกรย์": 520,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 26,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-45",
+     "name": "[] 1x2 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.0,
+     "kg_per_m": null,
+     "width_mm": 50.8,
+     "depth_mm": 25.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 6,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 527,
+      "พ่นเทา แชมเปญเกรย์": 554,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 26,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-46",
+     "name": "[] 1x3 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.0,
+     "kg_per_m": null,
+     "width_mm": 76.2,
+     "depth_mm": 25.4,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 3,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 973,
+      "พ่นเทา แชมเปญเกรย์": 1022,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 26,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    },
+    {
+     "die_no": "810-49",
+     "name": "[] 2x4 นิ้ว",
+     "role_family": "กล่องเรียบ",
+     "wall_mm": 1.5,
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 50.8,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 2,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 2184,
+      "พ่นเทา แชมเปญเกรย์": 2294,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": null
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 26,
+     "confidence": "read",
+     "note": "\"@\" = stocked in galaxy only (810-34..810-49)."
+    }
+   ]
+  },
+  {
+   "name": "813 ชุดรางใส่กระจก",
+   "group": "813",
+   "pages": [
+    27
+   ],
+   "app_types": [],
+   "profiles": [
+    {
+     "die_no": "813-01",
+     "name": "รางราวกันตก",
+     "role_family": "รางกระจกราวกันตก",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 109.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 1,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 7822,
+      "พ่นดำ สเปซแบล็ค": 7978,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 8726,
+      "พ่นเทา แชมเปญเกรย์": 9163,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 7196
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 27,
+     "confidence": "read",
+     "note": "Extra line: ชุบขาว = 7,659 THB/bar. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing.",
+     "other_prices": {
+      "ชุบขาว": 7659
+     }
+    },
+    {
+     "die_no": "813-02",
+     "name": "ลิ่มล็อกกระจก",
+     "role_family": "ลิ่มล็อกกระจก",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 20.0,
+     "depth_mm": 58.0,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 4,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": null,
+      "พ่นดำ สเปซแบล็ค": null,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": null,
+      "พ่นเทา แชมเปญเกรย์": null,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 1455
+     },
+     "stocked": [],
+     "page": 27,
+     "confidence": "read",
+     "note": "Extra line: ชุบขาว = 1,531 THB/bar. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing.",
+     "other_prices": {
+      "ชุบขาว": 1531
+     }
+    },
+    {
+     "die_no": "813-03",
+     "name": "ฝาปิดรางราวกันตก",
+     "role_family": "ฝาปิด",
+     "wall_mm": null,
+     "kg_per_m": null,
+     "width_mm": 16.8,
+     "depth_mm": 7.7,
+     "std_length_m": 6.4,
+     "bars_per_bundle": 30,
+     "bar_prices": {
+      "พ่นขาว คอตตอนไวท์": 316,
+      "พ่นดำ สเปซแบล็ค": 322,
+      "พ่นเทา เมทัลลิค/กาแลคซี่": 356,
+      "พ่นเทา แชมเปญเกรย์": 374,
+      "ลายไม้ สักทอง/โอ๊คเดนมาร์ก": null,
+      "ตัวดิบ MILL": 290
+     },
+     "stocked": [
+      "พ่นเทา เมทัลลิค/กาแลคซี่"
+     ],
+     "page": 27,
+     "confidence": "read",
+     "note": "Extra line: ชุบขาว = 312 THB/bar. width/depth = largest horizontal/vertical dimension printed on the 2026 overview drawing.",
+     "other_prices": {
+      "ชุบขาว": 312
+     }
+    }
+   ]
+  }
+ ],
+ "open_questions": [
+  "ความยาวเส้นมาตรฐานไม่ได้พิมพ์ไว้ในเอกสารใด ใช้ 6.4 ม. ไว้ก่อน — ORM ขายเส้นละกี่เมตร?",
+  "ไม่มีน้ำหนัก กก./ม. ในเอกสาร ORM ทั้ง 4 ไฟล์ — ต้องขอตารางน้ำหนักจากผู้ขาย",
+  "802-23 เส้น/มัด พิมพ์เป็น 0 — ถามผู้ขาย",
+  "804-22 ชื่อพิมพ์ว่า 'ร่อง 12. มม.' ตัวเลขหายไป 1 หลัก — น่าจะเป็น 12.x มม.",
+  "ราคาสีแชมเปญเกรย์ของ 811-01..811-04 และ 812-07/812-08 สูงกว่าสีกาแลคซี่มาก (เช่น 811-01 1.5 มม. 2,690 vs 3,209) ทั้งที่รุ่นอื่นห่างกันราว 5% — ราคาตามที่พิมพ์ แต่ควรยืนยัน",
+  "สี 'ชุบขาว' มีราคาเฉพาะ 804-03, 810-06, 810-07, 813-01..03 — จะเพิ่มเป็น finish ในระบบหรือไม่",
+  "หน้า 810: 'รหัส 810-01 ถึง 810-33 สีลายไม้และสีกาแลคซี่เก็บสต็อก TM' — TM หมายถึงสาขา/คลังไหน (ยังไม่ได้ใส่ใน stocked)",
+  "ภาพในแคตตาล็อกรวม 2026 ของ 801-32/801-33 และ 804-25/804-26 มีขนาดไม่ตรงกับรูปเล็กในเล่มราคา (เหมือนสลับกัน) — ใช้รูปจากเล่มราคาไว้ก่อน",
+  "กลุ่ม 810 (มาตรฐาน) และ 813 (ราวกันตกกระจก) ไม่ได้ผูกกับชนิดบาน — ต้องการให้ผูกกับบานเลื่อนรางแขวน (810-05, 810-12) หรือไม่"
+ ]
+}
