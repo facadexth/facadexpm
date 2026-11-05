@@ -1,0 +1,83 @@
+{
+ "slug": "2026-11-05-import-asg",
+ "owner_note": "Owner 2026-11-05: \"เริ่มเลย\" (ASG) — ASG Aluminium Profile as an extruder, prices like SMS (170, wood grain 350; colours as printed: white, black, Sahara grey, wood grain). Weights printed kg/m. Bar length not printed, 6.4 m assumed. Typo codes SAG-* stored as ASG-*.",
+ "provider_name": "ASG (บจก. เอเอสจี อลูมิเนียม โปรไฟล์)",
+ "short_name": "ASG",
+ "finishes": [
+  [
+   "อบขาว",
+   170
+  ],
+  [
+   "อบดำ",
+   170
+  ],
+  [
+   "อบเทาซาฮาร่า",
+   170
+  ],
+  [
+   "ลายไม้สักทอง",
+   350
+  ]
+ ],
+ "parts": [
+  {
+   "json": "docs/catalogs/asg/asg.json",
+   "sections": "DOC/ALUMNIUM CATALOG/_extracted/asg-sections"
+  }
+ ],
+ "families": {
+  "บานเลื่อน": [
+   0,
+   null
+  ],
+  "บานกระทุ้ง / บานเปิด / ช่องแสง": [
+   1,
+   null
+  ],
+  "บานเฟี้ยม": [
+   2,
+   null
+  ],
+  "ASG SM": [
+   3,
+   null
+  ],
+  "อื่นๆ": [
+   4,
+   null
+  ]
+ },
+ "series_rename": {
+  "ASG ชุดประตู หน้าต่างบานเลื่อน (Sliding window & door)": "ชุดประตู หน้าต่างบานเลื่อน (Sliding window & door)",
+  "ASG ชุดบานกระทุ้ง/บานเปิด (Awning & casement)": "ชุดบานกระทุ้ง/บานเปิด (Awning & casement)",
+  "ASG ประตูบานเปิด (วงกบไม้) (Door)": "ประตูบานเปิด (วงกบไม้) (Door)",
+  "ASG บานเลื่อน ยูโร (Euro sliding)": "บานเลื่อน ยูโร (Euro sliding)",
+  "ASG บานเฟี้ยม (Folding door)": "บานเฟี้ยม (Folding door)",
+  "ASG ช่องแสง 30 mm (Fix frame 30 mm)": "ช่องแสง 30 mm (Fix frame 30 mm)",
+  "ASG ฉากอลูมิเนียม 50 x 50 (Angle)": "ฉากอลูมิเนียม 50 x 50 (Angle)",
+  "ASG (SM) ชุดประตู หน้าต่างบานเลื่อน (Sliding window & door SM)": "(SM) ชุดประตู หน้าต่างบานเลื่อน (Sliding window & door SM)",
+  "ASG (SM) ช่องแสง 35 mm (Fix frame 35 mm SM)": "(SM) ช่องแสง 35 mm (Fix frame 35 mm SM)",
+  "ASG (SM) ประตูบานสวิง (Swing door SM)": "(SM) ประตูบานสวิง (Swing door SM)",
+  "ASG (SM) ชุดบานกระทุ้ง/บานเปิด (Awning & casement SM)": "(SM) ชุดบานกระทุ้ง/บานเปิด (Awning & casement SM)",
+  "ASG (SM) ระแนง (Rail / slats SM)": "(SM) ระแนง (Rail / slats SM)"
+ },
+ "series_family": {
+  "ชุดประตู หน้าต่างบานเลื่อน (Sliding window & door)": "บานเลื่อน",
+  "ชุดบานกระทุ้ง/บานเปิด (Awning & casement)": "บานกระทุ้ง / บานเปิด / ช่องแสง",
+  "ประตูบานเปิด (วงกบไม้) (Door)": "บานกระทุ้ง / บานเปิด / ช่องแสง",
+  "บานเลื่อน ยูโร (Euro sliding)": "บานเลื่อน",
+  "บานเฟี้ยม (Folding door)": "บานเฟี้ยม",
+  "ช่องแสง 30 mm (Fix frame 30 mm)": "บานกระทุ้ง / บานเปิด / ช่องแสง",
+  "ฉากอลูมิเนียม 50 x 50 (Angle)": "อื่นๆ",
+  "(SM) ชุดประตู หน้าต่างบานเลื่อน (Sliding window & door SM)": "ASG SM",
+  "(SM) ช่องแสง 35 mm (Fix frame 35 mm SM)": "ASG SM",
+  "(SM) ประตูบานสวิง (Swing door SM)": "ASG SM",
+  "(SM) ชุดบานกระทุ้ง/บานเปิด (Awning & casement SM)": "ASG SM",
+  "(SM) ระแนง (Rail / slats SM)": "ASG SM"
+ },
+ "kg_override": {},
+ "inactive_dies": [],
+ "zero_weight_ok": false
+}
