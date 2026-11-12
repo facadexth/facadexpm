@@ -13,7 +13,7 @@ import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevis
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
-import { useDraftForm } from '../hooks/useDraftForm.js'
+import { useDraftForm, clearDraft } from '../hooks/useDraftForm.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { thaiBahtText } from '../lib/thaiBahtText.js'
 import { auditLog } from '../lib/audit.js'
@@ -429,9 +429,12 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
   )
 }
 
+// Unsaved add-form contents survive a reload under this key; ยกเลิก and ทำสำเนา clear it (see handleDuplicate).
+export const QUOTATION_DRAFT_KEY = 'quotation-form'
+
 function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogRefetch, onSave, onCancel, loading, onClientCreated }) {
   const isAdd = !initial?.id
-  const [form, setForm, clearFormDraft] = useDraftForm('quotation-form', { ...EMPTY_FORM, ...initial }, isAdd)
+  const [form, setForm, clearFormDraft] = useDraftForm(QUOTATION_DRAFT_KEY, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   // บัญชีธนาคารที่เลือกได้ต้องอยู่หมวดเดียวกับ has_vat ของเอกสารนี้เท่านั้น
@@ -1555,7 +1558,11 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   // editRow stays null so handleSave takes its normal insert path, which
   // is what gets this its own fresh auto-numbered quotation_number
   // (trg_quotation_number) instead of reusing the source's number.
+  // The add form restores its localStorage draft over `initial` (useDraftForm), so a draft left by an earlier unsaved
+  // add / duplicate replaced the copied quotation with the old one (owner 2026-11-12: duplicating QT2610-022 opened
+  // another quotation's items). A duplicate starts from the source document: drop the draft first.
   const handleDuplicate = (qt) => {
+    clearDraft(QUOTATION_DRAFT_KEY)
     setEditRow(null)
     setDupInitial(quotationToFormInitial(qt))
     setShowAdd(true)
@@ -1655,18 +1662,21 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   // ฟอร์มเพิ่ม/แก้ไขใบเสนอราคาแยกเป็นหน้าเต็มแทน popup เดิม (ฟอร์มยาว มีทั้ง
   // รายการสินค้าและคำอธิบาย -- popup แคบเกินไปและเลื่อนดูลำบาก) แทนที่ทั้งหน้า
   // list ไปเลยตอนเปิด แทนที่จะซ้อน Modal ทับ
+  // ยกเลิก / ← กลับ: an add or duplicate that is left unsaved is thrown away (its draft would otherwise reappear in
+  // the next add form); an edit has no draft
+  const closeForm = () => { if (!editRow) clearDraft(QUOTATION_DRAFT_KEY); setShowAdd(false); setEditRow(null); setDupInitial(null) }
   if (showAdd) {
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <button className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditRow(null); setDupInitial(null) }}>← กลับ</button>
+          <button className="btn btn-ghost" onClick={closeForm}>← กลับ</button>
           <h2 style={{ margin: 0, fontSize: 18 }}>{editRow ? 'แก้ไขใบเสนอราคา' : dupInitial ? 'ทำสำเนาใบเสนอราคา' : 'เพิ่มใบเสนอราคา'}</h2>
         </div>
         <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
           <QuotationForm
             initial={editFormInitial || dupInitial || newQuotationInitial}
             clients={clients} catalogItems={catalogItems} onCatalogRefetch={refetchCatalogItems}
-            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null); setDupInitial(null) }} loading={saving}
+            onSave={handleSave} onCancel={closeForm} loading={saving}
             onClientCreated={refetchClients}
           />
         </div>
