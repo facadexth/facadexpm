@@ -354,11 +354,20 @@ export const ScaleToFit = forwardRef(function ScaleToFit({ width = PAGE_WIDTH_PX
   // stale imperative value for a later render to clobber.
   const [forceNatural, setForceNatural] = useState(false)
 
+  // Settles instead of looping (2026-11-12, white screen on IN2611-002 / -005 for some users): this effect re-runs
+  // every render and the ResizeObserver fires on its own output, so a container whose width depends on the scaled
+  // height (a scrollbar that appears / disappears) could flip scale back and forth until React gives up with
+  // "Maximum update depth exceeded". Changes under half a pixel are ignored (scale kept to 3 decimals, height to
+  // whole pixels; same value = React bails out), and after 30 updates within a second the scale stops moving.
+  const burst = useRef({ t: 0, n: 0 })
   useLayoutEffect(() => {
     const update = () => {
+      const now = Date.now()
+      if (now - burst.current.t > 1000) burst.current = { t: now, n: 0 }
+      if (++burst.current.n > 30) return
       const containerWidth = outerRef.current?.clientWidth || width
-      setScale(Math.min(1, containerWidth / width))
-      setNaturalHeight(innerRef.current?.offsetHeight || 0)
+      setScale(Math.floor(Math.min(1, containerWidth / width) * 1000) / 1000)
+      setNaturalHeight(Math.round(innerRef.current?.offsetHeight || 0))
     }
     update()
     const ro = new ResizeObserver(update)

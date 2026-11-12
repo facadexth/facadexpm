@@ -20,6 +20,7 @@ import UpdatePrompt from './components/UpdatePrompt.jsx'
 import UpgradeModal from './components/UpgradeModal.jsx'
 import ManualModal from './components/ManualModal.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
+import PageErrorBoundary from './components/PageErrorBoundary.jsx'
 import NotificationBell from './components/NotificationBell.jsx'
 import PhoneDrawer from './components/PhoneDrawer.jsx'
 import { useIsPhone } from './hooks/useIsPhone.js'
@@ -643,11 +644,13 @@ export default function App() {
 
       {/* ── Page Content ── */}
       <main className="app-main" style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-        <ChunkErrorBoundary pendingTab={activeTab}>
-          <Suspense fallback={<PageLoadingFallback />}>
-            {renderPage()}
-          </Suspense>
-        </ChunkErrorBoundary>
+        <PageErrorBoundary page={activeTab} tenantId={tenant?.id}>
+          <ChunkErrorBoundary pendingTab={activeTab}>
+            <Suspense fallback={<PageLoadingFallback />}>
+              {renderPage()}
+            </Suspense>
+          </ChunkErrorBoundary>
+        </PageErrorBoundary>
       </main>
 
       {showChangePassword && (
