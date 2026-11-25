@@ -7,11 +7,12 @@ vi.mock('./lib/supabase.js', () => ({ supabase: { functions: { invoke: (...a) =>
 vi.mock('./components/SignaturePad.jsx', () => ({
   default: ({ onChange }) => <button type="button" onClick={() => onChange('data:image/png;base64,iVBORw0KGgo=')}>draw</button>,
 }))
+vi.mock('qrcode', () => ({ default: { toDataURL: async (u) => `data:image/png;base64,QR:${u}` } }))
 vi.mock('./components/RepairWorkOrderSheet.jsx', () => ({
   default: ({ wo }) => <div data-testid="sheet">{wo.number}{wo.receipt ? ` signed:${wo.receipt.signer_name}` : ''}</div>,
 }))
 
-import RepairWorkOrderPage, { clientNameOf } from './RepairWorkOrderPage.jsx'
+import RepairWorkOrderPage, { clientNameOf, laterText } from './RepairWorkOrderPage.jsx'
 
 const PNG = 'data:image/png;base64,iVBORw0KGgo='
 const wo = (receipt = null) => ({ number: 'RP2611-007', customerText: 'สมชาย ใจดี · 0812345678', receipt })
@@ -19,6 +20,8 @@ const wo = (receipt = null) => ({ number: 'RP2611-007', customerText: 'สมช
 let signed
 beforeEach(() => {
   cleanup()
+  delete navigator.share
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true, writable: true })
   invoke.mockReset()
   signed = null
   invoke.mockImplementation(async (_n, { body }) => {
@@ -163,18 +166,116 @@ describe('RepairWorkOrderPage sign-later', () => {
     fireEvent.click(await screen.findByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' }))
     await waitFor(() => expect(calls('view').length).toBe(2))
     expect((await screen.findAllByText('ลูกค้าเซ็นไปแล้ว: คุณดี')).length).toBeGreaterThan(0)
-    expect(screen.queryByText('ส่งทาง LINE ไม่ได้ตอนนี้ แจ้งแอดมินให้ส่งลิงก์ให้ลูกค้า')).toBe(null)
+    expect(screen.queryByText('ส่งทาง LINE ไม่ได้ ให้ลูกค้าสแกนหรือส่งลิงก์นี้ให้ลูกค้าเอง')).toBe(null)
     expect((await screen.findByTestId('sheet')).textContent).toBe('RP2611-007 signed:คุณดี')
     expect(screen.queryByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' })).toBe(null)
   })
 
-  it('not sent -> tell admin text', async () => {
-    invoke.mockImplementation(async (_n, { body }) => (body.action === 'view'
-      ? { data: { ok: true, workOrder: wo() }, error: null }
-      : { data: { ok: true, sent: false, url: 'https://x/sign/1' }, error: null }))
+  const linkResult = (extra) => async (_n, { body }) => (body.action === 'view'
+    ? { data: { ok: true, workOrder: wo() }, error: null }
+    : { data: { ok: true, sent: false, url: 'https://x/sign/1', ...extra }, error: null })
+  const NOT_SENT = 'ส่งทาง LINE ไม่ได้ ให้ลูกค้าสแกนหรือส่งลิงก์นี้ให้ลูกค้าเอง'
+
+  async function tapLater() {
     render(<RepairWorkOrderPage token="tok" />)
     fireEvent.click(await screen.findByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' }))
-    expect(await screen.findByText('ส่งทาง LINE ไม่ได้ตอนนี้ แจ้งแอดมินให้ส่งลิงก์ให้ลูกค้า')).toBeTruthy()
+  }
+
+  it('sent -> no link box', async () => {
+    await tapLater()
+    await screen.findByText('ส่งลิงก์ให้ลูกค้าทาง LINE แล้ว')
+    expect(screen.queryByLabelText('ลิงก์เซ็นรับงาน')).toBe(null)
+    expect(screen.queryByRole('button', { name: 'คัดลอกลิงก์' })).toBe(null)
+  })
+
+  it('not sent (LINE refused) -> scan/share text + read-only link + QR + copy; no share without navigator.share', async () => {
+    invoke.mockImplementation(linkResult({}))
+    await tapLater()
+    expect(await screen.findByText(NOT_SENT)).toBeTruthy()
+    const box = screen.getByLabelText('ลิงก์เซ็นรับงาน')
+    expect(box.value).toBe('https://x/sign/1')
+    expect(box.readOnly).toBe(true)
+    expect((await screen.findByAltText('QR ลิงก์เซ็นรับงาน')).getAttribute('src')).toBe('data:image/png;base64,QR:https://x/sign/1')
+    expect(screen.getByRole('button', { name: 'คัดลอกลิงก์' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'แชร์' })).toBe(null)
     expect(calls('sign_link').length).toBe(1)
+  })
+
+  it('noLine -> same not-sent text and link', async () => {
+    invoke.mockImplementation(linkResult({ noLine: true }))
+    await tapLater()
+    expect(await screen.findByText(NOT_SENT)).toBeTruthy()
+    expect(screen.getByLabelText('ลิงก์เซ็นรับงาน').value).toBe('https://x/sign/1')
+  })
+
+  it('reused -> "sent a moment ago" text, link still shown', async () => {
+    invoke.mockImplementation(linkResult({ reused: true }))
+    await tapLater()
+    expect(await screen.findByText('ส่งลิงก์ให้ลูกค้าไปแล้วเมื่อสักครู่')).toBeTruthy()
+    expect(screen.queryByText(NOT_SENT)).toBe(null)
+    expect(screen.getByLabelText('ลิงก์เซ็นรับงาน').value).toBe('https://x/sign/1')
+  })
+
+  it('capped -> cap text, link shown', async () => {
+    invoke.mockImplementation(linkResult({ capped: true }))
+    await tapLater()
+    expect(await screen.findByText('ส่งลิงก์ครบ 3 ครั้งวันนี้แล้ว ใช้ลิงก์เดิมด้านล่าง')).toBeTruthy()
+    expect(screen.getByLabelText('ลิงก์เซ็นรับงาน').value).toBe('https://x/sign/1')
+  })
+
+  it('laterText priority: capped > reused > not sent', () => {
+    expect(laterText({ capped: true, reused: true })).toBe('ส่งลิงก์ครบ 3 ครั้งวันนี้แล้ว ใช้ลิงก์เดิมด้านล่าง')
+    expect(laterText({ reused: true })).toBe('ส่งลิงก์ให้ลูกค้าไปแล้วเมื่อสักครู่')
+    expect(laterText({ noLine: true })).toBe(NOT_SENT)
+  })
+
+  it('copy uses navigator.clipboard and says copied', async () => {
+    const writeText = vi.fn(async () => {})
+    navigator.clipboard = { writeText }
+    invoke.mockImplementation(linkResult({}))
+    await tapLater()
+    fireEvent.click(await screen.findByRole('button', { name: 'คัดลอกลิงก์' }))
+    expect(await screen.findByRole('button', { name: 'คัดลอกแล้ว' })).toBeTruthy()
+    expect(writeText).toHaveBeenCalledWith('https://x/sign/1')
+  })
+
+  it('copy without clipboard falls back to selecting the text', async () => {
+    invoke.mockImplementation(linkResult({}))
+    await tapLater()
+    const box = await screen.findByLabelText('ลิงก์เซ็นรับงาน')
+    fireEvent.click(screen.getByRole('button', { name: 'คัดลอกลิงก์' }))
+    await waitFor(() => expect(document.activeElement).toBe(box))
+    expect(box.selectionStart).toBe(0)
+    expect(box.selectionEnd).toBe('https://x/sign/1'.length)
+    expect(screen.queryByRole('button', { name: 'คัดลอกแล้ว' })).toBe(null)
+  })
+
+  it('share shown when navigator.share exists and passes the url', async () => {
+    const share = vi.fn(async () => {})
+    navigator.share = share
+    invoke.mockImplementation(linkResult({}))
+    await tapLater()
+    fireEvent.click(await screen.findByRole('button', { name: 'แชร์' }))
+    expect(share).toHaveBeenCalledWith({ url: 'https://x/sign/1' })
+  })
+})
+
+describe('RepairWorkOrderPage sign already (F7)', () => {
+  it('sign returns already -> page behind refreshes quietly (view called again, sheet shows signer)', async () => {
+    let n = 0
+    invoke.mockImplementation(async (_n, { body }) => {
+      if (body.action === 'view') return { data: { ok: true, workOrder: wo(n > 0 ? { signer_name: 'คุณบี' } : null) }, error: null }
+      n++
+      return { data: { ok: true, already: true, receipt: { id: 'r1', signer_name: 'คุณบี', signed_at: 'x' } }, error: null }
+    })
+    render(<RepairWorkOrderPage token="tok" />)
+    fireEvent.click(await screen.findByRole('button', { name: '✍️ ให้ลูกค้าเซ็นรับงาน' }))
+    fireEvent.click(screen.getByRole('button', { name: 'draw' }))
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกลายเซ็น' }))
+    await waitFor(() => expect(calls('view').length).toBe(2))
+    expect((await screen.findByTestId('sheet')).textContent).toBe('RP2611-007 signed:คุณบี')
+    // The sign sheet stays open so the crew can still choose เซ็นใหม่แทน.
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.queryByText('กำลังโหลด…')).toBe(null)
   })
 })

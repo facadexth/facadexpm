@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { workOrderLines, workOrderTickets } from '../../supabase/functions/_shared/repair-workorder-link.ts'
+import { workOrderLines, workOrderTickets, workOrderTokenExpiry } from '../../supabase/functions/_shared/repair-workorder-link.ts'
 
 const FAIL = 'เปิดไม่ได้ตอนนี้ ลองใหม่'
 const TODAY = '2026-11-25'
@@ -56,5 +56,20 @@ describe('workOrderTickets', () => {
       row(),
     ], TODAY)
     expect(out.map((t) => t.ticketNumber)).toEqual(['B', 'RP2611-007'])
+  })
+})
+
+describe('workOrderTokenExpiry (end of the Bangkok day)', () => {
+  it('10:00 Bangkok -> 23:59:59 Bangkok same day', () => {
+    expect(workOrderTokenExpiry(Date.UTC(2026, 10, 25, 3, 0, 0))).toBe('2026-11-25T16:59:59.000Z')
+  })
+  it('00:05 Bangkok (still the previous UTC day) -> end of that Bangkok day', () => {
+    expect(workOrderTokenExpiry(Date.UTC(2026, 10, 24, 17, 5, 0))).toBe('2026-11-25T16:59:59.000Z')
+  })
+  it('23:59:30 Bangkok -> 29 s later', () => {
+    expect(workOrderTokenExpiry(Date.UTC(2026, 10, 25, 16, 59, 30))).toBe('2026-11-25T16:59:59.000Z')
+  })
+  it('month/year rollover', () => {
+    expect(workOrderTokenExpiry(Date.UTC(2026, 11, 31, 20, 0, 0))).toBe('2027-01-01T16:59:59.000Z')
   })
 })

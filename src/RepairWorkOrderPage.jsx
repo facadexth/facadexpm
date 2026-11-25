@@ -5,6 +5,7 @@
 // The A4 sheet (RepairWorkOrderSheet, 718px wide) is scaled down to the screen width; a sticky bar
 // below it lets the customer sign on the crew's phone, or sends the customer a sign-later link.
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
+import QRCode from 'qrcode'
 import { supabase } from './lib/supabase.js'
 import { A4_CONTENT_WIDTH_PX } from './lib/pdf.js'
 import RepairWorkOrderSheet from './components/RepairWorkOrderSheet.jsx'
@@ -18,7 +19,19 @@ export const MSG = {
   network: 'โหลดไม่สำเร็จ ลองใหม่',
   saveFailed: 'บันทึกไม่สำเร็จ ลองใหม่',
   sent: 'ส่งลิงก์ให้ลูกค้าทาง LINE แล้ว',
-  notSent: 'ส่งทาง LINE ไม่ได้ตอนนี้ แจ้งแอดมินให้ส่งลิงก์ให้ลูกค้า',
+  notSent: 'ส่งทาง LINE ไม่ได้ ให้ลูกค้าสแกนหรือส่งลิงก์นี้ให้ลูกค้าเอง',
+  reused: 'ส่งลิงก์ให้ลูกค้าไปแล้วเมื่อสักครู่',
+  capped: 'ส่งลิงก์ครบ 3 ครั้งวันนี้แล้ว ใช้ลิงก์เดิมด้านล่าง',
+  copy: 'คัดลอกลิงก์',
+  copied: 'คัดลอกแล้ว',
+  share: 'แชร์',
+}
+
+// sign_link result (sent false) -> the text above the link box.
+export function laterText(body) {
+  if (body?.capped) return MSG.capped
+  if (body?.reused) return MSG.reused
+  return MSG.notSent
 }
 
 // expired / not_found / anything unknown -> the expired text.
@@ -70,6 +83,11 @@ const CSS = `
 .wo-x{border:0;background:transparent;color:var(--text);font-size:22px;line-height:1;cursor:pointer;padding:4px 8px}
 .wo-sheet input[type=text]{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px;font:inherit;font-size:16px;color:var(--text);background:var(--bg2)}
 .wo-pad{background:#fff;border-radius:10px;overflow:hidden}
+.wo-link{display:grid;gap:8px;justify-items:center}
+.wo-link input{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px;font:inherit;font-size:14px;color:var(--text);background:var(--bg)}
+.wo-link-btns{display:flex;gap:8px;width:100%}
+.wo-link-btns .wo-big{padding:10px;font-size:15px}
+.wo-qr{width:140px;height:140px;background:#fff;padding:6px;border-radius:8px}
 .wo button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 `
 
@@ -111,7 +129,57 @@ function FittedSheet({ wo }) {
   )
 }
 
-function SignSheet({ token, wo, force, onClose, onSigned }) {
+// The sign-later link when LINE did not send it: QR for the customer to scan, a read-only box,
+// copy (clipboard, or select the text when the clipboard is unavailable) and share when supported.
+function LinkBox({ url }) {
+  const inputRef = useRef(null)
+  const [qr, setQr] = useState(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    QRCode.toDataURL(url, { margin: 1, width: 256 })
+      .then((d) => { if (alive) setQr(d) })
+      .catch(() => { if (alive) setQr(null) })
+    return () => { alive = false }
+  }, [url])
+
+  const selectText = () => {
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    el.select()
+    try { el.setSelectionRange(0, url.length) } catch { /* not supported */ }
+  }
+
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('no clipboard')
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+    } catch {
+      selectText()
+    }
+  }
+
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+  const share = async () => {
+    try { await navigator.share({ url }) } catch { /* cancelled */ }
+  }
+
+  return (
+    <div className="wo-link">
+      {qr ? <img className="wo-qr" src={qr} alt="QR ลิงก์เซ็นรับงาน" /> : null}
+      <input ref={inputRef} type="text" readOnly value={url} aria-label="ลิงก์เซ็นรับงาน" onFocus={selectText} />
+      <div className="wo-link-btns">
+        <button type="button" className="wo-big ghost" onClick={copy}>{copied ? MSG.copied : MSG.copy}</button>
+        {canShare ? <button type="button" className="wo-big ghost" onClick={share}>{MSG.share}</button> : null}
+      </div>
+    </div>
+  )
+}
+
+function SignSheet({ token, wo, force, onClose, onSigned, onAlready }) {
   const [name, setName] = useState(() => clientNameOf(wo))
   const [png, setPng] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -128,7 +196,12 @@ function SignSheet({ token, wo, force, onClose, onSigned }) {
     setBusy(false)
     if (res.ok && res.body.reason) { setErr(reasonText(res.body.reason)); return }
     if (!res.ok || !res.body.ok) { setErr(MSG.saveFailed); return }
-    if (res.body.already) { setAlready(res.body.receipt || { signer_name: '' }); return }
+    if (res.body.already) {
+      setAlready(res.body.receipt || { signer_name: '' })
+      // Someone else signed meanwhile: refresh the page behind quietly so it shows that signature.
+      onAlready?.()
+      return
+    }
     onSigned()
   }
 
@@ -159,7 +232,7 @@ function SignSheet({ token, wo, force, onClose, onSigned }) {
 export default function RepairWorkOrderPage({ token }) {
   const [state, setState] = useState({ phase: 'loading' }) // loading | error | ok
   const [signing, setSigning] = useState(null) // null | { force }
-  const [later, setLater] = useState({ busy: false, result: '', err: '' })
+  const [later, setLater] = useState({ busy: false, result: '', err: '', url: '' })
 
   const load = useCallback(async (quiet) => {
     if (!quiet) setState({ phase: 'loading' })
@@ -174,18 +247,20 @@ export default function RepairWorkOrderPage({ token }) {
 
   const sendLater = async () => {
     if (later.busy || later.result) return
-    setLater({ busy: true, result: '', err: '' })
+    setLater({ busy: true, result: '', err: '', url: '' })
     const res = await callFn({ token, action: 'sign_link' })
-    if (res.ok && res.body.reason) { setLater({ busy: false, result: '', err: reasonText(res.body.reason) }); return }
-    if (!res.ok || !res.body.ok) { setLater({ busy: false, result: '', err: MSG.network }); return }
+    if (res.ok && res.body.reason) { setLater({ busy: false, result: '', err: reasonText(res.body.reason), url: '' }); return }
+    if (!res.ok || !res.body.ok) { setLater({ busy: false, result: '', err: MSG.network, url: '' }); return }
     if (res.body.already) {
       // The customer signed meanwhile (e.g. staff or another crew): say so and show the signature.
-      setLater({ busy: false, result: `ลูกค้าเซ็นไปแล้ว: ${res.body.receipt?.signer_name ?? ''}`, err: '' })
+      setLater({ busy: false, result: `ลูกค้าเซ็นไปแล้ว: ${res.body.receipt?.signer_name ?? ''}`, err: '', url: '' })
       load(true)
       return
     }
-    // sent: false also covers an existing recent link being returned instead of a new one.
-    setLater({ busy: false, result: res.body.sent === true ? MSG.sent : MSG.notSent, err: '' })
+    if (res.body.sent === true) { setLater({ busy: false, result: MSG.sent, err: '', url: '' }); return }
+    // Not sent for any reason (reused, capped, customer has no LINE, LINE refused): show the link.
+    const url = typeof res.body.url === 'string' ? res.body.url : ''
+    setLater({ busy: false, result: laterText(res.body), err: '', url })
   }
 
   if (state.phase !== 'ok') {
@@ -218,7 +293,10 @@ export default function RepairWorkOrderPage({ token }) {
           <button type="button" className="wo-big" onClick={() => setSigning({ force: false })}>✍️ ให้ลูกค้าเซ็นรับงาน</button>
         )}
         {later.result ? (
-          <div className="wo-note">{later.result}</div>
+          <>
+            <div className="wo-note">{later.result}</div>
+            {later.url ? <LinkBox url={later.url} /> : null}
+          </>
         ) : (
           <button type="button" className="wo-big ghost" disabled={later.busy} onClick={sendLater}>🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง</button>
         )}
@@ -231,6 +309,7 @@ export default function RepairWorkOrderPage({ token }) {
           force={signing.force}
           onClose={() => setSigning(null)}
           onSigned={() => { setSigning(null); load(true) }}
+          onAlready={() => load(true)}
         />
       ) : null}
     </div>

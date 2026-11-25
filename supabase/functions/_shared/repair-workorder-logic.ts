@@ -56,6 +56,9 @@ export type RepairWorkorderDeps = {
   createSignLink: (row: SignLinkInsert) => Promise<{ id: string }>
   // An unsigned, unexpired document_receipt_links row for this ticket created at/after sinceIso (R7).
   recentSignLink: (tenantId: string, ticketId: string, sinceIso: string, nowIso: string) => Promise<{ id: string } | null>
+  // document_receipt_links for this ticket made by any crew member (created_by 'crew:%') at/after
+  // sinceIso (start of today Bangkok): how many, and the newest one's id (F1 per-ticket daily cap).
+  crewSignLinksSince: (tenantId: string, ticketId: string, sinceIso: string) => Promise<{ count: number; newestId: string | null }>
   pushCustomer: (tenantId: string, lineUserId: string | null, text: string) => Promise<{ sent: boolean }>
   appUrl: string
 }
@@ -64,10 +67,11 @@ export type WorkorderResult = { status: number; body: Record<string, unknown> }
 
 export const TOKEN_ACTION = 'repair_workorder'
 export const DOCUMENT_TYPE = 'repair_ticket' as const
-export const SIGNED_URL_SECONDS = 2 * 60 * 60
+export const SIGNED_URL_SECONDS = 30 * 60
 export const MAX_SIGNATURE_BYTES = 300 * 1024
 export const SIGNER_NAME_MAX = 100
 export const SIGN_LINK_REUSE_MS = 10 * 60 * 1000
+export const CREW_SIGN_LINKS_PER_DAY = 3
 const PNG_PREFIX = 'data:image/png;base64,'
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -79,6 +83,11 @@ const str = (x: unknown): string => (typeof x === 'string' ? x : '')
 // Bangkok has no DST: a fixed +7 h offset is always right.
 function bangkokDay(nowMs: number): string {
   return new Date(nowMs + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+// 00:00 Bangkok of the day containing nowMs, as a UTC ISO string.
+function bangkokDayStartIso(nowMs: number): string {
+  return new Date(`${bangkokDay(nowMs)}T00:00:00+07:00`).toISOString()
 }
 
 // 'data:image/png;base64,…' -> PNG bytes, or null when it is not a real PNG of 1..300 KB.
@@ -169,15 +178,27 @@ async function sign(c: Checked, signerName: string, png: Uint8Array, force: bool
 
 // Ruling R7: sign_link spends the tenant's shared customer push budget, so
 //  (a) already signed and no force -> the receipt, no link, no push;
-//  (b) an unsigned, unexpired link made in the last 10 minutes -> its URL again, sent:false, no push.
+//  (b) an unsigned, unexpired link made in the last 10 minutes -> its URL again, sent:false,
+//      reused:true, no push;
+//  (c) F1: at most CREW_SIGN_LINKS_PER_DAY crew-made links per ticket per Bangkok day -> after that
+//      the newest one's URL, sent:false, capped:true, no new link, no push;
+//  (d) the ticket has no customer LINE user -> a link is still made (the crew shows/shares it), no
+//      push, sent:false, noLine:true.
+// Whenever sent is false the page shows the URL so the crew can copy/share it.
 async function signLink(c: Checked, force: boolean, deps: RepairWorkorderDeps, now: number): Promise<WorkorderResult> {
   const tenantId = c.tok.tenantId
   if (!force) {
     const existing = await deps.latestReceipt(tenantId, c.ticket.id)
     if (existing) return ok({ ok: true, already: true, receipt: existing })
   }
+  const linkUrl = (id: string) => `${deps.appUrl}/sign/${id}`
   const recent = await deps.recentSignLink(tenantId, c.ticket.id, new Date(now - SIGN_LINK_REUSE_MS).toISOString(), new Date(now).toISOString())
-  if (recent) return ok({ ok: true, sent: false, url: `${deps.appUrl}/sign/${recent.id}` })
+  if (recent) return ok({ ok: true, sent: false, reused: true, url: linkUrl(recent.id) })
+
+  const today = await deps.crewSignLinksSince(tenantId, c.ticket.id, bangkokDayStartIso(now))
+  if (today.count >= CREW_SIGN_LINKS_PER_DAY && today.newestId) {
+    return ok({ ok: true, sent: false, capped: true, url: linkUrl(today.newestId) })
+  }
 
   const link = await deps.createSignLink({
     tenant_id: tenantId,
@@ -185,13 +206,15 @@ async function signLink(c: Checked, force: boolean, deps: RepairWorkorderDeps, n
     document_id: c.ticket.id,
     created_by: crewBy(c.worker),
   })
-  const url = `${deps.appUrl}/sign/${link.id}`
+  const url = linkUrl(link.id)
+  if (!c.ticket.lineUserId) return ok({ ok: true, sent: false, url, noLine: true })
+
   let sent = false
   try {
     const res = await deps.pushCustomer(tenantId, c.ticket.lineUserId, `กรุณาเซ็นรับงานซ่อม ${c.ticket.ticketNumber}\n${url}`)
     sent = res?.sent === true
   } catch (e) {
-    // Pushes are off or LINE refused: the crew still gets the link to show/copy.
+    // LINE refused or the tenant's push budget is spent: the crew still gets the link to show/copy.
     console.error('repair-workorder: sign link push failed', (e as Error)?.name ?? 'Error')
   }
   return ok({ ok: true, sent, url })

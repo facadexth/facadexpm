@@ -32,6 +32,7 @@ function deps(over = {}) {
     insertReceipt: vi.fn(async (row) => ({ id: 'rc1', signer_name: row.signer_name, signed_at: '2026-11-25T03:00:00Z' })),
     createSignLink: vi.fn(async () => ({ id: 'link1' })),
     recentSignLink: vi.fn(async () => null),
+    crewSignLinksSince: vi.fn(async () => ({ count: 0, newestId: null })),
     pushCustomer: vi.fn(async () => ({ sent: false, skipped: 'off' })),
     appUrl: 'https://changpm.app',
     ...over,
@@ -134,8 +135,8 @@ describe('view', () => {
     expect(d.loadWorkOrder).toHaveBeenCalledWith('t1', 'tn1', '2026-11-25')
   })
 
-  it('signed urls last 2 hours', () => {
-    expect(SIGNED_URL_SECONDS).toBe(7200)
+  it('signed urls last 30 minutes', () => {
+    expect(SIGNED_URL_SECONDS).toBe(1800)
   })
 })
 
@@ -270,9 +271,52 @@ describe('sign_link', () => {
 
   it('unsigned link from the last 10 minutes → same url, sent false, no new link, no push (R7b)', async () => {
     const d = deps({ recentSignLink: vi.fn(async () => ({ id: 'link0' })) })
-    expect(await handleRepairWorkorder(signLink, d, NOW)).toEqual({ status: 200, body: { ok: true, sent: false, url: 'https://changpm.app/sign/link0' } })
+    expect(await handleRepairWorkorder(signLink, d, NOW)).toEqual({ status: 200, body: { ok: true, sent: false, reused: true, url: 'https://changpm.app/sign/link0' } })
     expect(d.recentSignLink).toHaveBeenCalledWith('tn1', 't1', new Date(NOW - 10 * 60 * 1000).toISOString(), new Date(NOW).toISOString())
     expect(d.createSignLink).not.toHaveBeenCalled()
+    expect(d.pushCustomer).not.toHaveBeenCalled()
+  })
+
+  it('2 crew links today → still under the cap: new link + push; counted from 00:00 Bangkok', async () => {
+    const d = deps({ crewSignLinksSince: vi.fn(async () => ({ count: 2, newestId: 'link9' })) })
+    const r = await handleRepairWorkorder(signLink, d, NOW)
+    expect(r.body).toEqual({ ok: true, sent: false, url: 'https://changpm.app/sign/link1' })
+    // 2026-11-25 00:00 +07:00 = 2026-11-24T17:00Z
+    expect(d.crewSignLinksSince).toHaveBeenCalledWith('tn1', 't1', '2026-11-24T17:00:00.000Z')
+    expect(d.createSignLink).toHaveBeenCalledTimes(1)
+    expect(d.pushCustomer).toHaveBeenCalledTimes(1)
+  })
+
+  it('3 crew links today (F1 cap) → newest url, capped, no new link, no push', async () => {
+    const d = deps({ crewSignLinksSince: vi.fn(async () => ({ count: 3, newestId: 'link9' })) })
+    expect(await handleRepairWorkorder(signLink, d, NOW)).toEqual({
+      status: 200, body: { ok: true, sent: false, capped: true, url: 'https://changpm.app/sign/link9' },
+    })
+    expect(d.createSignLink).not.toHaveBeenCalled()
+    expect(d.pushCustomer).not.toHaveBeenCalled()
+  })
+
+  it('cap also applies with force', async () => {
+    const d = deps({
+      latestReceipt: vi.fn(async () => ({ id: 'rc0', signer_name: 'เดิม', signed_at: 'x' })),
+      crewSignLinksSince: vi.fn(async () => ({ count: 5, newestId: 'link9' })),
+    })
+    expect((await handleRepairWorkorder({ ...signLink, force: true }, d, NOW)).body.capped).toBe(true)
+    expect(d.createSignLink).not.toHaveBeenCalled()
+  })
+
+  it('day boundary: 00:30 Bangkok counts from that same Bangkok day', async () => {
+    const d = deps()
+    await handleRepairWorkorder(signLink, d, Date.UTC(2026, 10, 24, 17, 30, 0))
+    expect(d.crewSignLinksSince).toHaveBeenCalledWith('tn1', 't1', '2026-11-24T17:00:00.000Z')
+  })
+
+  it('ticket without a LINE user → link made, no push, noLine', async () => {
+    const d = deps({ loadTicket: vi.fn(async () => ticketRow({ lineUserId: null })) })
+    expect(await handleRepairWorkorder(signLink, d, NOW)).toEqual({
+      status: 200, body: { ok: true, sent: false, url: 'https://changpm.app/sign/link1', noLine: true },
+    })
+    expect(d.createSignLink).toHaveBeenCalledTimes(1)
     expect(d.pushCustomer).not.toHaveBeenCalled()
   })
 

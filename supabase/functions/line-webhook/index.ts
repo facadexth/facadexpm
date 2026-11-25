@@ -128,7 +128,7 @@ import {
 } from '../_shared/line-admin-chat-logic.ts'
 import { getChatMode, canStartAdminChat, claimAckForSession, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
 import { APP_URL } from '../_shared/app-url.ts'
-import { workOrderLines, workOrderTickets, type WorkOrderAssignmentRow } from '../_shared/repair-workorder-link.ts'
+import { workOrderLines, workOrderTickets, workOrderTokenExpiry, type WorkOrderAssignmentRow } from '../_shared/repair-workorder-link.ts'
 import {
   type GroupActionType, type ActionType, type CommandSettingsByKey,
   SCHEDULE_COMMAND_ORDER, ADVANCE_COMMAND_KEYS, resolveEffectivePhrases, resolveEnabled,
@@ -209,7 +209,7 @@ async function issueRepairWorkorderLink(tenantId: string, workerId: string, tick
   const { error } = await admin.from('line_deep_link_tokens').insert({
     tenant_id: tenantId, worker_id: workerId, action_type: 'repair_workorder', token,
     repair_ticket_id: ticketId,
-    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    expires_at: workOrderTokenExpiry(Date.now()),
   })
   if (error) { logSafeError('issueRepairWorkorderLink insert failed', error); return null }
   return `${APP_URL}/w/${token}`

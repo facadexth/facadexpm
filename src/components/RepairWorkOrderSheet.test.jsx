@@ -5,7 +5,7 @@ import { render, screen, cleanup, waitFor } from '@testing-library/react'
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn(() => Promise.resolve('data:image/png;base64,QR')) } }))
 
 import QRCode from 'qrcode'
-import RepairWorkOrderSheet from './RepairWorkOrderSheet.jsx'
+import RepairWorkOrderSheet, { companyInitial } from './RepairWorkOrderSheet.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -30,6 +30,46 @@ const wo = (over = {}) => ({
   ...over,
 })
 
+describe('companyInitial', () => {
+  const cases = [
+    ['บริษัท เฟซาด เอ็กซ์ จำกัด', 'ฟ'],
+    ['บจก. สร้างดี คอนสตรัคชั่น', 'ส'],
+    ['หจก.ช่างดี', 'ช่'],
+    ['ห้างหุ้นส่วนจำกัด  ทองไทย', 'ท'],
+    ['บมจ. ที่ดีที่สุด', 'ที่'],
+    ['ไทยอลูมิเนียม', 'ท'],
+    ['FacadeX Co.', 'F'],
+    ['บริษัท', 'บ'],
+    ['', ''],
+    [null, ''],
+  ]
+  for (const [name, want] of cases) {
+    it(`${JSON.stringify(name)} -> ${JSON.stringify(want)}`, () => {
+      expect(companyInitial(name)).toBe(want)
+    })
+  }
+
+  it('the result is one grapheme and never starts with a combining mark', () => {
+    for (const [name] of cases) {
+      const r = companyInitial(name)
+      if (!r) continue
+      expect(/^[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/.test(r)).toBe(false)
+      expect([...new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(r)].length).toBe(1)
+    }
+  })
+
+  it('fallback without Intl.Segmenter keeps the consonant with its marks', () => {
+    const Seg = Intl.Segmenter
+    try {
+      Intl.Segmenter = undefined
+      expect(companyInitial('บมจ. ที่ดี')).toBe('ที่')
+      expect(companyInitial('บริษัท เฟซาด')).toBe('ฟ')
+    } finally {
+      Intl.Segmenter = Seg
+    }
+  })
+})
+
 describe('RepairWorkOrderSheet', () => {
   it('renders header, rows, warranty, safety and the root id', async () => {
     const { container } = render(<RepairWorkOrderSheet wo={wo()} id="wo-doc" />)
@@ -44,7 +84,7 @@ describe('RepairWorkOrderSheet', () => {
     expect(screen.getByText('มีสุนัขในบ้าน')).toBeTruthy()
     expect(screen.getByText('▶ วิดีโอ')).toBeTruthy()
     expect(screen.getByText('RP2611-012 · บ้านคุณสมใจ')).toBeTruthy()
-    expect(screen.getByText('บร')).toBeTruthy() // initials box (no logo)
+    expect(screen.getByText('ฟ')).toBeTruthy() // initial box (no logo): prefix + leading vowel dropped
     await waitFor(() => expect(container.querySelector('img[alt="แผนที่"]')).toBeTruthy())
     expect(QRCode.toDataURL).toHaveBeenCalledWith('https://www.google.com/maps?q=13.7,100.5', { margin: 0, width: 160 })
   })

@@ -36,3 +36,11 @@ export function workOrderTickets(rows: WorkOrderAssignmentRow[], today: string):
 export function workOrderLines(rows: Array<{ ticketNumber: string; url: string | null }>): string[] {
   return rows.flatMap((r) => ['', `📄 ใบงานซ่อม ${r.ticketNumber}: ${r.url ?? 'เปิดไม่ได้ตอนนี้ ลองใหม่'}`])
 }
+
+// A crew work order token lives until the end of the Bangkok day it was issued on
+// (23:59:59 +07:00), matching "งานวันนี้": tomorrow's jobs need tomorrow's links. Bangkok has no
+// DST, so a fixed +7 h offset is always right. Returns a UTC ISO string.
+export function workOrderTokenExpiry(nowMs: number): string {
+  const day = new Date(nowMs + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  return new Date(`${day}T23:59:59+07:00`).toISOString()
+}

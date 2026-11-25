@@ -150,6 +150,16 @@ const deps: RepairWorkorderDeps = {
     return row ? { id: row.id } : null
   },
 
+  async crewSignLinksSince(tenantId, ticketId, sinceIso) {
+    const { data, count, error } = await admin.from('document_receipt_links').select('id', { count: 'exact' })
+      .eq('tenant_id', tenantId).eq('document_type', RECEIPT_DOCUMENT_TYPE).eq('document_id', ticketId)
+      .like('created_by', 'crew:%').gte('created_at', sinceIso)
+      .order('created_at', { ascending: false }).limit(1)
+    if (error) throw error
+    const row = (data ?? [])[0] as { id: string } | undefined
+    return { count: count ?? 0, newestId: row?.id ?? null }
+  },
+
   pushCustomer: (tenantId, lineUserId, text) =>
     pushToCustomer(customerPushDeps(admin), tenantId, lineUserId, [{ type: 'text', text }]),
 

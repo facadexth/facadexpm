@@ -52,7 +52,8 @@ type BankAccount = { bank_name: string; account_name: string; account_no: string
 // This stays a lookup table (not baked into SQL) so a future document type
 // is one entry, not a rewrite. Every loader returns a superset of fields;
 // PublicSignPage renders whichever ones are present for that type.
-const DOCUMENT_LOADERS: Record<string, (id: string) => Promise<Record<string, unknown> | null>> = {
+// `signed`: the link was already signed (a signed link must still open, e.g. a declined repair ticket).
+const DOCUMENT_LOADERS: Record<string, (id: string, signed: boolean) => Promise<Record<string, unknown> | null>> = {
   cheque: async (id: string) => {
     const { data } = await admin.from('cheques').select('cheque_no, bank, check_date, status, tenant_id').eq('id', id).maybeSingle()
     if (!data) return null
@@ -169,17 +170,22 @@ const DOCUMENT_LOADERS: Record<string, (id: string) => Promise<Record<string, un
   },
   // Repair work order (ใบงานซ่อม, CRM phase 2a): the customer signs that the listed problems were
   // seen/fixed. No prices anywhere -- items carry only a description. A declined ticket is refused
-  // (PublicSignPage words 'replaced' for this type as "งานซ่อมนี้ถูกยกเลิกแล้ว"). Signing changes no status.
-  repair_ticket: async (id: string) => {
+  // (PublicSignPage words 'replaced' for this type as "งานซ่อมนี้ถูกยกเลิกแล้ว") unless this link was
+  // already signed -- then it still opens to show the signature. Signing changes no status.
+  repair_ticket: async (id: string, signed: boolean) => {
     const { data } = await admin.from('repair_tickets')
       .select('ticket_number, created_at, status, description, tenant_id, clients(name), sites(name)')
       .eq('id', id).maybeSingle()
     if (!data) return null
-    if (data.status === 'declined') return { refuseReason: 'replaced', tenant_id: data.tenant_id }
+    if (data.status === 'declined' && !signed) return { refuseReason: 'replaced', tenant_id: data.tenant_id }
     const { data: rows, error } = await admin.from('repair_ticket_items')
       .select('seq, location, room, symptom, note')
       .eq('tenant_id', data.tenant_id).eq('ticket_id', id).order('seq', { ascending: true })
-    if (error) throw new Error(error.message)
+    // A failed read becomes a clean document_not_found (JSON + CORS), never an uncaught throw.
+    if (error) {
+      console.error('sign-link: repair items read failed')
+      return null
+    }
     return {
       type: 'repair_ticket', label: `ใบงานซ่อม ${data.ticket_number}`, number: data.ticket_number,
       date: data.created_at ? bangkokDay(Date.parse(data.created_at as string)) : null, tenant_id: data.tenant_id,
@@ -244,7 +250,7 @@ Deno.serve(async (req) => {
 
   const loader = DOCUMENT_LOADERS[link.document_type as string]
   if (!loader) return json({ valid: false, reason: 'unsupported_document_type' })
-  const doc = await loader(link.document_id as string)
+  const doc = await loader(link.document_id as string, !!link.signed_at)
   if (!doc) return json({ valid: false, reason: 'document_not_found' })
   if (doc.refuseReason) return json({ valid: false, reason: doc.refuseReason, documentType: link.document_type })
 
