@@ -49,6 +49,7 @@ Each phase ships on its own version bump. Each phase needs its own implementatio
   - crew notes
   - 3 signatures
 - **Signatures:** both paper signature lines AND on-screen signing (reuse `SignaturePad` + `document_receipts`).
+  - Owner decided 2026-11-25: main path = customer signs on the CREW's phone in `/w/:token` (crew taps "ให้ลูกค้าเซ็นรับงาน", hands phone over); signer name + time stored; signature attached to the before/after report sent to the customer. Fallback button "ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง" sends a customer_link_tokens link via the customer OA for when the customer is not on site.
 - **Crew get it in LINE:** in the crew OA, "งานวันนี้" shows a **📄 ดูใบงานซ่อม** link on repair jobs. The link opens without login.
 - **Out of warranty → quotation first, every time.**
   - The ticket shows a **📝 ทำใบเสนอราคา** button.
