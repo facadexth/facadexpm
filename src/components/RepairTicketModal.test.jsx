@@ -2,23 +2,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 
-const state = vi.hoisted(() => ({ ticket: null, rpc: null }))
+const state = vi.hoisted(() => ({ ticket: null, rpc: null, items: [], media: [], itemUpdate: null, updates: [], signed: [] }))
 
 vi.mock('../lib/supabase.js', () => {
-  const chain = (result) => {
+  const chain = (table) => {
+    const call = { table, op: 'select', patch: null, eqs: [] }
+    const result = () => {
+      if (table === 'repair_tickets') return { data: state.ticket, error: null }
+      if (table === 'repair_ticket_items') {
+        if (call.op === 'update') return state.itemUpdate || { data: [{ id: call.eqs.find(([k]) => k === 'id')?.[1] }], error: null }
+        return { data: state.items, error: null }
+      }
+      if (table === 'repair_ticket_media') return { data: state.media, error: null }
+      return { data: [], error: null }
+    }
     const c = {}
-    for (const m of ['select', 'eq', 'order', 'update', 'neq', 'in']) c[m] = () => c
+    for (const m of ['select', 'order', 'neq', 'in']) c[m] = () => c
+    c.eq = (k, v) => { call.eqs.push([k, v]); return c }
+    c.update = (patch) => { call.op = 'update'; call.patch = patch; state.updates.push(call); return c }
     c.maybeSingle = () => Promise.resolve(result())
     c.then = (res, rej) => Promise.resolve(result()).then(res, rej)
     return c
   }
   return {
     supabase: {
-      from: (table) => chain(() => (table === 'repair_tickets'
-        ? { data: state.ticket, error: null }
-        : { data: [], error: null })),
+      from: (table) => chain(table),
       rpc: (...args) => state.rpc(...args),
-      storage: { from: () => ({ createSignedUrls: () => Promise.resolve({ data: [], error: null }) }) },
+      storage: { from: () => ({ createSignedUrls: () => Promise.resolve({ data: state.signed, error: null }) }) },
     },
   }
 })
@@ -38,7 +48,10 @@ const baseTicket = {
 }
 
 afterEach(cleanup)
-beforeEach(() => { state.ticket = { ...baseTicket }; state.rpc = vi.fn() })
+beforeEach(() => {
+  state.ticket = { ...baseTicket }; state.rpc = vi.fn()
+  state.items = []; state.media = []; state.itemUpdate = null; state.updates = []; state.signed = []
+})
 
 describe('ConflictBox', () => {
   const nameOf = (id) => ({ w1: 'ต้น', w2: 'บอย' }[id])
@@ -114,3 +127,115 @@ describe('RepairTicketModal', () => {
     expect(screen.getByText('นัดวันก่อน แล้วปิดงานได้')).toBeTruthy()
   })
 })
+
+describe('RepairTicketModal — customer repair form items', () => {
+  const items = [
+    { id: 'i1', seq: 1, location: 'ห้องนอน', room: 'ห้องนอนใหญ่', symptom: 'รั่วซึม', note: 'น้ำซึมตอนฝนตก', result: null, result_note: null },
+    { id: 'i2', seq: 2, location: 'ครัว', room: null, symptom: 'เปิดปิดยาก', note: null, result: null, result_note: null },
+  ]
+  const open = () => render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+  const itemSelects = () => Array.from(document.querySelectorAll('select[data-item-result]'))
+
+  it('a ticket with 2 items shows the item table', async () => {
+    state.items = items
+    open()
+    await screen.findByText('รายการแจ้งซ่อม')
+    expect(screen.getByText('ห้องนอน (ห้องนอนใหญ่)')).toBeTruthy()
+    expect(screen.getByText('รั่วซึม')).toBeTruthy()
+    expect(screen.getByText('น้ำซึมตอนฝนตก')).toBeTruthy()
+    expect(screen.getByText('ครัว')).toBeTruthy()
+    expect(itemSelects()).toHaveLength(2)
+  })
+
+  it('pending_review: the result select is disabled', async () => {
+    state.ticket = { ...baseTicket, status: 'pending_review' }
+    state.items = items
+    open()
+    await screen.findByText('รายการแจ้งซ่อม')
+    const sel = itemSelects()
+    expect(sel.length === 0 || sel.every((x) => x.disabled)).toBe(true)
+  })
+
+  it('in_progress: choosing ซ่อมแล้ว updates that item with { result: fixed }', async () => {
+    state.ticket = { ...baseTicket, status: 'in_progress', scheduled_date: '2099-11-10', scheduled_start: '09:00' }
+    state.items = items
+    open()
+    await screen.findByText('รายการแจ้งซ่อม')
+    const sel = itemSelects()[0]
+    expect(sel.disabled).toBe(false)
+    fireEvent.change(sel, { target: { value: 'fixed' } })
+    await waitFor(() => expect(state.updates.filter((u) => u.table === 'repair_ticket_items')).toHaveLength(1))
+    const u = state.updates.find((x) => x.table === 'repair_ticket_items')
+    expect(u.patch).toEqual({ result: 'fixed' })
+    expect(u.eqs).toContainEqual(['id', 'i1'])
+    expect(u.eqs).toContainEqual(['tenant_id', 'tn'])
+    await waitFor(() => expect(itemSelects()[0].value).toBe('fixed'))
+  })
+
+  it('in_progress: an empty choice saves null', async () => {
+    state.ticket = { ...baseTicket, status: 'in_progress', scheduled_date: '2099-11-10', scheduled_start: '09:00' }
+    state.items = [{ ...items[0], result: 'partial' }]
+    open()
+    await screen.findByText('รายการแจ้งซ่อม')
+    fireEvent.change(itemSelects()[0], { target: { value: '' } })
+    await waitFor(() => expect(state.updates.filter((u) => u.table === 'repair_ticket_items')).toHaveLength(1))
+    expect(state.updates.find((x) => x.table === 'repair_ticket_items').patch).toEqual({ result: null })
+  })
+
+  it('update returning [] shows an error and keeps the old value', async () => {
+    state.ticket = { ...baseTicket, status: 'done', scheduled_date: '2099-11-10', scheduled_start: '09:00' }
+    state.items = items
+    state.itemUpdate = { data: [], error: null }
+    open()
+    await screen.findByText('รายการแจ้งซ่อม')
+    fireEvent.change(itemSelects()[0], { target: { value: 'fixed' } })
+    await screen.findByText(/บันทึกผลไม่สำเร็จ/)
+    expect(itemSelects()[0].value).toBe('')
+  })
+
+  it('item photos show as thumbnails in that row and open the lightbox', async () => {
+    state.items = items
+    state.media = [
+      { id: 'm1', ticket_id: 't1', role: 'customer', media_type: 'image', storage_path: 'tn/t1/a.jpg', item_id: 'i1' },
+      { id: 'm2', ticket_id: 't1', role: 'customer', media_type: 'image', storage_path: 'tn/t1/b.jpg', item_id: null },
+    ]
+    state.signed = [{ path: 'tn/t1/a.jpg', signedUrl: 'https://x/a.jpg' }, { path: 'tn/t1/b.jpg', signedUrl: 'https://x/b.jpg' }]
+    open()
+    await screen.findByText('รายการแจ้งซ่อม')
+    await waitFor(() => expect(document.querySelector('tr[data-item="i1"] img')).toBeTruthy())
+    const row1 = document.querySelector('tr[data-item="i1"]')
+    expect(row1.querySelectorAll('img')).toHaveLength(1)
+    expect(row1.querySelector('img').getAttribute('src')).toBe('https://x/a.jpg')
+    expect(document.querySelector('tr[data-item="i2"] img')).toBeNull()
+    fireEvent.click(row1.querySelector('img').closest('button'))
+    expect(screen.getByRole('dialog', { name: 'ดูรูป' })).toBeTruthy()
+  })
+
+  it('preferred days prefill the date + 13:00 for บ่าย and show ลูกค้าสะดวก', async () => {
+    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'afternoon' }
+    open()
+    await screen.findByText('บันทึกนัด')
+    await waitFor(() => expect(document.querySelector('input[type="date"]').value).toBe('2026-12-02'))
+    expect(document.querySelector('input[type="time"]').value).toBe('13:00')
+    const pref = screen.getByText(/ลูกค้าสะดวก:/)
+    expect(pref.textContent).toContain('02/12/2569')
+    expect(pref.textContent).toContain('04/12/2569')
+    expect(pref.textContent).toContain('บ่าย')
+  })
+
+  it('a saved schedule wins over the preferred days', async () => {
+    state.ticket = { ...baseTicket, status: 'scheduled', scheduled_date: '2099-11-10', scheduled_start: '10:30', duration_hours: 2, preferred_days: ['2026-12-02'], preferred_slot: 'afternoon' }
+    open()
+    await screen.findByText('บันทึกนัด')
+    await waitFor(() => expect(document.querySelector('input[type="date"]').value).toBe('2099-11-10'))
+    expect(document.querySelector('input[type="time"]').value).toBe('10:30')
+  })
+
+  it('a ticket without items shows no รายการแจ้งซ่อม heading', async () => {
+    open()
+    await screen.findByText('บันทึกนัด')
+    expect(screen.queryByText('รายการแจ้งซ่อม')).toBeNull()
+    expect(screen.queryByText(/ลูกค้าสะดวก/)).toBeNull()
+  })
+})
+

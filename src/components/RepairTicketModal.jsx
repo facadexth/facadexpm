@@ -8,6 +8,9 @@
 // Status changes go through movePatch (ruling R22). A push never undoes a saved schedule or close.
 // Customer media (role 'customer') is shown in the ก่อนซ่อม gallery with a ลูกค้า tag (beforeGallery).
 // Opening a ticket the customer added to from LINE marks the addition seen (board badge + bell).
+// Tickets sent through the LINE repair form (/r/<token>) also have items (repair_ticket_items): a
+// รายการแจ้งซ่อม table with each item's photos and a per-item result, plus the customer's preferred
+// days/slot, which prefill an empty appointment. Old chat tickets have no items and look as before.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase.js'
@@ -25,12 +28,15 @@ import { uploadRepairPhotos, REPAIR_BUCKET } from '../lib/repairUpload.js'
 import { invokeRepairPush, customerPushDefault } from '../lib/repairPush.js'
 import { releasesCrew, removeFutureUnconfirmedCrew } from '../lib/repairCrew.js'
 import { OTHER_TYPE_LABEL } from '../pages/assign/lineExport.js'
+import { SLOTS } from '../../supabase/functions/_shared/repair-form.ts'
 
 const SIGNED_URL_SECONDS = 3600
 const PILL_STEPS = ['pending_review', 'received', 'scheduled', 'in_progress', 'done']
 const SHIFT_TH = { morning: 'เช้า', evening: 'บ่าย' }
 const NOTIFY_LABEL = 'ส่งไลน์แจ้งนัดให้ลูกค้าเมื่อบันทึก + เตือนก่อน 1 วัน (13:00)'
 const RESEND_CONFIRM = 'ส่งรายงานซ้ำให้ลูกค้า? (ใช้โควต้าไลน์ 1 ข้อความ)'
+// Per-item result (repair_ticket_items.result); '' saves null.
+const ITEM_RESULT = { fixed: 'ซ่อมแล้ว', partial: 'ซ่อมบางส่วน', not_fixed: 'ซ่อมไม่ได้' }
 const NOTICE_CLASS = { success: 'alert-success', warning: 'alert-warning', error: 'alert-error', info: 'alert-info' }
 
 // In-between moves offered as buttons. received -> scheduled is the นัดหมาย save, in_progress -> done is ปิดงาน.
@@ -164,6 +170,8 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
 
   const [ticket, setTicket] = useState(null)
   const [media, setMedia] = useState([])
+  const [items, setItems] = useState([]) // repair_ticket_items, from the LINE repair form
+  const [savingItem, setSavingItem] = useState(null) // item id whose result is being saved
   const [urls, setUrls] = useState({})
   const [loadError, setLoadError] = useState('')
   const [error, setError] = useState('')
@@ -190,7 +198,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
 
   const loadMedia = useCallback(async () => {
     const { data, error: e } = await supabase.from('repair_ticket_media')
-      .select('id, ticket_id, role, media_type, storage_path, file_name, created_at')
+      .select('id, ticket_id, item_id, role, media_type, storage_path, file_name, created_at')
       .eq('ticket_id', ticketId).order('created_at', { ascending: true })
     if (e) { setLoadError(`โหลดรูป/ไฟล์ไม่สำเร็จ: ${e.message}`); return }
     const rows = data || []
@@ -202,6 +210,14 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     const map = {}
     for (const s of signed || []) if (s.signedUrl && s.path) map[s.path] = s.signedUrl
     setUrls(map)
+  }, [ticketId])
+
+  const loadItems = useCallback(async () => {
+    const { data, error: e } = await supabase.from('repair_ticket_items')
+      .select('id, seq, location, room, symptom, note, result, result_note')
+      .eq('ticket_id', ticketId).order('seq', { ascending: true })
+    if (e) { setLoadError(`โหลดรายการแจ้งซ่อมไม่สำเร็จ: ${e.message}`); return }
+    setItems(data || [])
   }, [ticketId])
 
   // Returns the fresh ticket row (or null).
@@ -221,6 +237,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       const t = await loadTicket()
       if (!alive || !t) return
       loadMedia()
+      loadItems()
       // The customer added something from LINE: opening the ticket marks it seen. The stored value is the
       // customer_update_at we just read (not this device's clock), so a newer addition stays unseen.
       // Runs alongside the form prefill below; onChanged on close then reloads the board.
@@ -246,15 +263,17 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       // R32: LINE tickets notify by default, staff tickets do not (first open only). R29: never in_progress.
       setNotify(t.status !== 'in_progress' && customerPushDefault(t))
       setSendReport(customerPushDefault(t))
-      setDate(t.scheduled_date || '')
-      setStart(startTime(t.scheduled_start) || '09:00')
+      // No appointment yet: start from the customer's first preferred day (and 13:00 for บ่าย).
+      const firstPreferred = Array.isArray(t.preferred_days) ? t.preferred_days.find(Boolean) : null
+      setDate(t.scheduled_date || firstPreferred || '')
+      setStart(startTime(t.scheduled_start) || (!t.scheduled_date && t.preferred_slot === 'afternoon' ? '13:00' : '09:00'))
       setHours(Number(t.duration_hours) > 0 ? String(Number(t.duration_hours)) : '2')
       setWorkerIds(crew)
       setFixNote(t.fix_note || '')
       setFormReady(true)
     })()
     return () => { alive = false }
-  }, [loadTicket, loadMedia])
+  }, [loadTicket, loadMedia, loadItems])
 
   const handleClose = () => {
     if (lightbox) { setLightbox(null); return false }
@@ -280,6 +299,15 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     return g
   }, [media])
   const beforeItems = useMemo(() => beforeGallery(media), [media])
+  const mediaByItem = useMemo(() => {
+    const g = {}
+    for (const m of media) if (m.item_id) (g[m.item_id] || (g[m.item_id] = [])).push(m)
+    return g
+  }, [media])
+  const canSetResult = canEdit && ['in_progress', 'done'].includes(status)
+  const preferredDays = Array.isArray(t?.preferred_days) ? t.preferred_days.filter(Boolean) : []
+  const preferredText = [preferredDays.map((d) => formatThaiDate(d)).join(', '), SLOTS[t?.preferred_slot] || '']
+    .filter(Boolean).join(' · ')
 
   const workerById = useMemo(() => Object.fromEntries((workers || []).map((w) => [w.id, w])), [workers])
   const shownWorkers = useMemo(() => {
@@ -423,6 +451,25 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     }
   }
 
+  // Lesson 2026-11-04: RLS can refuse an update silently, so 0 returned rows is an error too.
+  const saveItemResult = async (itemId, value) => {
+    if (!canSetResult) return
+    const result = value || null
+    setError(''); setNotice(null); setSavingItem(itemId)
+    try {
+      const { data, error: e } = await supabase.from('repair_ticket_items').update({ result })
+        .eq('id', itemId).eq('tenant_id', t.tenant_id).select('id')
+      if (e) throw e
+      if (!data || data.length === 0) throw new Error('สิทธิ์หรือแพ็กเกจหมดอายุ')
+      setItems((list) => list.map((it) => (it.id === itemId ? { ...it, result } : it)))
+      setChanged(true)
+    } catch (e) {
+      setError(`บันทึกผลไม่สำเร็จ: ${e.message}`)
+    } finally {
+      setSavingItem(null)
+    }
+  }
+
   const upload = async (role, files) => {
     setError(''); setNotice(null); setUploading(role)
     try {
@@ -474,6 +521,46 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                 : `รายละเอียด (เปิดเอง${t.created_by ? ` โดย ${t.created_by}` : ''} · ${formatThaiDate(bangkokDateOf(t.created_at))} ${bkkTime(t.created_at)})`}
             </div>
             <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{t.description || <span style={{ color: 'var(--text3)' }}>ไม่มีรายละเอียด</span>}</div>
+            {items.length > 0 && (
+              <div>
+                <div style={sec}>รายการแจ้งซ่อม</div>
+                {/* Scrolls sideways inside its own box on a phone instead of widening the modal. */}
+                <div className="table-wrap" style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 8 }}>
+                  <table style={{ minWidth: 640 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 32 }}>#</th>
+                        <th>ตำแหน่ง</th>
+                        <th>อาการ</th>
+                        <th>รูปลูกค้า</th>
+                        <th style={{ width: 140 }}>ผล</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((it, i) => (
+                        <tr key={it.id} data-item={it.id} style={{ verticalAlign: 'top' }}>
+                          <td>{it.seq ?? i + 1}</td>
+                          <td style={{ overflowWrap: 'anywhere' }}>{it.room ? `${it.location} (${it.room})` : it.location}</td>
+                          <td style={{ overflowWrap: 'anywhere' }}>
+                            <div>{it.symptom}</div>
+                            {it.note && <div style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'pre-wrap' }}>{it.note}</div>}
+                          </td>
+                          <td><MediaTiles items={mediaByItem[it.id] || []} urls={urls} onOpenImage={setLightbox} /></td>
+                          <td>
+                            <select className="input input-sm" data-item-result={it.id} aria-label={`ผล รายการ ${it.seq ?? i + 1}`}
+                              value={it.result || ''} disabled={!canSetResult || busy || savingItem === it.id}
+                              onChange={(e) => saveItemResult(it.id, e.target.value)}>
+                              <option value="">-</option>
+                              {Object.entries(ITEM_RESULT).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {/* No ผลการซ่อม section on these statuses, so the customer's media is shown here (read-only). */}
             {(status === 'pending_review' || status === 'declined') && beforeItems.length > 0 && (
               <div>
@@ -483,6 +570,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
             )}
 
             <div style={sec}>นัดหมาย</div>
+            {preferredText && <div style={{ fontSize: 13, color: 'var(--text2)' }}>ลูกค้าสะดวก: {preferredText}</div>}
             {!canSchedule && status !== 'done' && status !== 'declined' && canEdit && (
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>กด "เปิดงานซ่อม" ก่อน แล้วจึงนัดวันเข้าซ่อมได้</div>
             )}
