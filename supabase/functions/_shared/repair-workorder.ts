@@ -86,7 +86,7 @@ function customerText(c: WorkOrderInput['client']): string {
   const name = str(c?.name)
   const phone = str(c?.phone)
   const parts: string[] = []
-  if (name) parts.push(name.startsWith('คุณ') ? name : `คุณ${name}`)
+  if (name) parts.push(name)
   if (phone) parts.push(phone)
   return parts.length ? parts.join(' · ') : '-'
 }

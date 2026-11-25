@@ -28,7 +28,7 @@ describe('buildWorkOrder header', () => {
     expect(w.company).toEqual({ name: 'บจก. ทดสอบ', address: '1 ถนนสุขุมวิท', phone: '02-111-2222', logoUrl: 'https://x/logo.png' })
     expect(w.siteName).toBe('บ้านคุณสมใจ')
     expect(w.address).toBe('99 ซอยสุข')
-    expect(w.customerText).toBe('คุณสมใจ ใจดี · 081-234-5678')
+    expect(w.customerText).toBe('สมใจ ใจดี · 081-234-5678')
     expect(w.mapUrl).toBe('https://www.google.com/maps?q=13.7,100.5')
     expect(w.receipt).toBeNull()
   })
@@ -44,11 +44,12 @@ describe('buildWorkOrder header', () => {
     expect(w.company).toEqual({ name: '', address: '', phone: '', logoUrl: null })
     expect(w.address).toBe('-')
     expect(w.mapUrl).toBeNull()
-    expect(w.customerText).toBe('คุณสมใจ')
+    expect(w.customerText).toBe('สมใจ')
   })
 
-  it('name already prefixed with คุณ is not doubled; no client -> "-"', () => {
-    expect(buildWorkOrder(base({ client: { name: 'คุณสมใจ', phone: null } })).customerText).toBe('คุณสมใจ')
+  it('client name printed as stored (no prefix); company name; no client -> "-"', () => {
+    expect(buildWorkOrder(base({ client: { name: '  คุณสมใจ ', phone: null } })).customerText).toBe('คุณสมใจ')
+    expect(buildWorkOrder(base({ client: { name: 'บจก. เอบีซี', phone: '02-111-2222' } })).customerText).toBe('บจก. เอบีซี · 02-111-2222')
     expect(buildWorkOrder(base({ client: null })).customerText).toBe('-')
   })
 
