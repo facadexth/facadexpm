@@ -73,15 +73,15 @@ const deps: RepairWorkorderDeps = {
 
   hasModule: (tenantId) => tenantHasModuleAccess(admin, tenantId, 'line_bot'),
 
-  async isAssigned(tenantId, workerId, ticketId) {
+  async isAssigned(tenantId, workerId, ticketId, date) {
     const { data, error } = await admin.from('worker_assignments').select('id')
-      .eq('tenant_id', tenantId).eq('worker_id', workerId).eq('repair_ticket_id', ticketId).limit(1)
+      .eq('tenant_id', tenantId).eq('worker_id', workerId).eq('repair_ticket_id', ticketId).eq('date', date).limit(1)
     if (error) throw error
     return (data ?? []).length > 0
   },
 
   async loadTicket(tenantId, ticketId) {
-    const { data: t, error } = await admin.from('repair_tickets').select('id, tenant_id, ticket_number, status, line_user_id')
+    const { data: t, error } = await admin.from('repair_tickets').select('id, tenant_id, ticket_number, status, line_user_id, scheduled_date')
       .eq('tenant_id', tenantId).eq('id', ticketId).maybeSingle()
     if (error) throw error
     if (!t) return null
@@ -91,6 +91,7 @@ const deps: RepairWorkorderDeps = {
       ticketNumber: (t.ticket_number as string | null) ?? '',
       status: t.status as string,
       lineUserId: (t.line_user_id as string | null) ?? null,
+      scheduledDate: (t.scheduled_date as string | null) ?? null,
     }
   },
 
@@ -137,6 +138,16 @@ const deps: RepairWorkorderDeps = {
     const { data, error } = await admin.from('document_receipt_links').insert(row).select('id').single()
     if (error) throw error
     return { id: data.id as string }
+  },
+
+  async recentSignLink(tenantId, ticketId, sinceIso, nowIso) {
+    const { data, error } = await admin.from('document_receipt_links').select('id')
+      .eq('tenant_id', tenantId).eq('document_type', RECEIPT_DOCUMENT_TYPE).eq('document_id', ticketId)
+      .is('signed_at', null).gte('created_at', sinceIso).gt('expires_at', nowIso)
+      .order('created_at', { ascending: false }).limit(1)
+    if (error) throw error
+    const row = (data ?? [])[0] as { id: string } | undefined
+    return row ? { id: row.id } : null
   },
 
   pushCustomer: (tenantId, lineUserId, text) =>

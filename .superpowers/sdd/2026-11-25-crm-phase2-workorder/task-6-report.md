@@ -40,3 +40,16 @@ Token checks (same for all three actions), in order; refusals are **HTTP 200 `{ 
 3. `sign_link` is allowed even when a receipt already exists (brief did not say otherwise).
 4. Deploy: `supabase functions deploy repair-workorder --no-verify-jwt` (supabase/config.toml has no per-function entries, so nothing added there). Needs the 2026-11-25-03 migration live first (repair_ticket_id column + document_type 'repair_ticket').
 5. Assignment check is on any date (not just today), per the brief's wording; a worker on another day of the same ticket still sees it until the token expires.
+
+## Fix round 1 (review I-1, I-2; rulings R6, R7)
+
+- I-1 / R6: `loadTicket` now also returns `scheduledDate`; `isAssigned(tenantId, workerId, ticketId, date)` checks `worker_assignments.date = ticket.scheduled_date` (`.eq('date', date)` in the shell). `scheduled_date` null → `not_assigned` (isAssigned is not called). New check order: token kind → expired → worker → module → ticket (not_found) → declined → assignment on the current scheduled date.
+- I-2 / R7: `sign_link` (a) when a receipt already exists and `force !== true` → `{ ok: true, already: true, receipt }`, no link and no push; (b) new dep `recentSignLink(tenantId, ticketId, sinceIso, nowIso)` finds an unsigned (`signed_at is null`), unexpired (`expires_at > now`) `document_receipt_links` row for this ticket created at or after now − 10 min (`SIGN_LINK_REUSE_MS`). If one exists, its URL comes back with `sent:false` and no push; otherwise the link is created and pushed as before.
+- New tests: past-date-only assignment → not_assigned (×3 actions); scheduled_date null → not_assigned (×3); sign_link already signed → no link/push; already signed + force → new link + push; recent link reused → same URL, sent:false, no create/push.
+- Only Task 6 files changed (logic, shell, test).
+
+Commands/output:
+- `npx vitest run src/lib/repairWorkorderLogic.test.js` → `Test Files 1 passed (1) / Tests 64 passed (64)`
+- `DENO_NO_PACKAGE_JSON=1 npx -y deno@2.1.4 check --node-modules-dir=none supabase/functions/repair-workorder/index.ts` → `Check file:///…/supabase/functions/repair-workorder/index.ts` (no errors)
+
+Remaining note: the double-tap race is still there. Two `sign_link` calls arriving at the same moment can both miss the recent-link check and both push; the push budget still caps this.

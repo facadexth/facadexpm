@@ -15,7 +15,7 @@ const tokenRow = (over = {}) => ({
   expiresAt: new Date(NOW + 3600_000).toISOString(), ...over,
 })
 const workerRow = (over = {}) => ({ id: 'w1', tenantId: 'tn1', name: 'สมศักดิ์ ใจดี', nickname: 'ศักดิ์', status: 'active', ...over })
-const ticketRow = (over = {}) => ({ id: 't1', tenantId: 'tn1', ticketNumber: 'RP2611-007', status: 'scheduled', lineUserId: 'Ucust', ...over })
+const ticketRow = (over = {}) => ({ id: 't1', tenantId: 'tn1', ticketNumber: 'RP2611-007', status: 'scheduled', lineUserId: 'Ucust', scheduledDate: '2026-11-27', ...over })
 const WORK_ORDER = { number: 'RP2611-007', rows: [], receipt: null }
 
 function deps(over = {}) {
@@ -31,6 +31,7 @@ function deps(over = {}) {
     removeSignature: vi.fn(async () => {}),
     insertReceipt: vi.fn(async (row) => ({ id: 'rc1', signer_name: row.signer_name, signed_at: '2026-11-25T03:00:00Z' })),
     createSignLink: vi.fn(async () => ({ id: 'link1' })),
+    recentSignLink: vi.fn(async () => null),
     pushCustomer: vi.fn(async () => ({ sent: false, skipped: 'off' })),
     appUrl: 'https://changpm.app',
     ...over,
@@ -79,9 +80,25 @@ describe('token checks (all actions)', () => {
       it('worker removed from the ticket → not_assigned, nothing loaded or written', async () => {
         const d = deps({ isAssigned: vi.fn(async () => false) })
         expect((await handleRepairWorkorder(body, d, NOW)).body).toEqual({ reason: 'not_assigned' })
-        expect(d.isAssigned).toHaveBeenCalledWith('tn1', 'w1', 't1')
+        expect(d.isAssigned).toHaveBeenCalledWith('tn1', 'w1', 't1', '2026-11-27')
         expect(d.loadWorkOrder).not.toHaveBeenCalled()
         expect(d.uploadSignature).not.toHaveBeenCalled()
+        expect(d.createSignLink).not.toHaveBeenCalled()
+      })
+
+      it('assigned only on a past date (ticket rescheduled) → not_assigned', async () => {
+        // isAssigned is asked about the CURRENT scheduled_date only; the past row does not count.
+        const d = deps({ isAssigned: vi.fn(async (_t, _w, _id, date) => date === '2026-11-20') })
+        expect((await handleRepairWorkorder(body, d, NOW)).body).toEqual({ reason: 'not_assigned' })
+        expect(d.isAssigned).toHaveBeenCalledWith('tn1', 'w1', 't1', '2026-11-27')
+        expect(d.loadWorkOrder).not.toHaveBeenCalled()
+      })
+
+      it('ticket without scheduled_date → not_assigned', async () => {
+        const d = deps({ loadTicket: vi.fn(async () => ticketRow({ scheduledDate: null })) })
+        expect((await handleRepairWorkorder(body, d, NOW)).body).toEqual({ reason: 'not_assigned' })
+        expect(d.isAssigned).not.toHaveBeenCalled()
+        expect(d.loadWorkOrder).not.toHaveBeenCalled()
         expect(d.createSignLink).not.toHaveBeenCalled()
       })
 
@@ -233,6 +250,30 @@ describe('sign_link', () => {
       tenant_id: 'tn1', document_type: 'repair_ticket', document_id: 't1', created_by: 'crew:สมศักดิ์ ใจดี',
     })
     expect(d.pushCustomer).toHaveBeenCalledWith('tn1', 'Ucust', 'กรุณาเซ็นรับงานซ่อม RP2611-007\nhttps://changpm.app/sign/link1')
+  })
+
+  it('already signed and no force → receipt, no link, no push (R7a)', async () => {
+    const existing = { id: 'rc0', signer_name: 'เดิม', signed_at: '2026-11-24T03:00:00Z' }
+    const d = deps({ latestReceipt: vi.fn(async () => existing) })
+    expect(await handleRepairWorkorder(signLink, d, NOW)).toEqual({ status: 200, body: { ok: true, already: true, receipt: existing } })
+    expect(d.createSignLink).not.toHaveBeenCalled()
+    expect(d.pushCustomer).not.toHaveBeenCalled()
+  })
+
+  it('already signed with force → new link + push', async () => {
+    const d = deps({ latestReceipt: vi.fn(async () => ({ id: 'rc0', signer_name: 'เดิม', signed_at: 'x' })) })
+    const r = await handleRepairWorkorder({ ...signLink, force: true }, d, NOW)
+    expect(r.body).toEqual({ ok: true, sent: false, url: 'https://changpm.app/sign/link1' })
+    expect(d.createSignLink).toHaveBeenCalledTimes(1)
+    expect(d.pushCustomer).toHaveBeenCalledTimes(1)
+  })
+
+  it('unsigned link from the last 10 minutes → same url, sent false, no new link, no push (R7b)', async () => {
+    const d = deps({ recentSignLink: vi.fn(async () => ({ id: 'link0' })) })
+    expect(await handleRepairWorkorder(signLink, d, NOW)).toEqual({ status: 200, body: { ok: true, sent: false, url: 'https://changpm.app/sign/link0' } })
+    expect(d.recentSignLink).toHaveBeenCalledWith('tn1', 't1', new Date(NOW - 10 * 60 * 1000).toISOString(), new Date(NOW).toISOString())
+    expect(d.createSignLink).not.toHaveBeenCalled()
+    expect(d.pushCustomer).not.toHaveBeenCalled()
   })
 
   it('push sent → sent true', async () => {

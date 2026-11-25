@@ -20,7 +20,10 @@ export type CrewToken = {
   expiresAt: string
 }
 export type CrewWorker = { id: string; tenantId: string; name: string; nickname: string | null; status: string }
-export type CrewTicket = { id: string; tenantId: string; ticketNumber: string; status: string; lineUserId: string | null }
+export type CrewTicket = {
+  id: string; tenantId: string; ticketNumber: string; status: string; lineUserId: string | null
+  scheduledDate: string | null // 'YYYY-MM-DD'
+}
 export type CrewReceipt = { id: string; signer_name: string; signed_at: string }
 
 export type ReceiptInsert = {
@@ -42,7 +45,8 @@ export type RepairWorkorderDeps = {
   loadToken: (token: string) => Promise<CrewToken | null>
   loadWorker: (workerId: string) => Promise<CrewWorker | null>
   hasModule: (tenantId: string) => Promise<boolean>
-  isAssigned: (tenantId: string, workerId: string, ticketId: string) => Promise<boolean>
+  // A worker_assignments row for this worker + ticket on exactly `date` (ruling R6).
+  isAssigned: (tenantId: string, workerId: string, ticketId: string, date: string) => Promise<boolean>
   loadTicket: (tenantId: string, ticketId: string) => Promise<CrewTicket | null>
   loadWorkOrder: (ticketId: string, tenantId: string, today: string) => Promise<WorkOrder>
   latestReceipt: (tenantId: string, ticketId: string) => Promise<CrewReceipt | null>
@@ -50,6 +54,8 @@ export type RepairWorkorderDeps = {
   removeSignature: (path: string) => Promise<void>
   insertReceipt: (row: ReceiptInsert) => Promise<CrewReceipt>
   createSignLink: (row: SignLinkInsert) => Promise<{ id: string }>
+  // An unsigned, unexpired document_receipt_links row for this ticket created at/after sinceIso (R7).
+  recentSignLink: (tenantId: string, ticketId: string, sinceIso: string, nowIso: string) => Promise<{ id: string } | null>
   pushCustomer: (tenantId: string, lineUserId: string | null, text: string) => Promise<{ sent: boolean }>
   appUrl: string
 }
@@ -61,6 +67,7 @@ export const DOCUMENT_TYPE = 'repair_ticket' as const
 export const SIGNED_URL_SECONDS = 2 * 60 * 60
 export const MAX_SIGNATURE_BYTES = 300 * 1024
 export const SIGNER_NAME_MAX = 100
+export const SIGN_LINK_REUSE_MS = 10 * 60 * 1000
 const PNG_PREFIX = 'data:image/png;base64,'
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -98,7 +105,10 @@ export function decodePngDataUrl(dataUrl: unknown): Uint8Array | null {
 type Refusal = { reason: 'not_found' | 'expired' | 'line_bot_disabled' | 'not_assigned' | 'declined' }
 type Checked = { tok: CrewToken; worker: CrewWorker; ticket: CrewTicket }
 
-// Order: unknown/wrong kind, expired, worker (active, same tenant), module, assignment, ticket.
+// Order: unknown/wrong kind, expired, worker (active, same tenant), module, ticket, declined, assignment.
+// Ruling R6: the worker must be on the ticket's CURRENT scheduled_date (the same rule the loader uses
+// for the crew list). A reschedule keeps past rows, so "any date" would let a crew member who was
+// moved off the job keep seeing the customer's address/photos. No scheduled_date -> not_assigned.
 async function checkToken(token: string, deps: RepairWorkorderDeps, now: number): Promise<Checked | Refusal> {
   const tok = await deps.loadToken(token)
   if (!tok || tok.actionType !== TOKEN_ACTION || !tok.repairTicketId) return { reason: 'not_found' }
@@ -111,11 +121,12 @@ async function checkToken(token: string, deps: RepairWorkorderDeps, now: number)
   // Same gate as field-form for every LINE crew link (and the repairs page is a line_bot module page).
   if (!(await deps.hasModule(tok.tenantId))) return { reason: 'line_bot_disabled' }
 
-  if (!(await deps.isAssigned(tok.tenantId, worker.id, tok.repairTicketId))) return { reason: 'not_assigned' }
-
   const ticket = await deps.loadTicket(tok.tenantId, tok.repairTicketId)
   if (!ticket || ticket.tenantId !== tok.tenantId) return { reason: 'not_found' }
   if (ticket.status === 'declined') return { reason: 'declined' }
+
+  if (!ticket.scheduledDate) return { reason: 'not_assigned' }
+  if (!(await deps.isAssigned(tok.tenantId, worker.id, ticket.id, ticket.scheduledDate))) return { reason: 'not_assigned' }
   return { tok, worker, ticket }
 }
 
@@ -156,8 +167,18 @@ async function sign(c: Checked, signerName: string, png: Uint8Array, force: bool
   return ok({ ok: true, receipt })
 }
 
-async function signLink(c: Checked, deps: RepairWorkorderDeps): Promise<WorkorderResult> {
+// Ruling R7: sign_link spends the tenant's shared customer push budget, so
+//  (a) already signed and no force -> the receipt, no link, no push;
+//  (b) an unsigned, unexpired link made in the last 10 minutes -> its URL again, sent:false, no push.
+async function signLink(c: Checked, force: boolean, deps: RepairWorkorderDeps, now: number): Promise<WorkorderResult> {
   const tenantId = c.tok.tenantId
+  if (!force) {
+    const existing = await deps.latestReceipt(tenantId, c.ticket.id)
+    if (existing) return ok({ ok: true, already: true, receipt: existing })
+  }
+  const recent = await deps.recentSignLink(tenantId, c.ticket.id, new Date(now - SIGN_LINK_REUSE_MS).toISOString(), new Date(now).toISOString())
+  if (recent) return ok({ ok: true, sent: false, url: `${deps.appUrl}/sign/${recent.id}` })
+
   const link = await deps.createSignLink({
     tenant_id: tenantId,
     document_type: DOCUMENT_TYPE,
@@ -198,7 +219,7 @@ export async function handleRepairWorkorder(body: unknown, deps: RepairWorkorder
     if ('reason' in c) return ok({ reason: c.reason })
     if (action === 'view') return await view(c, deps, now)
     if (action === 'sign') return await sign(c, signerName, png as Uint8Array, body.force === true, deps, now)
-    return await signLink(c, deps)
+    return await signLink(c, body.force === true, deps, now)
   } catch (e) {
     console.error('repair-workorder failed', (e as Error)?.name ?? 'Error')
     return failed()
