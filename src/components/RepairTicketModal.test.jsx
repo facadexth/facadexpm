@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 
-const state = vi.hoisted(() => ({ ticket: null, rpc: null, items: [], media: [], itemUpdate: null, updates: [], signed: [], leaders: [], receipts: [], roleAdmin: true }))
+const state = vi.hoisted(() => ({ ticket: null, rpc: null, items: [], media: [], itemUpdate: null, updates: [], signed: [], leaders: [], receipts: [], roleAdmin: true, canEditPage: true }))
 
 vi.mock('../lib/supabase.js', () => {
   const chain = (table) => {
@@ -37,12 +37,14 @@ vi.mock('../lib/supabase.js', () => {
 vi.mock('../hooks/useUserRole.js', () => ({ useUserRole: () => ({ role: state.roleAdmin ? 'OWNER' : 'STAFF', isAtLeast: () => state.roleAdmin }) }))
 vi.mock('./RepairWorkOrderModal.jsx', () => ({ default: ({ ticketId }) => <div data-testid="wo-modal">{ticketId}</div> }))
 vi.mock('./DocumentReceiptModal.jsx', () => ({ default: ({ documentType, documentId, tenantId, title }) => <div data-testid="sign-modal">{`${documentType}|${documentId}|${tenantId}|${title}`}</div> }))
-vi.mock('./SignLinkModal.jsx', () => ({ default: ({ documentType, documentId }) => <div data-testid="link-modal">{`${documentType}|${documentId}`}</div> }))
+vi.mock('./SignLinkModal.jsx', () => ({ default: ({ documentType, documentId, onClose }) => (
+  <div><div data-testid="link-modal">{`${documentType}|${documentId}`}</div><button type="button" onClick={onClose}>ปิดลิงก์</button></div>
+) }))
 vi.mock('../hooks/useTenant.js', () => ({ useTenant: () => ({ hasModuleAccess: () => true, loading: false }) }))
 vi.mock('../hooks/useSupabase.js', () => ({
   useWorkers: () => ({ data: [{ id: 'w1', name: 'สมชาย', nickname: 'ต้น' }, { id: 'w2', name: 'สมศักดิ์', nickname: 'บอย' }] }),
 }))
-vi.mock('../lib/permissions.js', () => ({ canEditPage: () => true }))
+vi.mock('../lib/permissions.js', () => ({ canEditPage: () => state.canEditPage }))
 vi.mock('../lib/repairPush.js', () => ({ invokeRepairPush: vi.fn(), customerPushDefault: () => false }))
 
 import RepairTicketModal, { ConflictBox } from './RepairTicketModal.jsx'
@@ -56,7 +58,7 @@ afterEach(cleanup)
 beforeEach(() => {
   state.ticket = { ...baseTicket }; state.rpc = vi.fn()
   state.items = []; state.media = []; state.itemUpdate = null; state.updates = []; state.signed = []
-  state.receipts = []; state.roleAdmin = true
+  state.receipts = []; state.roleAdmin = true; state.canEditPage = true
 })
 
 describe('ConflictBox', () => {
@@ -331,6 +333,21 @@ describe('RepairTicketModal — work order + customer signature', () => {
     expect(screen.queryByText('🖨 ใบงานซ่อม')).toBeNull()
     expect(screen.queryByText('✍️ ให้ลูกค้าเซ็นรับงาน')).toBeNull()
     expect(screen.queryByText('🔗 ลิงก์ให้ลูกค้าเซ็น')).toBeNull()
+  })
+  it('admin without repairs edit permission: 🖨 shown, ✍️ and 🔗 hidden (Ruling R5)', async () => {
+    state.canEditPage = false
+    render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+    await screen.findByText('🖨 ใบงานซ่อม')
+    expect(screen.queryByText('✍️ ให้ลูกค้าเซ็นรับงาน')).toBeNull()
+    expect(screen.queryByText('🔗 ลิงก์ให้ลูกค้าเซ็น')).toBeNull()
+  })
+  it('closing the sign link reloads the receipt line', async () => {
+    render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+    fireEvent.click(await screen.findByText('🔗 ลิงก์ให้ลูกค้าเซ็น'))
+    expect(screen.getByTestId('link-modal')).toBeTruthy()
+    state.receipts = [{ signer_name: 'สมหญิง', signed_at: '2026-11-27T07:05:00Z' }]
+    fireEvent.click(screen.getByText('ปิดลิงก์'))
+    expect(await screen.findByText('✅ ลูกค้าเซ็นรับงานแล้ว: สมหญิง · 27/11/2569 14:05')).toBeTruthy()
   })
   it('shows the latest receipt line in Bangkok time', async () => {
     state.receipts = [{ signer_name: 'สมชาย ใจดี', signed_at: '2026-11-27T07:05:00Z' }]

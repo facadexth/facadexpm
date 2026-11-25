@@ -327,7 +327,9 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   // R29: no schedule push for a repair already in progress (the server refuses it anyway).
   const notifyAllowed = status !== 'in_progress'
   const canUpload = canEdit && !!status && !['pending_review', 'declined'].includes(status)
+  // Ruling R5: printing is read-only (admin+); signing / sign links write data, so they need canEdit.
   const showDocButtons = isAdmin && !!status && status !== 'declined'
+  const showSignButtons = canEdit && !!status && status !== 'declined'
 
   const byRole = useMemo(() => {
     const g = { customer: [], before: [], after: [] }
@@ -539,8 +541,12 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
             {showDocButtons && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocModal('workorder')}>🖨 ใบงานซ่อม</button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocModal('sign')}>✍️ ให้ลูกค้าเซ็นรับงาน</button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocModal('link')}>🔗 ลิงก์ให้ลูกค้าเซ็น</button>
+                {showSignButtons && (
+                  <>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocModal('sign')}>✍️ ให้ลูกค้าเซ็นรับงาน</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocModal('link')}>🔗 ลิงก์ให้ลูกค้าเซ็น</button>
+                  </>
+                )}
               </div>
             )}
             {receipt && (
@@ -792,7 +798,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
           onSaved={async () => { setDocModal(null); await loadReceipt() }} />
       )}
       {docModal === 'link' && t && (
-        <SignLinkModal documentType={RECEIPT_TYPE} documentId={t.id} onClose={() => setDocModal(null)} />
+        <SignLinkModal documentType={RECEIPT_TYPE} documentId={t.id} onClose={() => { setDocModal(null); loadReceipt() }} />
       )}
 
       {confirmResend && (
