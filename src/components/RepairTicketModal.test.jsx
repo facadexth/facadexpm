@@ -211,7 +211,12 @@ describe('RepairTicketModal — customer repair form items', () => {
     expect(screen.getByRole('dialog', { name: 'ดูรูป' })).toBeTruthy()
   })
 
+  // Only Date is faked (timers stay real, so findBy/waitFor still poll). 05:00Z = 12:00 Bangkok.
+  const atBangkok = (day) => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(`${day}T05:00:00Z`)) }
+  afterEach(() => vi.useRealTimers())
+
   it('preferred days prefill the date + 13:00 for บ่าย and show ลูกค้าสะดวก', async () => {
+    atBangkok('2026-11-25')
     state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'afternoon' }
     open()
     await screen.findByText('บันทึกนัด')
@@ -221,6 +226,35 @@ describe('RepairTicketModal — customer repair form items', () => {
     expect(pref.textContent).toContain('02/12/2569')
     expect(pref.textContent).toContain('04/12/2569')
     expect(pref.textContent).toContain('บ่าย')
+  })
+
+  it('today 2026-12-03: a past preferred day is skipped, the date is the first day from today on', async () => {
+    atBangkok('2026-12-03')
+    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'afternoon' }
+    open()
+    await screen.findByText('บันทึกนัด')
+    await waitFor(() => expect(document.querySelector('input[type="date"]').value).toBe('2026-12-04'))
+    expect(document.querySelector('input[type="time"]').value).toBe('13:00')
+    expect(screen.getByText(/ลูกค้าสะดวก:/).textContent).toContain('02/12/2569, 04/12/2569')
+  })
+
+  it('today 2026-12-05: every preferred day is past, so no date prefill (start still 13:00)', async () => {
+    atBangkok('2026-12-05')
+    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'afternoon' }
+    open()
+    await screen.findByText('บันทึกนัด')
+    await waitFor(() => expect(document.querySelector('input[type="time"]').value).toBe('13:00'))
+    expect(document.querySelector('input[type="date"]').value).toBe('')
+    expect(screen.getByText(/ลูกค้าสะดวก:/).textContent).toContain('02/12/2569, 04/12/2569')
+  })
+
+  it('today 2026-12-02: a preferred day equal to today is used', async () => {
+    atBangkok('2026-12-02')
+    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'morning' }
+    open()
+    await screen.findByText('บันทึกนัด')
+    await waitFor(() => expect(document.querySelector('input[type="date"]').value).toBe('2026-12-02'))
+    expect(document.querySelector('input[type="time"]').value).toBe('09:00')
   })
 
   it('a saved schedule wins over the preferred days', async () => {

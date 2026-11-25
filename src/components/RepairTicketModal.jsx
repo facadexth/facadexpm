@@ -263,8 +263,10 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       // R32: LINE tickets notify by default, staff tickets do not (first open only). R29: never in_progress.
       setNotify(t.status !== 'in_progress' && customerPushDefault(t))
       setSendReport(customerPushDefault(t))
-      // No appointment yet: start from the customer's first preferred day (and 13:00 for บ่าย).
-      const firstPreferred = Array.isArray(t.preferred_days) ? t.preferred_days.find(Boolean) : null
+      // No appointment yet: start from the customer's first preferred day that is not in the past (the save
+      // refuses a date before today); none left -> empty as before. Start is 13:00 for บ่าย either way.
+      const todayNow = bangkokTodayIso()
+      const firstPreferred = Array.isArray(t.preferred_days) ? t.preferred_days.find((d) => d && d >= todayNow) : null
       setDate(t.scheduled_date || firstPreferred || '')
       setStart(startTime(t.scheduled_start) || (!t.scheduled_date && t.preferred_slot === 'afternoon' ? '13:00' : '09:00'))
       setHours(Number(t.duration_hours) > 0 ? String(Number(t.duration_hours)) : '2')
