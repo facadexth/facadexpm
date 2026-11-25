@@ -19,6 +19,9 @@ const fieldFormMatch = window.location.pathname.match(/^\/f\/([^/]+)\/?$/)
 // /r/<token> is the customer LINE bot's repair form (RepairFormPage.jsx + the
 // customer-form Edge Function), same no-login, no-app-shell idea.
 const repairFormMatch = window.location.pathname.match(/^\/r\/([^/]+)\/?$/)
+// /w/<token> is the crew's repair work order from LINE "งานวันนี้" (RepairWorkOrderPage.jsx + the
+// repair-workorder Edge Function): view, customer signs on the crew's phone, or a sign-later link.
+const workOrderMatch = window.location.pathname.match(/^\/w\/([^/]+)\/?$/)
 
 // The public link pages have no "รีเฟรชเพื่ออัปเดต" banner and no state to lose on
 // load, so a new service worker waiting (or installing) takes over at once and
@@ -55,7 +58,7 @@ async function takeWaitingWorker() {
 }
 
 async function boot() {
-  if ((signMatch || fieldFormMatch || repairFormMatch) && await takeWaitingWorker()) return
+  if ((signMatch || fieldFormMatch || repairFormMatch || workOrderMatch) && await takeWaitingWorker()) return
   const root = ReactDOM.createRoot(document.getElementById('root'))
   if (signMatch) {
     const { default: PublicSignPage } = await import('./PublicSignPage.jsx')
@@ -76,6 +79,13 @@ async function boot() {
     root.render(
       <React.StrictMode>
         <RepairFormPage token={repairFormMatch[1]} />
+      </React.StrictMode>
+    )
+  } else if (workOrderMatch) {
+    const { default: RepairWorkOrderPage } = await import('./RepairWorkOrderPage.jsx')
+    root.render(
+      <React.StrictMode>
+        <RepairWorkOrderPage token={workOrderMatch[1]} />
       </React.StrictMode>
     )
   } else {

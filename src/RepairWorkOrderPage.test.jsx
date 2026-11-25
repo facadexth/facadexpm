@@ -1,0 +1,164 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+
+const invoke = vi.fn()
+vi.mock('./lib/supabase.js', () => ({ supabase: { functions: { invoke: (...a) => invoke(...a) } } }))
+vi.mock('./components/SignaturePad.jsx', () => ({
+  default: ({ onChange }) => <button type="button" onClick={() => onChange('data:image/png;base64,iVBORw0KGgo=')}>draw</button>,
+}))
+vi.mock('./components/RepairWorkOrderSheet.jsx', () => ({
+  default: ({ wo }) => <div data-testid="sheet">{wo.number}{wo.receipt ? ` signed:${wo.receipt.signer_name}` : ''}</div>,
+}))
+
+import RepairWorkOrderPage, { clientNameOf } from './RepairWorkOrderPage.jsx'
+
+const PNG = 'data:image/png;base64,iVBORw0KGgo='
+const wo = (receipt = null) => ({ number: 'RP2611-007', customerText: 'สมชาย ใจดี · 0812345678', receipt })
+
+let signed
+beforeEach(() => {
+  cleanup()
+  invoke.mockReset()
+  signed = null
+  invoke.mockImplementation(async (_n, { body }) => {
+    if (body.action === 'view') return { data: { ok: true, workOrder: wo(signed) }, error: null }
+    if (body.action === 'sign') {
+      signed = { signer_name: body.signerName, signed_at: '2026-11-25T03:00:00Z', signature_url: null }
+      return { data: { ok: true, receipt: signed }, error: null }
+    }
+    return { data: { ok: true, sent: true, url: 'https://x/sign/1' }, error: null }
+  })
+})
+
+const calls = (action) => invoke.mock.calls.filter((c) => c[1].body.action === action)
+
+describe('RepairWorkOrderPage refusals', () => {
+  const cases = [
+    ['expired', 'ลิงก์หมดอายุ กด "งานวันนี้" ใน LINE อีกครั้ง'],
+    ['not_found', 'ลิงก์หมดอายุ กด "งานวันนี้" ใน LINE อีกครั้ง'],
+    ['not_assigned', 'คุณไม่ได้อยู่ในทีมของงานซ่อมนี้แล้ว'],
+    ['declined', 'งานซ่อมนี้ถูกยกเลิกแล้ว'],
+    ['line_bot_disabled', 'ใบงานซ่อมออนไลน์ยังไม่เปิดใช้ ติดต่อแอดมิน'],
+  ]
+  for (const [reason, text] of cases) {
+    it(`reason ${reason} shows its text and no sheet`, async () => {
+      invoke.mockImplementation(async () => ({ data: { reason }, error: null }))
+      render(<RepairWorkOrderPage token="tok" />)
+      expect(await screen.findByText(text)).toBeTruthy()
+      expect(screen.queryByTestId('sheet')).toBe(null)
+    })
+  }
+
+  it('network failure shows the retry text; tapping it reloads', async () => {
+    invoke.mockImplementationOnce(async () => { throw new Error('offline') })
+    render(<RepairWorkOrderPage token="tok" />)
+    fireEvent.click(await screen.findByText('โหลดไม่สำเร็จ ลองใหม่'))
+    expect(await screen.findByTestId('sheet')).toBeTruthy()
+  })
+
+  it('a 500 also shows the retry text', async () => {
+    invoke.mockImplementation(async () => ({ data: null, error: { context: { status: 500, json: async () => ({ error: 'failed' }) } } }))
+    render(<RepairWorkOrderPage token="tok" />)
+    expect(await screen.findByText('โหลดไม่สำเร็จ ลองใหม่')).toBeTruthy()
+  })
+})
+
+describe('RepairWorkOrderPage view + sign', () => {
+  it('calls view with the token and shows the sheet and both buttons', async () => {
+    render(<RepairWorkOrderPage token="tok" />)
+    expect((await screen.findByTestId('sheet')).textContent).toBe('RP2611-007')
+    expect(invoke).toHaveBeenCalledWith('repair-workorder', { body: { token: 'tok', action: 'view' } })
+    expect(screen.getByRole('button', { name: '✍️ ให้ลูกค้าเซ็นรับงาน' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' })).toBeTruthy()
+  })
+
+  it('sign flow: name prefilled, save gated on signature, posts signerName + png, refreshes view', async () => {
+    render(<RepairWorkOrderPage token="tok" />)
+    fireEvent.click(await screen.findByRole('button', { name: '✍️ ให้ลูกค้าเซ็นรับงาน' }))
+    const name = screen.getByLabelText('ชื่อผู้เซ็น')
+    expect(name.value).toBe('สมชาย ใจดี')
+    const save = screen.getByRole('button', { name: 'บันทึกลายเซ็น' })
+    expect(save.disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'draw' }))
+    expect(save.disabled).toBe(false)
+    fireEvent.change(name, { target: { value: '' } })
+    expect(save.disabled).toBe(true)
+    fireEvent.change(name, { target: { value: ' คุณเอ ' } })
+    fireEvent.click(save)
+    await waitFor(() => expect(calls('view').length).toBe(2))
+    expect(calls('sign')[0][1].body).toEqual({ token: 'tok', action: 'sign', signerName: 'คุณเอ', signaturePng: PNG })
+    expect((await screen.findByTestId('sheet')).textContent).toBe('RP2611-007 signed:คุณเอ')
+    expect(screen.queryByRole('button', { name: 'บันทึกลายเซ็น' })).toBe(null)
+    expect(screen.getByText('ลูกค้าเซ็นไปแล้ว: คุณเอ')).toBeTruthy()
+  })
+
+  it('client "-" prefills an empty name', () => {
+    expect(clientNameOf({ customerText: '-' })).toBe('')
+    expect(clientNameOf({ customerText: 'สมชาย' })).toBe('สมชาย')
+    expect(clientNameOf({ customerText: '0812345678' })).toBe('0812345678')
+  })
+
+  it('already -> shows who signed, เซ็นใหม่แทน resends with force: true', async () => {
+    let n = 0
+    invoke.mockImplementation(async (_n, { body }) => {
+      if (body.action === 'view') return { data: { ok: true, workOrder: wo(n > 1 ? { signer_name: 'B' } : null) }, error: null }
+      n++
+      if (!body.force) return { data: { ok: true, already: true, receipt: { id: 'r1', signer_name: 'คุณบี', signed_at: 'x' } }, error: null }
+      return { data: { ok: true, receipt: { id: 'r2', signer_name: body.signerName, signed_at: 'y' } }, error: null }
+    })
+    render(<RepairWorkOrderPage token="tok" />)
+    fireEvent.click(await screen.findByRole('button', { name: '✍️ ให้ลูกค้าเซ็นรับงาน' }))
+    fireEvent.click(screen.getByRole('button', { name: 'draw' }))
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกลายเซ็น' }))
+    expect(await screen.findByText('ลูกค้าเซ็นไปแล้ว: คุณบี')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'เซ็นใหม่แทน' }))
+    await waitFor(() => expect(calls('view').length).toBe(2))
+    const signs = calls('sign')
+    expect(signs[0][1].body.force).toBeUndefined()
+    expect(signs[1][1].body).toEqual({ token: 'tok', action: 'sign', signerName: 'สมชาย ใจดี', signaturePng: PNG, force: true })
+  })
+
+  it('existing receipt -> bar shows signer and เซ็นใหม่แทน opens the sheet that sends force', async () => {
+    signed = { signer_name: 'คุณซี', signed_at: 'x', signature_url: null }
+    render(<RepairWorkOrderPage token="tok" />)
+    expect(await screen.findByText('ลูกค้าเซ็นไปแล้ว: คุณซี')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '✍️ ให้ลูกค้าเซ็นรับงาน' })).toBe(null)
+    fireEvent.click(screen.getByRole('button', { name: 'เซ็นใหม่แทน' }))
+    fireEvent.click(screen.getByRole('button', { name: 'draw' }))
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกลายเซ็น' }))
+    await waitFor(() => expect(calls('sign').length).toBe(1))
+    expect(calls('sign')[0][1].body.force).toBe(true)
+  })
+
+  it('sign refusal shows the reason text in the sheet', async () => {
+    invoke.mockImplementation(async (_n, { body }) => (body.action === 'view'
+      ? { data: { ok: true, workOrder: wo() }, error: null }
+      : { data: { reason: 'not_assigned' }, error: null }))
+    render(<RepairWorkOrderPage token="tok" />)
+    fireEvent.click(await screen.findByRole('button', { name: '✍️ ให้ลูกค้าเซ็นรับงาน' }))
+    fireEvent.click(screen.getByRole('button', { name: 'draw' }))
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกลายเซ็น' }))
+    expect(await screen.findByText('คุณไม่ได้อยู่ในทีมของงานซ่อมนี้แล้ว')).toBeTruthy()
+  })
+})
+
+describe('RepairWorkOrderPage sign-later', () => {
+  it('sent -> success text, button gone (one call only)', async () => {
+    render(<RepairWorkOrderPage token="tok" />)
+    fireEvent.click(await screen.findByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' }))
+    expect(await screen.findByText('ส่งลิงก์ให้ลูกค้าทาง LINE แล้ว')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' })).toBe(null)
+    expect(calls('sign_link')[0][1].body).toEqual({ token: 'tok', action: 'sign_link' })
+  })
+
+  it('not sent -> tell admin text', async () => {
+    invoke.mockImplementation(async (_n, { body }) => (body.action === 'view'
+      ? { data: { ok: true, workOrder: wo() }, error: null }
+      : { data: { ok: true, sent: false, url: 'https://x/sign/1' }, error: null }))
+    render(<RepairWorkOrderPage token="tok" />)
+    fireEvent.click(await screen.findByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' }))
+    expect(await screen.findByText('ส่งทาง LINE ไม่ได้ตอนนี้ แจ้งแอดมินให้ส่งลิงก์ให้ลูกค้า')).toBeTruthy()
+    expect(calls('sign_link').length).toBe(1)
+  })
+})
