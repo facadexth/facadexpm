@@ -180,6 +180,11 @@ export function repairTooBigText(): string {
   return 'ไฟล์ใหญ่เกินไป ส่งทางแชทให้เจ้าหน้าที่แทนได้ครับ'
 }
 
+// Pushed after the LINE repair form (/r/<token>) is sent; the form's done screen shows the same number.
+export function repairFormDoneText(ticketNumber: string): string {
+  return `รับเรื่องแจ้งซ่อมแล้ว เลขที่ ${ticketNumber} ทีมงานจะติดต่อกลับเพื่อนัดวันเข้าซ่อม`
+}
+
 export function repairNoTicketsText(): string {
   return 'ยังไม่มีรายการแจ้งซ่อมครับ หากพบปัญหา กด "แจ้งซ่อม" ได้ตลอด'
 }

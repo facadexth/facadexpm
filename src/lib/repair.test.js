@@ -5,6 +5,7 @@ import {
   repairNoTicketsText, scheduleText, reminderText, repairStatusFlex, repairReportFlex,
   repairMediaExt, repairMediaPath, quickReplyLabel, repairUploadMime, repairReceivedFlex, repairGotItText, repairScheduleFlex, repairReminderFlex,
   statusLabel, repairChooserText, repairAddStartText, repairAddNotFoundText, repairAddCancelledText, repairAddedText, repairAddedLine,
+  repairFormDoneText,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const sched = {
@@ -124,6 +125,9 @@ describe('texts', () => {
     expect(repairCancelledText()).toBe('ยกเลิกการแจ้งซ่อมแล้วครับ')
     expect(repairTooBigText()).toBe('ไฟล์ใหญ่เกินไป ส่งทางแชทให้เจ้าหน้าที่แทนได้ครับ')
     expect(repairNoTicketsText()).toBe('ยังไม่มีรายการแจ้งซ่อมครับ หากพบปัญหา กด "แจ้งซ่อม" ได้ตลอด')
+  })
+  it('repair form done text', () => {
+    expect(repairFormDoneText('RP2611-007')).toBe('รับเรื่องแจ้งซ่อมแล้ว เลขที่ RP2611-007 ทีมงานจะติดต่อกลับเพื่อนัดวันเข้าซ่อม')
   })
   it('schedule and reminder', () => {
     expect(scheduleText(sched)).toBe('📅 นัดเข้าซ่อม RP2610-001\nบ้านคุณสมชาย\nพ. 21/10/2569 09:00–10:30 (ประมาณ 1.5 ชม.)\nหากไม่สะดวก ตอบกลับในแชทนี้ได้เลยครับ')
