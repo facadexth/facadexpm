@@ -163,5 +163,11 @@ export function resumeState(info, draft) {
   if (!siteId) step = 'site'
   else if (step === 'list' || step === 'confirm') step = draft.items.length ? step : 'item'
   const editIndex = step === 'item' && draft.editIndex !== null && draft.editIndex < draft.items.length ? draft.editIndex : null
-  return { ...draft, siteId, step, editIndex }
+  // A day picked before Bangkok midnight can be "today" now: the confirm screen has no chip for it,
+  // so it could never be tapped off. Keep only days inside the link's current bounds.
+  const b = info?.bounds
+  const preferredDays = b?.min && b?.max
+    ? draft.preferredDays.filter((d) => d >= b.min && d <= b.max)
+    : draft.preferredDays
+  return { ...draft, siteId, step, editIndex, preferredDays }
 }

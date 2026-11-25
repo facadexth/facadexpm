@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { repairFormReducer, initialFormState, loadDraft, saveDraft, clearDraft, emptyDraft } from './repairFormState.js'
+import { repairFormReducer, initialFormState, loadDraft, saveDraft, clearDraft, emptyDraft, resumeState } from './repairFormState.js'
 
 const s1 = { id: 's1', name: 'บ้านคุณสมชาย' }
 const s2 = { id: 's2', name: 'อาคาร ABC' }
@@ -171,5 +171,14 @@ describe('saveDraft / loadDraft', () => {
     ls.setItem('repair-form:tok4', '{not json')
     vi.stubGlobal('localStorage', ls)
     expect(loadDraft('tok4')).toBe(null)
+  })
+})
+
+describe('resumeState', () => {
+  it('drops restored preferred days outside the new bounds', () => {
+    const draft = { ...initialFormState({ sites: [s1] }), step: 'confirm', items: [{ location: 'ห้องนอน', room: '', symptom: 'รั่วซึม', note: '', files: [img] }],
+      preferredDays: ['2026-11-25', '2026-11-27'] }
+    const st = resumeState({ sites: [s1], bounds: { min: '2026-11-26', max: '2027-01-25' } }, draft)
+    expect(st.preferredDays).toEqual(['2026-11-27'])
   })
 })

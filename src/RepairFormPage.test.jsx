@@ -12,7 +12,8 @@ vi.mock('./lib/supabase.js', () => ({
 }))
 const readVideoSeconds = vi.fn()
 vi.mock('./lib/videoDuration.js', () => ({ readVideoSeconds: (...a) => readVideoSeconds(...a) }))
-vi.mock('./lib/resizeImage.js', () => ({ resizeToJpeg: async () => new Blob(['jpeg-bytes'], { type: 'image/jpeg' }) }))
+const resizeToJpeg = vi.fn()
+vi.mock('./lib/resizeImage.js', () => ({ resizeToJpeg: (...a) => resizeToJpeg(...a) }))
 
 import RepairFormPage from './RepairFormPage.jsx'
 
@@ -26,6 +27,8 @@ beforeEach(() => {
   invoke.mockReset()
   uploadToSignedUrl.mockReset()
   readVideoSeconds.mockReset()
+  resizeToJpeg.mockReset()
+  resizeToJpeg.mockResolvedValue(new Blob(['jpeg-bytes'], { type: 'image/jpeg' }))
   submitReply = { data: { ok: true, ticketNumber: 'RP2611-007' }, error: null }
   invoke.mockImplementation(async (_n, { body }) => {
     if (body.action === 'info') return { data: info, error: null }
@@ -92,6 +95,30 @@ describe('RepairFormPage', () => {
     expect(await screen.findByText('วิดีโอยาวได้ไม่เกิน 30 วินาที')).toBeTruthy()
     expect(calls('upload_url').length).toBe(0)
     expect(uploadToSignedUrl).not.toHaveBeenCalled()
+  })
+
+  it('resize fails on a HEIC photo: shows the retake message and asks for no upload url', async () => {
+    resizeToJpeg.mockRejectedValue(new Error('cannot decode'))
+    render(<RepairFormPage token="tok" />)
+    await screen.findByRole('button', { name: 'ห้องนอน' })
+    const cam = document.querySelector('input[accept="image/*"][capture="environment"]')
+    fireEvent.change(cam, { target: { files: [new File(['heic'], 'a.heic', { type: 'image/heic' })] } })
+    expect(await screen.findByText('ไฟล์รูปนี้เปิดไม่ได้ ลองถ่ายใหม่')).toBeTruthy()
+    expect(calls('upload_url').length).toBe(0)
+    expect(uploadToSignedUrl).not.toHaveBeenCalled()
+  })
+
+  it('resize fails on a JPEG photo: uploads the original file', async () => {
+    resizeToJpeg.mockRejectedValue(new Error('cannot decode'))
+    render(<RepairFormPage token="tok" />)
+    await screen.findByRole('button', { name: 'ห้องนอน' })
+    const original = new File(['original-jpeg'], 'a.jpg', { type: 'image/jpeg' })
+    const cam = document.querySelector('input[accept="image/*"][capture="environment"]')
+    fireEvent.change(cam, { target: { files: [original] } })
+    await waitFor(() => expect(uploadToSignedUrl).toHaveBeenCalled())
+    expect(calls('upload_url')[0][1].body).toEqual({ action: 'upload_url', token: 'tok', mime: 'image/jpeg', mediaType: 'image', bytes: original.size })
+    expect(uploadToSignedUrl.mock.calls[0][2]).toBe(original)
+    expect(uploadToSignedUrl.mock.calls[0][3]).toEqual({ contentType: 'image/jpeg' })
   })
 
   it('a submit answered ok shows the done screen with the ticket number and the exact payload', async () => {
