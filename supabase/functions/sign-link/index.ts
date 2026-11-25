@@ -25,6 +25,8 @@ import { sendResendEmail } from '../_shared/email-sender.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { APP_URL } from '../_shared/app-url.ts'
 import { linkState, canMarkSigned } from '../_shared/delivery-report-link.ts'
+import { repairSignItems } from '../_shared/repair-sign-doc.ts'
+import { bangkokDay } from '../_shared/customer-form-logic.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -165,6 +167,28 @@ const DOCUMENT_LOADERS: Record<string, (id: string) => Promise<Record<string, un
       notes: data.note, cardTitles,
     }
   },
+  // Repair work order (ใบงานซ่อม, CRM phase 2a): the customer signs that the listed problems were
+  // seen/fixed. No prices anywhere -- items carry only a description. A declined ticket is refused
+  // (PublicSignPage words 'replaced' for this type as "งานซ่อมนี้ถูกยกเลิกแล้ว"). Signing changes no status.
+  repair_ticket: async (id: string) => {
+    const { data } = await admin.from('repair_tickets')
+      .select('ticket_number, created_at, status, description, tenant_id, clients(name), sites(name)')
+      .eq('id', id).maybeSingle()
+    if (!data) return null
+    if (data.status === 'declined') return { refuseReason: 'replaced', tenant_id: data.tenant_id }
+    const { data: rows, error } = await admin.from('repair_ticket_items')
+      .select('seq, location, room, symptom, note')
+      .eq('tenant_id', data.tenant_id).eq('ticket_id', id).order('seq', { ascending: true })
+    if (error) throw new Error(error.message)
+    return {
+      type: 'repair_ticket', label: `ใบงานซ่อม ${data.ticket_number}`, number: data.ticket_number,
+      date: data.created_at ? bangkokDay(Date.parse(data.created_at as string)) : null, tenant_id: data.tenant_id,
+      clientName: (data.clients as { name?: string } | null)?.name ?? null,
+      siteName: (data.sites as { name?: string } | null)?.name ?? null,
+      items: repairSignItems(data.description as string | null, rows ?? []),
+      notes: null,
+    }
+  },
 }
 
 async function sendSignConfirmationEmail(to: string, doc: Record<string, unknown>, tenantName: string, signerName: string, linkId: string) {
@@ -222,7 +246,7 @@ Deno.serve(async (req) => {
   if (!loader) return json({ valid: false, reason: 'unsupported_document_type' })
   const doc = await loader(link.document_id as string)
   if (!doc) return json({ valid: false, reason: 'document_not_found' })
-  if (doc.refuseReason) return json({ valid: false, reason: doc.refuseReason })
+  if (doc.refuseReason) return json({ valid: false, reason: doc.refuseReason, documentType: link.document_type })
 
   const { data: tenant } = await admin.from('tenants').select('company_name, address, tax_id, phone, logo_url').eq('id', doc.tenant_id).maybeSingle()
 
@@ -307,6 +331,8 @@ Deno.serve(async (req) => {
     if (link.document_type === 'quotation') {
       await admin.from('quotations').update({ status: 'accepted' }).eq('id', link.document_id).eq('status', 'sent')
     }
+
+    // Repair ticket: the receipt row is the whole record -- no status move after signing.
 
     // Delivery report: the customer's signature locks the report (trigger allows draft/issued -> signed).
     if (link.document_type === 'delivery_report') {

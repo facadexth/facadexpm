@@ -1,7 +1,7 @@
 // ============================================================
 // SignLinkModal — generates a secure /sign/<linkId> remote-signing link for
 // any document_type the sign-link Edge Function supports (cheque,
-// quotation, invoice) and shows it ready to copy/send. Deliberately
+// quotation, invoice, delivery_report, repair_ticket) and shows it ready to copy/send. Deliberately
 // generic over documentType/documentId, same as DocumentReceiptModal --
 // one modal shared by every page that offers remote signing, instead of
 // each page reimplementing the same insert-then-copy-link flow.

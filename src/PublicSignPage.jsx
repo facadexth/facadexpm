@@ -11,6 +11,8 @@
 //    this page only ever showed a one-line summary and a bare "signed!"
 //    message. Optional email field on submit gets a Resend confirmation
 //    with a link back here (see sign-link Edge Function).
+// ✅ 2026-11-25: repair_ticket (ใบงานซ่อม) -- numbered "รายการซ่อม" list, no money
+//    columns/totals; a declined ticket shows "งานซ่อมนี้ถูกยกเลิกแล้ว".
 // ============================================================
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './lib/supabase.js'
@@ -24,6 +26,12 @@ const REASON_MESSAGES = {
   document_not_found: 'ไม่พบเอกสารที่ลิงก์นี้อ้างอิงถึง',
   replaced: 'รายงานนี้ถูกแทนด้วยฉบับใหม่',
 }
+// Per-type wording for a refusal; falls back to REASON_MESSAGES. A declined repair ticket is
+// refused with reason 'replaced' by sign-link, but "replaced by a newer report" would be wrong there.
+const TYPE_REASON_MESSAGES = {
+  repair_ticket: { replaced: 'งานซ่อมนี้ถูกยกเลิกแล้ว' },
+}
+const reasonMessage = (documentType, reason) => TYPE_REASON_MESSAGES[documentType]?.[reason] || REASON_MESSAGES[reason]
 
 const fmt = (n) => Number(n ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'
@@ -44,6 +52,8 @@ function Shell({ children, wide }) {
 // ทั้งพรีวิวก่อนเซ็นและมุมมองหลังเซ็น (มี signatureUrl เพิ่มมาก็พอ)
 function DocumentPaper({ elementId, document: doc, tenant, tenantName, signature }) {
   const isCheque = doc.type === 'cheque'
+  // A repair work order carries no prices: a numbered list of the problems, no money columns/totals.
+  const isRepair = doc.type === 'repair_ticket'
   return (
     <div id={elementId} style={{ background: '#fff', color: '#17181f', padding: '28px 24px', borderRadius: 8, fontFamily: 'Sarabun, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
@@ -80,6 +90,18 @@ function DocumentPaper({ elementId, document: doc, tenant, tenantName, signature
         <div style={{ fontSize: 13, display: 'grid', gap: 6, background: '#f7f7fb', borderRadius: 8, padding: 14 }}>
           <div><strong>ธนาคาร:</strong> {doc.bank}</div>
           <div><strong>วันที่เช็ค:</strong> {fmtDate(doc.check_date)}</div>
+        </div>
+      ) : isRepair ? (
+        <div style={{ fontSize: 12.5 }}>
+          <strong>รายการซ่อม</strong>
+          <ol style={{ margin: '6px 0 0', paddingLeft: 22, display: 'grid', gap: 4 }}>
+            {(doc.items || []).map((it, i) => <li key={i} style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>{it.description}</li>)}
+          </ol>
+          {doc.notes && (
+            <div style={{ marginTop: 14, fontSize: 11.5, color: '#444', background: '#f7f7fb', borderRadius: 8, padding: 12 }}>
+              <strong>หมายเหตุ</strong><div style={{ whiteSpace: 'pre-line' }}>{doc.notes}</div>
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -205,7 +227,7 @@ export default function PublicSignPage({ linkId }) {
     return (
       <Shell>
         <h2 style={{ marginBottom: 8 }}>⚠️ ไม่สามารถเปิดลิงก์นี้ได้</h2>
-        <p style={{ color: 'var(--text2)' }}>{REASON_MESSAGES[state.reason] || state.error || 'เกิดข้อผิดพลาด'}</p>
+        <p style={{ color: 'var(--text2)' }}>{reasonMessage(state.documentType, state.reason) || state.error || 'เกิดข้อผิดพลาด'}</p>
       </Shell>
     )
   }
