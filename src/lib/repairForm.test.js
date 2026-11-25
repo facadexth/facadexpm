@@ -51,6 +51,13 @@ describe('validateItem', () => {
     expect(validateItem(okItem({ files: [big] }))).toContain('ไฟล์ใหญ่เกิน 50 MB')
     expect(validateItem(okItem({ files: [{ ...img(), bytes: 50 * 1024 * 1024 }] }))).toEqual([])
   })
+  it('unknown mediaType is rejected', () => {
+    expect(validateItem(okItem({ files: [img(), { path: 't1/x/z', mediaType: 'x', bytes: 10 }] }))).toContain('ไฟล์ชนิดนี้ใช้ไม่ได้')
+  })
+  it('NaN or negative bytes rejected', () => {
+    expect(validateItem(okItem({ files: [{ ...img(), bytes: NaN }] }))).toContain('ไฟล์ใหญ่เกิน 50 MB')
+    expect(validateItem(okItem({ files: [{ ...img(), bytes: -1 }] }))).toContain('ไฟล์ใหญ่เกิน 50 MB')
+  })
   it('bad location', () => {
     expect(validateItem(okItem({ location: 'หลังคา' }))).toContain('เลือกตำแหน่ง')
   })

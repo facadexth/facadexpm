@@ -53,7 +53,10 @@ export function validateItem(item: FormItem): string[] {
   if (videos.some((v) => typeof v.seconds === 'number' && v.seconds > LIMITS.maxVideoSeconds)) {
     errors.push(`วิดีโอยาวได้ไม่เกิน ${LIMITS.maxVideoSeconds} วินาที`)
   }
-  if (files.some((f) => !(typeof f?.bytes === 'number') || f.bytes > LIMITS.maxBytes)) {
+  if (files.some((f) => f?.mediaType !== 'image' && f?.mediaType !== 'video')) {
+    errors.push('ไฟล์ชนิดนี้ใช้ไม่ได้')
+  }
+  if (files.some((f) => !Number.isFinite(f?.bytes) || f.bytes < 0 || f.bytes > LIMITS.maxBytes)) {
     errors.push('ไฟล์ใหญ่เกิน 50 MB')
   }
   return errors
