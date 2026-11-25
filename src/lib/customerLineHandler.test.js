@@ -8,9 +8,11 @@ import {
   repairStartText, repairPickSiteText, repairReceivedText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, repairStatusFlex, repairGotItText, repairReceivedFlex,
   repairChooserText, repairAddStartText, repairAddNotFoundText, repairAddCancelledText, repairAddedLine,
+  repairFormLinkFlex, repairFormThrottledText,
 } from '../../supabase/functions/_shared/repair.ts'
 
 const ctx = { tenantId: 't1', today: '2026-10-19' }
+const FORM_URL = 'https://changpm.app/r/abc123'
 const txt = (text) => ({ type: 'message', replyToken: 'rt', source: { type: 'user', userId: 'U1' }, message: { type: 'text', text } })
 const T = (text) => ({ type: 'text', text })
 const site = { name: 'งาน A', status: 'Ongoing', pct: 40, phases: [{ name: 'ติดตั้ง', start_date: null, end_date: null, status: 'in_progress' }], endDate: '2026-12-01', handoverDate: null, warrantyMonths: 12 }
@@ -39,6 +41,7 @@ function deps(over = {}) {
     listOpenTickets: vi.fn().mockResolvedValue([]),
     startAddSession: vi.fn().mockResolvedValue(null),
     markCustomerUpdate: vi.fn().mockResolvedValue(undefined),
+    createRepairFormLink: vi.fn().mockResolvedValue({ url: FORM_URL }),
     ...over,
   }
 }
@@ -71,7 +74,7 @@ describe('handleCustomerEvent', () => {
     const d = deps({ getAccount: vi.fn().mockResolvedValue(linked), claimInvite: vi.fn().mockResolvedValue({ status: 'ok', clientName: 'ใหม่' }) })
     expect(await handleCustomerEvent(txt('K7P2QM'), ctx, d)).toEqual([T(inviteOkText('ใหม่'))])
   })
-  it.each(['สถานะงาน', 'แจ้งซ่อม', 'สถานะแจ้งซ่อม', 'ประกันของฉัน'])('unlinked + %s -> notLinked', async (c) => {
+  it.each(['สถานะงาน', 'แจ้งซ่อม', 'แจ้งทางแชท', 'สถานะแจ้งซ่อม', 'ประกันของฉัน'])('unlinked + %s -> notLinked', async (c) => {
     const d = deps()
     expect(await handleCustomerEvent(txt(c), ctx, d)).toEqual([T(notLinkedText('แชงค์'))])
     expect(d.openRequest).not.toHaveBeenCalled()
@@ -205,7 +208,7 @@ const two = [{ id: 's1', name: 'บ้านคุณสมชาย' }, { id: '
 describe('repair intake', () => {
   it('2 sites: pick-site quick replies, no ticket yet', async () => {
     const d = L({ listClientSites: vi.fn().mockResolvedValue(two) })
-    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([{
+    expect(await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)).toEqual([{
       type: 'text', text: repairPickSiteText(),
       quickReply: { items: [qr('บ้านคุณสมชาย', 'แจ้งซ่อม:บ้านคุณสมชาย'), qr('คอนโดริมน้ำ', 'แจ้งซ่อม:คอนโดริมน้ำ')] },
     }])
@@ -215,7 +218,7 @@ describe('repair intake', () => {
   it('pick-site: long names are cut to 20 chars, at most 13 items', async () => {
     const many = Array.from({ length: 15 }, (_, i) => ({ id: `s${i}`, name: `โครงการบ้านพักอาศัยสองชั้นหลังที่ ${i}` }))
     const d = L({ listClientSites: vi.fn().mockResolvedValue(many) })
-    const [m] = await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    const [m] = await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)
     expect(m.quickReply.items).toHaveLength(13)
     for (const it of m.quickReply.items) expect([...it.action.label].length).toBeLessThanOrEqual(20)
     expect(m.quickReply.items[0].action.text).toBe('แจ้งซ่อม:โครงการบ้านพักอาศัยสองชั้นหลังที่ 0')
@@ -239,13 +242,13 @@ describe('repair intake', () => {
   })
   it('single site starts immediately', async () => {
     const d = L()
-    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([startMsg('งาน A')])
+    expect(await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)).toEqual([startMsg('งาน A')])
     expect(d.startRepair).toHaveBeenCalledWith('c1', 's1', 'U1', 'คุณบิ๊ก')
     expect(d.openRequest).not.toHaveBeenCalled()
   })
   it('no sites: contact text, no ticket', async () => {
     const d = L({ listClientSites: vi.fn().mockResolvedValue([]) })
-    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([T(contactText(contact))])
+    expect(await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)).toEqual([T(contactText(contact))])
     expect(d.startRepair).not.toHaveBeenCalled()
   })
   it('start quick-reply labels fit LINE\'s 20-char limit', () => {
@@ -383,6 +386,7 @@ describe('repair intake', () => {
     const d = L()
     expect(await handleCustomerEvent(redeliver(txt('แจ้งซ่อม')), rctx, d)).toEqual([])
     expect(d.startRepair).not.toHaveBeenCalled()
+    expect(d.createRepairFormLink).not.toHaveBeenCalled()
   })
   it('redelivered แจ้งซ่อม:<name>: no new ticket', async () => {
     const d = L({ listClientSites: vi.fn().mockResolvedValue(two) })
@@ -397,7 +401,7 @@ describe('repair intake', () => {
   it('pick-site skips a site whose action text would pass 300 chars', async () => {
     const long = { id: 'x', name: 'ก'.repeat(300) }
     const d = L({ listClientSites: vi.fn().mockResolvedValue([long, ...two]) })
-    const [m] = await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    const [m] = await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)
     expect(m.quickReply.items.map((i) => i.action.text)).toEqual(['แจ้งซ่อม:บ้านคุณสมชาย', 'แจ้งซ่อม:คอนโดริมน้ำ'])
     for (const i of m.quickReply.items) expect(i.action.text.length).toBeLessThanOrEqual(300)
   })
@@ -453,7 +457,7 @@ const addMsg = (n, site) => withQR(repairAddStartText(n, site))
 describe('repair intake: existing open tickets', () => {
   it('single site with open tickets: asks first, no new ticket', async () => {
     const d = L({ listOpenTickets: vi.fn().mockResolvedValue(openT) })
-    const [m] = await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    const [m] = await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)
     expect(m.text).toBe(repairChooserText('งาน A', openT))
     expect(m.quickReply.items).toEqual([
       qr('เพิ่มใน RP2610-003', 'เพิ่มเรื่อง:RP2610-003'),
@@ -474,14 +478,14 @@ describe('repair intake: existing open tickets', () => {
   })
   it('no open tickets: starts a new ticket at once', async () => {
     const d = L()
-    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([startMsg('งาน A')])
+    expect(await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)).toEqual([startMsg('งาน A')])
     expect(d.listOpenTickets).toHaveBeenCalledWith('c1', 's1')
     expect(d.startRepair).toHaveBeenCalledWith('c1', 's1', 'U1', 'คุณบิ๊ก')
   })
   it('chooser labels and texts fit LINE limits', async () => {
     const longSite = { id: 's1', name: 'โครงการบ้านพักอาศัยสองชั้นหลังใหญ่มาก' }
     const d = L({ listClientSites: vi.fn().mockResolvedValue([longSite]), listOpenTickets: vi.fn().mockResolvedValue(openT) })
-    const [m] = await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    const [m] = await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)
     expect(m.quickReply.items).toHaveLength(4)
     for (const i of m.quickReply.items) {
       expect(i.action.label.length).toBeLessThanOrEqual(20)
@@ -491,7 +495,7 @@ describe('repair intake: existing open tickets', () => {
   it('a site whose new-ticket text would pass 300 chars skips the chooser and starts new', async () => {
     const huge = { id: 's1', name: 'ก'.repeat(300) }
     const d = L({ listClientSites: vi.fn().mockResolvedValue([huge]), listOpenTickets: vi.fn().mockResolvedValue(openT) })
-    await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)
     expect(d.startRepair).toHaveBeenCalledWith('c1', 's1', 'U1', 'คุณบิ๊ก')
   })
   it('แจ้งเรื่องใหม่:<site> starts a new ticket even with open tickets', async () => {
@@ -515,9 +519,9 @@ describe('repair intake: existing open tickets', () => {
       expect(d.startAddSession).not.toHaveBeenCalled()
     }
   })
-  it('redelivered แจ้งซ่อม with open tickets / แจ้งเรื่องใหม่ / เพิ่มเรื่อง: nothing written', async () => {
+  it('redelivered แจ้งซ่อม / แจ้งทางแชท with open tickets / แจ้งเรื่องใหม่ / เพิ่มเรื่อง: nothing written', async () => {
     const d = L({ listOpenTickets: vi.fn().mockResolvedValue(openT) })
-    for (const t of ['แจ้งซ่อม', 'แจ้งเรื่องใหม่:งาน A', 'เพิ่มเรื่อง:RP2610-001']) {
+    for (const t of ['แจ้งซ่อม', 'แจ้งทางแชท', 'แจ้งเรื่องใหม่:งาน A', 'เพิ่มเรื่อง:RP2610-001']) {
       expect(await handleCustomerEvent(redeliver(txt(t)), rctx, d)).toEqual([])
     }
     expect(d.startRepair).not.toHaveBeenCalled()
@@ -598,7 +602,7 @@ describe('repair intake: add mode', () => {
   })
   it('แจ้งซ่อม / เพิ่มเรื่อง / แจ้งเรื่องใหม่ during an add session repeat the add reply', async () => {
     const d = L({ getRepairSession: vi.fn().mockResolvedValue(addActive) })
-    for (const t of ['แจ้งซ่อม', 'เพิ่มเรื่อง:RP2610-001', 'แจ้งเรื่องใหม่:งาน A', 'แจ้งซ่อม:งาน A']) {
+    for (const t of ['แจ้งซ่อม', 'แจ้งทางแชท', 'เพิ่มเรื่อง:RP2610-001', 'แจ้งเรื่องใหม่:งาน A', 'แจ้งซ่อม:งาน A']) {
       expect(await handleCustomerEvent(txt(t), rctx, d)).toEqual([addMsg('RP2610-002', 'งาน A')])
     }
     expect(d.startRepair).not.toHaveBeenCalled()
@@ -625,10 +629,74 @@ describe('fix round 1', () => {
   })
   it('startRepair losing the race to an add session replies with the add start text', async () => {
     const d = L({ startRepair: vi.fn().mockResolvedValue({ ticketId: 'k7', siteName: 'งาน A', mode: 'add', ticketNumber: 'RP2610-002' }) })
-    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([addMsg('RP2610-002', 'งาน A')])
+    expect(await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)).toEqual([addMsg('RP2610-002', 'งาน A')])
   })
   it('startRepair with no mode (own new ticket) keeps the new start text', async () => {
     const d = L({ startRepair: vi.fn().mockResolvedValue({ ticketId: 'k1', siteName: 'งาน A', mode: 'new', ticketNumber: 'RP2610-009' }) })
+    expect(await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)).toEqual([startMsg('งาน A')])
+  })
+})
+
+// ---- CRM phase 1: แจ้งซ่อม sends the repair form link; the chat flow moves to แจ้งทางแชท ----
+describe('repair form link', () => {
+  it('linked, 2 sites + แจ้งซ่อม -> one form-link flex, no chat session', async () => {
+    const d = L({ listClientSites: vi.fn().mockResolvedValue(two) })
+    const r = await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)
+    expect(r).toEqual([repairFormLinkFlex(FORM_URL)])
+    expect(r).toHaveLength(1)
+    expect(r[0].type).toBe('flex')
+    expect(JSON.stringify(r[0].contents)).toContain(`"uri":"${FORM_URL}"`)
+    expect(d.listClientSites).toHaveBeenCalledWith('c1')
+    expect(d.createRepairFormLink).toHaveBeenCalledWith('c1', 'U1')
+    expect(d.startRepair).not.toHaveBeenCalled()
+    expect(d.listOpenTickets).not.toHaveBeenCalled()
+  })
+  it('linked, 1 site + แจ้งซ่อม -> form link too', async () => {
+    const d = L()
+    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([repairFormLinkFlex(FORM_URL)])
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it('แจ้งซ่อม with no sites -> the existing no-site reply, no link', async () => {
+    const d = L({ listClientSites: vi.fn().mockResolvedValue([]) })
+    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([T(contactText(contact))])
+    expect(d.createRepairFormLink).not.toHaveBeenCalled()
+  })
+  it('แจ้งทางแชท -> listClientSites then the pick-site reply (old behaviour)', async () => {
+    const d = L({ listClientSites: vi.fn().mockResolvedValue(two) })
+    expect(await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)).toEqual([{
+      type: 'text', text: repairPickSiteText(),
+      quickReply: { items: [qr('บ้านคุณสมชาย', 'แจ้งซ่อม:บ้านคุณสมชาย'), qr('คอนโดริมน้ำ', 'แจ้งซ่อม:คอนโดริมน้ำ')] },
+    }])
+    expect(d.listClientSites).toHaveBeenCalledWith('c1')
+    expect(d.createRepairFormLink).not.toHaveBeenCalled()
+  })
+  it('throttled -> the throttled text', async () => {
+    const d = L({ createRepairFormLink: vi.fn().mockResolvedValue({ throttled: true }) })
+    expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([T(repairFormThrottledText())])
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it('active session + แจ้งซ่อม -> the session start reply, no link', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
     expect(await handleCustomerEvent(txt('แจ้งซ่อม'), rctx, d)).toEqual([startMsg('งาน A')])
+    expect(d.createRepairFormLink).not.toHaveBeenCalled()
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it('active session + แจ้งทางแชท -> the session start reply, nothing appended', async () => {
+    const d = L({ getRepairSession: vi.fn().mockResolvedValue(active) })
+    expect(await handleCustomerEvent(txt('แจ้งทางแชท'), rctx, d)).toEqual([startMsg('งาน A')])
+    expect(d.appendRepairText).not.toHaveBeenCalled()
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it.each(['แจ้งซ่อม', 'แจ้งทางแชท'])('not linked + %s -> notLinkedText, no link', async (t) => {
+    const d = deps()
+    expect(await handleCustomerEvent(txt(t), rctx, d)).toEqual([T(notLinkedText('แชงค์'))])
+    expect(d.createRepairFormLink).not.toHaveBeenCalled()
+    expect(d.startRepair).not.toHaveBeenCalled()
+  })
+  it.each(['แจ้งซ่อม', 'แจ้งทางแชท'])('redelivered %s -> [] and no token, no ticket', async (t) => {
+    const d = L({ listClientSites: vi.fn().mockResolvedValue(two) })
+    expect(await handleCustomerEvent(redeliver(txt(t)), rctx, d)).toEqual([])
+    expect(d.createRepairFormLink).not.toHaveBeenCalled()
+    expect(d.startRepair).not.toHaveBeenCalled()
   })
 })

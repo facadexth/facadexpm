@@ -6,7 +6,7 @@ export type QuickReplyItem = { type: 'action'; action: { type: 'message'; label:
 export type LineMessage =
   | { type: 'text'; text: string; quickReply?: { items: QuickReplyItem[] } }
   // fallbackText: local only (never sent), the plain text replyWithFallback uses if LINE refuses the flex.
-  | { type: 'flex'; altText: string; contents: object; fallbackText?: string }
+  | { type: 'flex'; altText: string; contents: object; fallbackText?: string; quickReply?: { items: QuickReplyItem[] } }
   | { type: 'image'; originalContentUrl: string; previewImageUrl: string }
 
 const LINE_REPLY_URL = 'https://api.line.me/v2/bot/message/reply'

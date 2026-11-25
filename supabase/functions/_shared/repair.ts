@@ -185,6 +185,10 @@ export function repairFormDoneText(ticketNumber: string): string {
   return `รับเรื่องแจ้งซ่อมแล้ว เลขที่ ${ticketNumber} ทีมงานจะติดต่อกลับเพื่อนัดวันเข้าซ่อม`
 }
 
+export function repairFormThrottledText(): string {
+  return 'ขอลิงก์บ่อยเกินไป กรุณาใช้ลิงก์ล่าสุดที่ส่งให้ไปแล้ว'
+}
+
 export function repairNoTicketsText(): string {
   return 'ยังไม่มีรายการแจ้งซ่อมครับ หากพบปัญหา กด "แจ้งซ่อม" ได้ตลอด'
 }
@@ -382,6 +386,44 @@ export function repairReceivedFlex(ticketNumber: string, siteName: string, count
         ],
       },
     },
+  }
+}
+
+const FORM_TITLE = 'แจ้งซ่อม'
+const FORM_BODY = 'กรอกทีละรายการ ถ่ายรูป แล้วกดส่ง (ลิงก์ใช้ได้ 24 ชม.)'
+const FORM_BUTTON = '📝 เปิดฟอร์มแจ้งซ่อม'
+// Same text as the handler's CHAT_TEXT: pressing it starts the old 30-minute chat report.
+const FORM_CHAT_TEXT = 'แจ้งทางแชท'
+
+// แจ้งซ่อม reply: a link to the repair form (/r/<token>). The quick reply keeps the old chat flow one tap away.
+// fallbackText carries the link, so a refused card still leaves the customer a working link.
+export function repairFormLinkFlex(url: string): LineMessage {
+  return {
+    type: 'flex',
+    altText: altOf(`${FORM_TITLE}: ${FORM_BODY}`),
+    fallbackText: `${FORM_TITLE}\n${FORM_BODY}\n${url}`,
+    contents: {
+      type: 'bubble', size: 'mega',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: COLOR_AMBER, paddingAll: '16px', spacing: 'xs',
+        contents: [
+          { type: 'text', text: FORM_TITLE, size: 'lg', weight: 'bold', color: '#FFFFFF', wrap: true },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: FORM_BODY, size: 'sm', color: '#5C554D', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          { type: 'button', style: 'primary', color: COLOR_PRIMARY, height: 'sm', action: { type: 'uri', label: FORM_BUTTON, uri: url } },
+        ],
+      },
+    },
+    quickReply: { items: [{ type: 'action', action: { type: 'message', label: quickReplyLabel(FORM_CHAT_TEXT), text: FORM_CHAT_TEXT } }] },
   }
 }
 

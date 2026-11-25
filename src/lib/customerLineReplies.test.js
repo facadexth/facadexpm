@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   inviteOkText, inviteInvalidText, notLinkedText, quoteText,
   warrantyText, warrantyFlex, contactText, statusText,
+  ALT_TEXT_MAX,
 } from '../../supabase/functions/_shared/customer-line-replies.ts'
+import { repairFormLinkFlex, repairFormThrottledText } from '../../supabase/functions/_shared/repair.ts'
 
 const big = { name: 'บ้านคุณบิ๊ก', status: 'Ongoing', pct: 62, phases: [{ name: 'ติดตั้งกระจก ชั้น 2', start_date: null, end_date: null, status: 'in_progress' }], endDate: '2026-11-15', handoverDate: null, warrantyMonths: 12 }
 
@@ -208,5 +210,30 @@ describe('warrantyFlex', () => {
       }
     })
     for (const b of bubbles(m)) expect(JSON.stringify(b).length).toBeLessThan(30000)
+  })
+})
+
+describe('repair form link replies', () => {
+  const url = 'https://changpm.app/r/0123456789abcdef0123456789abcdef'
+  const m = repairFormLinkFlex(url)
+  const json = JSON.stringify(m.contents)
+  it('flex with title, body, uri button and a chat quick reply', () => {
+    expect(m.type).toBe('flex')
+    expect(json).toContain('"text":"แจ้งซ่อม"')
+    expect(json).toContain('"text":"กรอกทีละรายการ ถ่ายรูป แล้วกดส่ง (ลิงก์ใช้ได้ 24 ชม.)"')
+    expect(json).toContain('"action":{"type":"uri","label":"📝 เปิดฟอร์มแจ้งซ่อม","uri":"' + url + '"}')
+    expect(m.quickReply).toEqual({ items: [{ type: 'action', action: { type: 'message', label: 'แจ้งทางแชท', text: 'แจ้งทางแชท' } }] })
+  })
+  it('altText fits ALT_TEXT_MAX and the uri is https', () => {
+    expect(m.altText.length).toBeGreaterThan(0)
+    expect(m.altText.length).toBeLessThanOrEqual(ALT_TEXT_MAX)
+    const uri = json.match(/"uri":"([^"]+)"/)[1]
+    expect(uri.startsWith('https://')).toBe(true)
+  })
+  it('plain fallback still carries the link', () => {
+    expect(m.fallbackText).toContain(url)
+  })
+  it('throttled text', () => {
+    expect(repairFormThrottledText()).toBe('ขอลิงก์บ่อยเกินไป กรุณาใช้ลิงก์ล่าสุดที่ส่งให้ไปแล้ว')
   })
 })

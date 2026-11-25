@@ -9,6 +9,7 @@ import { timingSafeEqual } from '../_shared/timing-safe.ts'
 import { sendLineReplyMessages } from '../_shared/line-reply.ts'
 import { replyWithFallback } from '../_shared/reply-fallback.ts'
 import { handleCustomerEvent, type CustomerDeps } from '../_shared/customer-line-handler.ts'
+import { APP_URL } from '../_shared/app-url.ts'
 import type { SiteStatus, SitePhase } from '../_shared/customer-line-replies.ts'
 import {
   contentRetryDelay, mediaTooBig, repairMediaExt, repairMediaPath, repairUploadMime, OPEN_REPAIR_STATUSES, MAX_CHOOSER_TICKETS,
@@ -33,6 +34,9 @@ const SIGNED_URL_SECONDS = 604800
 const IMAGE_NAME_FILTER = 'file_name.ilike.*.jpg,file_name.ilike.*.jpeg,file_name.ilike.*.png'
 const DONE_WINDOW_MS = 30 * 24 * 3600 * 1000
 const REPAIR_SESSION_MS = 30 * 60 * 1000
+// Repair-form links (แจ้งซ่อม): valid 24 h, at most 6 per LINE user per hour.
+const REPAIR_FORM_LINK_MS = 24 * 3600 * 1000
+const REPAIR_FORM_LINKS_PER_HOUR = 6
 const REPAIR_BUCKET = 'repair-media'
 const MEDIA_FETCH_TIMEOUT_MS = 60000
 
@@ -268,6 +272,22 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
         .order('created_at', { ascending: false })
       if (error) throw error
       return (data ?? []).map((s) => ({ id: s.id as string, name: (s.name as string) ?? '' }))
+    },
+    async createRepairFormLink(clientId, lineUserId) {
+      // At most REPAIR_FORM_LINKS_PER_HOUR links per (tenant, LINE user) per hour.
+      const since = new Date(Date.now() - 3600 * 1000).toISOString()
+      const { count, error: cErr } = await admin.from('customer_link_tokens').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).eq('purpose', 'repair_form').gte('created_at', since)
+      if (cErr) throw cErr
+      if ((count ?? 0) >= REPAIR_FORM_LINKS_PER_HOUR) return { throttled: true }
+      const token = crypto.randomUUID().replace(/-/g, '')
+      // tenant_id is explicit: the table has no default and the service role has no tenant context.
+      const { error } = await admin.from('customer_link_tokens').insert({
+        tenant_id: tenantId, client_id: clientId, line_user_id: lineUserId, purpose: 'repair_form', token,
+        expires_at: new Date(Date.now() + REPAIR_FORM_LINK_MS).toISOString(),
+      })
+      if (error) throw error
+      return { url: `${APP_URL}/r/${token}` }
     },
     async startRepair(clientId, siteId, lineUserId, displayName) {
       // The site must belong to this client in this tenant.

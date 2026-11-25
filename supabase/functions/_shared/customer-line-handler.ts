@@ -11,6 +11,7 @@ import {
   repairStartText, repairPickSiteText, repairCancelledText, repairTooBigText,
   repairNoTicketsText, repairStatusFlex, mediaTooBig, repairGotItText, repairReceivedFlex, quickReplyLabel, type RepairTicket, type MediaCounts,
   repairChooserText, repairAddStartText, repairAddNotFoundText, repairAddCancelledText, repairAddedLine, MAX_CHOOSER_TICKETS,
+  repairFormLinkFlex, repairFormThrottledText,
 } from './repair.ts'
 import type { LineMessage, QuickReplyItem } from './line-reply.ts'
 
@@ -62,10 +63,15 @@ export type CustomerDeps = {
   // description, never the ticket -> 'reverted'.
   cancelRepair: (lineUserId: string) => Promise<'cancelled' | 'kept' | 'reverted'>
   listRepairTickets: (clientId: string) => Promise<RepairTicket[]>
+  // New 24 h repair-form link (customer_link_tokens, purpose 'repair_form') -> `${APP_URL}/r/<token>`.
+  // { throttled: true } = this LINE user already got 6 links in the last hour; nothing is created.
+  createRepairFormLink: (clientId: string, lineUserId: string) => Promise<{ url: string } | { throttled: true }>
 }
 
 const FINISH_TEXT = 'ส่งครบแล้ว'
 const CANCEL_TEXT = 'ยกเลิก'
+// Quick reply under the repair-form card: the old 30-minute chat report.
+const CHAT_TEXT = 'แจ้งทางแชท'
 const PICK_PREFIX = 'แจ้งซ่อม:'
 const NEW_PREFIX = 'แจ้งเรื่องใหม่:'
 const ADD_PREFIX = 'เพิ่มเรื่อง:'
@@ -207,7 +213,7 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
       }
       // Pressing แจ้งซ่อม (or a chooser / status-card button) again keeps the open session
       // instead of starting a second one; finish or cancel it first.
-      if (cmd === 'repair' || pick !== null || newPick !== null || addPick !== null) return [sessionStartReply(active)]
+      if (cmd === 'repair' || trimmed === CHAT_TEXT || pick !== null || newPick !== null || addPick !== null) return [sessionStartReply(active)]
       // Other menu commands are answered below; the session stays open.
       if (!cmd) {
         if (!trimmed || redelivery) return []
@@ -237,6 +243,11 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
     return redelivery ? [] : await startOrPick(account.clientId, userId, pick ?? newPick, deps, newPick !== null)
   }
 
+  if (trimmed === CHAT_TEXT) {
+    if (!account) return txt(notLinkedText((await deps.getContact()).brandName))
+    return redelivery ? [] : await startOrPick(account.clientId, userId, null, deps)
+  }
+
   if (addPick !== null) {
     if (!account) return txt(notLinkedText((await deps.getContact()).brandName))
     if (redelivery) return []
@@ -260,7 +271,7 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
 
   if (!account) return txt(notLinkedText((await deps.getContact()).brandName))
 
-  if (cmd === 'repair') return redelivery ? [] : await startOrPick(account.clientId, userId, null, deps)
+  if (cmd === 'repair') return redelivery ? [] : await repairFormReply(account.clientId, userId, deps)
   if (cmd === 'repair_status') {
     const tickets = await deps.listRepairTickets(account.clientId)
     return tickets.length === 0 ? txt(repairNoTicketsText()) : [repairStatusFlex(tickets, ctx.today)]
@@ -283,13 +294,26 @@ export async function handleCustomerEvent(event: any, ctx: { tenantId: string; t
   return [statusFlex(sites.map((s) => ({ ...s, hasPhotos })), ctx.today, brandName)]
 }
 
+// แจ้งซ่อม: a link to the repair form. No sites: the same contact reply as the chat flow, and no link.
+async function repairFormReply(clientId: string, userId: string, deps: CustomerDeps): Promise<LineMessage[]> {
+  const sites = await deps.listClientSites(clientId)
+  if (sites.length === 0) return [noSiteReply(await deps.getContact())]
+  const link = await deps.createRepairFormLink(clientId, userId)
+  if ('throttled' in link) return [{ type: 'text', text: repairFormThrottledText() }]
+  return [repairFormLinkFlex(link.url)]
+}
+
+function noSiteReply(contact: Parameters<typeof contactText>[0]): LineMessage {
+  return { type: 'text', text: contactText(contact) }
+}
+
 // One site: start at once. Several: the picked name must be one of the client's own sites
 // (exact name, first match), otherwise ask again. No sites: point them to contact.
 // If the chosen site still has open tickets of this client, ask first (add to one, or new), unless
 // forceNew (the customer already answered "แจ้งเรื่องใหม่").
 async function startOrPick(clientId: string, userId: string, pick: string | null, deps: CustomerDeps, forceNew = false): Promise<LineMessage[]> {
   const sites = await deps.listClientSites(clientId)
-  if (sites.length === 0) return [{ type: 'text', text: contactText(await deps.getContact()) }]
+  if (sites.length === 0) return [noSiteReply(await deps.getContact())]
   let chosen = sites.length === 1 && pick === null ? sites[0] : null
   if (pick !== null) chosen = sites.find((s) => s.name.trim() === pick) ?? null
   if (!chosen) return [pickSiteReply(sites)]
