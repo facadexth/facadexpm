@@ -16,6 +16,9 @@ const signMatch = window.location.pathname.match(/^\/sign\/([^/]+)\/?$/)
 // /f/<token> is the same idea for the LINE crew bot's เบิกของ/ขอลา deep
 // links -- see FieldFormPage.jsx + the field-form Edge Function.
 const fieldFormMatch = window.location.pathname.match(/^\/f\/([^/]+)\/?$/)
+// /r/<token> is the customer LINE bot's repair form (RepairFormPage.jsx + the
+// customer-form Edge Function), same no-login, no-app-shell idea.
+const repairFormMatch = window.location.pathname.match(/^\/r\/([^/]+)\/?$/)
 
 // The public link pages have no "รีเฟรชเพื่ออัปเดต" banner and no state to lose on
 // load, so a new service worker waiting (or installing) takes over at once and
@@ -52,7 +55,7 @@ async function takeWaitingWorker() {
 }
 
 async function boot() {
-  if ((signMatch || fieldFormMatch) && await takeWaitingWorker()) return
+  if ((signMatch || fieldFormMatch || repairFormMatch) && await takeWaitingWorker()) return
   const root = ReactDOM.createRoot(document.getElementById('root'))
   if (signMatch) {
     const { default: PublicSignPage } = await import('./PublicSignPage.jsx')
@@ -66,6 +69,13 @@ async function boot() {
     root.render(
       <React.StrictMode>
         <FieldFormPage token={fieldFormMatch[1]} />
+      </React.StrictMode>
+    )
+  } else if (repairFormMatch) {
+    const { default: RepairFormPage } = await import('./RepairFormPage.jsx')
+    root.render(
+      <React.StrictMode>
+        <RepairFormPage token={repairFormMatch[1]} />
       </React.StrictMode>
     )
   } else {
