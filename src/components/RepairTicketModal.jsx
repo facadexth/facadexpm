@@ -11,6 +11,9 @@
 // Tickets sent through the LINE repair form (/r/<token>) also have items (repair_ticket_items): a
 // รายการแจ้งซ่อม table with each item's photos and a per-item result, plus the customer's preferred
 // days/slot, which prefill an empty appointment. Old chat tickets have no items and look as before.
+// Admin+ (any status except declined): 🖨 ใบงานซ่อม (RepairWorkOrderModal, A4 PDF), ✍️ customer signs on
+// this device (DocumentReceiptModal) or 🔗 a remote sign link (SignLinkModal), both document_type
+// 'repair_ticket'; the latest signature shows under the header.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase.js'
@@ -30,8 +33,12 @@ import { releasesCrew, removeFutureUnconfirmedCrew } from '../lib/repairCrew.js'
 import { suggestLeader } from '../lib/repairLeader.js'
 import { OTHER_TYPE_LABEL } from '../pages/assign/lineExport.js'
 import { SLOTS, SLOT_START } from '../../supabase/functions/_shared/repair-form.ts'
+import RepairWorkOrderModal from './RepairWorkOrderModal.jsx'
+import DocumentReceiptModal from './DocumentReceiptModal.jsx'
+import SignLinkModal from './SignLinkModal.jsx'
 
 const SIGNED_URL_SECONDS = 3600
+const RECEIPT_TYPE = 'repair_ticket'
 const PILL_STEPS = ['pending_review', 'received', 'scheduled', 'in_progress', 'done']
 const SHIFT_TH = { morning: 'เช้า', evening: 'บ่าย' }
 const NOTIFY_LABEL = 'ส่งไลน์แจ้งนัดให้ลูกค้าเมื่อบันทึก + เตือนก่อน 1 วัน (13:00)'
@@ -163,6 +170,7 @@ export function ConflictBox({ conflicts, workerIds, nameOf, busy, onOverwrite, o
 export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const { role, isAtLeast } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'repairs')
+  const isAdmin = isAtLeast('ADMIN')
   const { data: workers } = useWorkers()
   // Crew booking writes worker_assignments, which RLS limits to tenants with the payroll module.
   const { hasModuleAccess, loading: tenantLoading } = useTenant()
@@ -184,6 +192,8 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const [confirmMove, setConfirmMove] = useState(null) // target status
   const [confirmResend, setConfirmResend] = useState(false)
   const [conflicts, setConflicts] = useState(null) // { date, list } from schedule_repair_ticket, waiting for เขียนทับ
+  const [receipt, setReceipt] = useState(null) // latest document_receipts row (customer signed the work)
+  const [docModal, setDocModal] = useState(null) // 'workorder' | 'sign' | 'link'
 
   // form
   const [formReady, setFormReady] = useState(false)
@@ -222,6 +232,16 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     setItems(data || [])
   }, [ticketId])
 
+  // Latest customer signature for this ticket (a re-sign adds a row; the newest one counts).
+  const loadReceipt = useCallback(async () => {
+    const { data, error: e } = await supabase.from('document_receipts')
+      .select('signer_name, signed_at')
+      .eq('document_type', RECEIPT_TYPE).eq('document_id', ticketId)
+      .order('signed_at', { ascending: false }).limit(1)
+    if (e) { console.error('repair: receipt load failed', e.message); return }
+    setReceipt((data || [])[0] || null)
+  }, [ticketId])
+
   // Returns the fresh ticket row (or null).
   const loadTicket = useCallback(async () => {
     const { data, error: e } = await supabase.from('repair_tickets')
@@ -240,6 +260,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       if (!alive || !t) return
       loadMedia()
       loadItems()
+      loadReceipt()
       // The customer added something from LINE: opening the ticket marks it seen. The stored value is the
       // customer_update_at we just read (not this device's clock), so a newer addition stays unseen.
       // Runs alongside the form prefill below; onChanged on close then reloads the board.
@@ -286,9 +307,10 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
       setFormReady(true)
     })()
     return () => { alive = false }
-  }, [loadTicket, loadMedia, loadItems])
+  }, [loadTicket, loadMedia, loadItems, loadReceipt])
 
   const handleClose = () => {
+    if (docModal) { setDocModal(null); return false }
     if (lightbox) { setLightbox(null); return false }
     if (confirmMove) { setConfirmMove(null); return false }
     if (confirmResend) { setConfirmResend(false); return false }
@@ -305,6 +327,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   // R29: no schedule push for a repair already in progress (the server refuses it anyway).
   const notifyAllowed = status !== 'in_progress'
   const canUpload = canEdit && !!status && !['pending_review', 'declined'].includes(status)
+  const showDocButtons = isAdmin && !!status && status !== 'declined'
 
   const byRole = useMemo(() => {
     const g = { customer: [], before: [], after: [] }
@@ -512,6 +535,19 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
               <span style={{ flexGrow: 1 }} />
               <span style={{ fontSize: 12, color: 'var(--text3)' }}>สถานะไซท์: {t.sites?.status || '-'} (ไม่เปลี่ยน)</span>
             </div>
+
+            {showDocButtons && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocModal('workorder')}>🖨 ใบงานซ่อม</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocModal('sign')}>✍️ ให้ลูกค้าเซ็นรับงาน</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocModal('link')}>🔗 ลิงก์ให้ลูกค้าเซ็น</button>
+              </div>
+            )}
+            {receipt && (
+              <div data-receipt="" style={{ fontSize: 13, color: 'var(--green)', overflowWrap: 'anywhere' }}>
+                {`✅ ลูกค้าเซ็นรับงานแล้ว: ${receipt.signer_name} · ${formatThaiDate(bangkokDateOf(receipt.signed_at))} ${bkkTime(receipt.signed_at)}`}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 6, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               {status === 'declined' ? (
@@ -744,6 +780,19 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
             style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,0.5)', color: '#fff', border: 0, borderRadius: 999, width: 36, height: 36, fontSize: 18, cursor: 'pointer' }}>✕</button>
         </div>,
         document.body,
+      )}
+
+      {docModal === 'workorder' && t && (
+        <RepairWorkOrderModal ticketId={t.id} onClose={() => setDocModal(null)} />
+      )}
+      {docModal === 'sign' && t && (
+        <DocumentReceiptModal documentType={RECEIPT_TYPE} documentId={t.id} tenantId={t.tenant_id}
+          title={`ลูกค้าเซ็นรับงาน ${t.ticket_number}`}
+          onClose={() => setDocModal(null)}
+          onSaved={async () => { setDocModal(null); await loadReceipt() }} />
+      )}
+      {docModal === 'link' && t && (
+        <SignLinkModal documentType={RECEIPT_TYPE} documentId={t.id} onClose={() => setDocModal(null)} />
       )}
 
       {confirmResend && (

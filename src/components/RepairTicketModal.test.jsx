@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 
-const state = vi.hoisted(() => ({ ticket: null, rpc: null, items: [], media: [], itemUpdate: null, updates: [], signed: [], leaders: [] }))
+const state = vi.hoisted(() => ({ ticket: null, rpc: null, items: [], media: [], itemUpdate: null, updates: [], signed: [], leaders: [], receipts: [], roleAdmin: true }))
 
 vi.mock('../lib/supabase.js', () => {
   const chain = (table) => {
@@ -14,6 +14,7 @@ vi.mock('../lib/supabase.js', () => {
         return { data: state.items, error: null }
       }
       if (table === 'repair_ticket_media') return { data: state.media, error: null }
+      if (table === 'document_receipts') return { data: state.receipts, error: null }
       if (table === 'worker_assignments' && call.eqs.some(([k]) => k === 'is_team_leader')) return { data: state.leaders, error: null }
       return { data: [], error: null }
     }
@@ -33,7 +34,10 @@ vi.mock('../lib/supabase.js', () => {
     },
   }
 })
-vi.mock('../hooks/useUserRole.js', () => ({ useUserRole: () => ({ role: 'OWNER', isAtLeast: () => true }) }))
+vi.mock('../hooks/useUserRole.js', () => ({ useUserRole: () => ({ role: state.roleAdmin ? 'OWNER' : 'STAFF', isAtLeast: () => state.roleAdmin }) }))
+vi.mock('./RepairWorkOrderModal.jsx', () => ({ default: ({ ticketId }) => <div data-testid="wo-modal">{ticketId}</div> }))
+vi.mock('./DocumentReceiptModal.jsx', () => ({ default: ({ documentType, documentId, tenantId, title }) => <div data-testid="sign-modal">{`${documentType}|${documentId}|${tenantId}|${title}`}</div> }))
+vi.mock('./SignLinkModal.jsx', () => ({ default: ({ documentType, documentId }) => <div data-testid="link-modal">{`${documentType}|${documentId}`}</div> }))
 vi.mock('../hooks/useTenant.js', () => ({ useTenant: () => ({ hasModuleAccess: () => true, loading: false }) }))
 vi.mock('../hooks/useSupabase.js', () => ({
   useWorkers: () => ({ data: [{ id: 'w1', name: 'สมชาย', nickname: 'ต้น' }, { id: 'w2', name: 'สมศักดิ์', nickname: 'บอย' }] }),
@@ -52,6 +56,7 @@ afterEach(cleanup)
 beforeEach(() => {
   state.ticket = { ...baseTicket }; state.rpc = vi.fn()
   state.items = []; state.media = []; state.itemUpdate = null; state.updates = []; state.signed = []
+  state.receipts = []; state.roleAdmin = true
 })
 
 describe('ConflictBox', () => {
@@ -300,5 +305,41 @@ describe('RepairTicketModal — suggested team leader', () => {
     open()
     await screen.findByText('บันทึกนัด')
     expect(screen.queryByText(/หัวหน้างานที่แนะนำ/)).toBeNull()
+  })
+})
+
+describe('RepairTicketModal — work order + customer signature', () => {
+  it('admin sees the 3 buttons; each opens its modal with document_type repair_ticket', async () => {
+    render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+    fireEvent.click(await screen.findByText('🖨 ใบงานซ่อม'))
+    expect(screen.getByTestId('wo-modal').textContent).toBe('t1')
+    fireEvent.click(screen.getByText('✍️ ให้ลูกค้าเซ็นรับงาน'))
+    expect(screen.getByTestId('sign-modal').textContent).toBe('repair_ticket|t1|tn|ลูกค้าเซ็นรับงาน RP2610-001')
+    expect(screen.queryByTestId('wo-modal')).toBeNull()
+    fireEvent.click(screen.getByText('🔗 ลิงก์ให้ลูกค้าเซ็น'))
+    expect(screen.getByTestId('link-modal').textContent).toBe('repair_ticket|t1')
+  })
+  it('no buttons on a declined ticket or for non-admin', async () => {
+    state.ticket = { ...baseTicket, status: 'declined' }
+    const { unmount } = render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+    await screen.findByText('ไม่รับ')
+    expect(screen.queryByText('🖨 ใบงานซ่อม')).toBeNull()
+    unmount()
+    state.ticket = { ...baseTicket }; state.roleAdmin = false
+    render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+    await screen.findByText(/สถานะไซท์/)
+    expect(screen.queryByText('🖨 ใบงานซ่อม')).toBeNull()
+    expect(screen.queryByText('✍️ ให้ลูกค้าเซ็นรับงาน')).toBeNull()
+    expect(screen.queryByText('🔗 ลิงก์ให้ลูกค้าเซ็น')).toBeNull()
+  })
+  it('shows the latest receipt line in Bangkok time', async () => {
+    state.receipts = [{ signer_name: 'สมชาย ใจดี', signed_at: '2026-11-27T07:05:00Z' }]
+    render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+    expect(await screen.findByText('✅ ลูกค้าเซ็นรับงานแล้ว: สมชาย ใจดี · 27/11/2569 14:05')).toBeTruthy()
+  })
+  it('no receipt -> no line', async () => {
+    render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+    await screen.findByText('🖨 ใบงานซ่อม')
+    expect(screen.queryByText(/ลูกค้าเซ็นรับงานแล้ว/)).toBeNull()
   })
 })
