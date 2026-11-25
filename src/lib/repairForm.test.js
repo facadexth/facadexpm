@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   LOCATIONS, SYMPTOMS, LIMITS, SLOTS,
-  validateItem, validateRepairForm, preferredDayBounds, itemsDescription,
+  validateItem, validateRepairForm, preferredDayBounds, itemsDescription, pickReusableToken,
 } from '../../supabase/functions/_shared/repair-form.ts'
 
 const img = (n = 1) => ({ path: `t1/x/${n}.jpg`, mediaType: 'image', bytes: 1000 })
@@ -147,5 +147,27 @@ describe('itemsDescription', () => {
   })
   it('blank room and note are left out', () => {
     expect(itemsDescription([okItem({ room: '  ', note: '' })])).toBe('1. ห้องนอน — รั่วซึม')
+  })
+})
+
+describe('pickReusableToken', () => {
+  const NOW = Date.parse('2026-11-25T03:00:00Z')
+  const H = 3600 * 1000
+  const row = (token, hoursLeft, used_at = null) => ({ token, expires_at: new Date(NOW + hoursLeft * H).toISOString(), used_at })
+  it('reuses a token with 3 h left', () => {
+    expect(pickReusableToken([row('a', 3)], NOW)).toBe('a')
+  })
+  it('does not reuse a token with 1 h left', () => {
+    expect(pickReusableToken([row('a', 1)], NOW)).toBeNull()
+  })
+  it('does not reuse a used token', () => {
+    expect(pickReusableToken([row('a', 20, '2026-11-25T02:00:00Z')], NOW)).toBeNull()
+  })
+  it('picks the newest of two open tokens', () => {
+    expect(pickReusableToken([row('old', 10), row('new', 23)], NOW)).toBe('new')
+    expect(pickReusableToken([row('new', 23), row('old', 10)], NOW)).toBe('new')
+  })
+  it('no rows → null', () => {
+    expect(pickReusableToken([], NOW)).toBeNull()
   })
 })

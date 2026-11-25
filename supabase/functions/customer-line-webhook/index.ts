@@ -10,6 +10,7 @@ import { sendLineReplyMessages } from '../_shared/line-reply.ts'
 import { replyWithFallback } from '../_shared/reply-fallback.ts'
 import { handleCustomerEvent, type CustomerDeps } from '../_shared/customer-line-handler.ts'
 import { APP_URL } from '../_shared/app-url.ts'
+import { pickReusableToken, REUSE_MIN_LEFT_MS } from '../_shared/repair-form.ts'
 import type { SiteStatus, SitePhase } from '../_shared/customer-line-replies.ts'
 import {
   contentRetryDelay, mediaTooBig, repairMediaExt, repairMediaPath, repairUploadMime, OPEN_REPAIR_STATUSES, MAX_CHOOSER_TICKETS,
@@ -274,6 +275,15 @@ function buildDeps(tenantId: string, accessToken: string): CustomerDeps {
       return (data ?? []).map((s) => ({ id: s.id as string, name: (s.name as string) ?? '' }))
     },
     async createRepairFormLink(clientId, lineUserId) {
+      // A repeat tap reuses the open link, so the page's per-token draft survives (no throttle count).
+      const now = Date.now()
+      const { data: open, error: oErr } = await admin.from('customer_link_tokens').select('token, expires_at, used_at')
+        .eq('tenant_id', tenantId).eq('line_user_id', lineUserId).eq('client_id', clientId).eq('purpose', 'repair_form')
+        .is('used_at', null).gt('expires_at', new Date(now + REUSE_MIN_LEFT_MS).toISOString())
+        .order('created_at', { ascending: false }).limit(5)
+      if (oErr) throw oErr
+      const reuse = pickReusableToken(open ?? [], now)
+      if (reuse) return { url: `${APP_URL}/r/${reuse}` }
       // At most REPAIR_FORM_LINKS_PER_HOUR links per (tenant, LINE user) per hour.
       const since = new Date(Date.now() - 3600 * 1000).toISOString()
       const { count, error: cErr } = await admin.from('customer_link_tokens').select('id', { count: 'exact', head: true })

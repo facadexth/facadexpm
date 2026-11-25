@@ -226,6 +226,17 @@ describe('submit', () => {
     expect(sent.description).toBe(`${itemsDescription(payload().items)}\nหมายเหตุ: โทรก่อนเข้า`)
   })
 
+  it('free text is capped like the page: room 100, notes 1000', async () => {
+    const d = deps()
+    const long = 'ก'.repeat(5000)
+    await handleCustomerForm(submit(payload({ note: long, items: [item({ room: 'ห'.repeat(500), note: 'x'.repeat(5000) })] })), d, NOW)
+    const sent = d.submitRpc.mock.calls[0][1]
+    expect(sent.description).toContain(`\nหมายเหตุ: ${'ก'.repeat(1000)}`)
+    expect(sent.description).not.toContain('ก'.repeat(1001))
+    expect(sent.items[0].room).toHaveLength(100)
+    expect(sent.items[0].note).toHaveLength(1000)
+  })
+
   it('sends the real stored size, not the declared one', async () => {
     const d = deps({ objectSize: vi.fn(async () => 4321) })
     await handleCustomerForm(submit(), d, NOW)

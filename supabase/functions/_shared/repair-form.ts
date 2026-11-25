@@ -131,3 +131,24 @@ export function itemsDescription(items: FormItem[]): string {
     return line
   }).join('\n')
 }
+
+// Free-text caps; the same numbers as the page's maxLength (RepairFormPage.jsx).
+export const TEXT_MAX = Object.freeze({ room: 100, note: 1000 })
+
+// A repeat แจ้งซ่อม tap reuses an open link (the page keeps its draft per token) when it still has
+// more than this long to live; otherwise a fresh 24 h link is made.
+export const REUSE_MIN_LEFT_MS = 2 * 60 * 60 * 1000
+
+export type LinkTokenRow = { token: string; expires_at: string; used_at: string | null }
+
+// The newest unused token with more than REUSE_MIN_LEFT_MS left, or null.
+export function pickReusableToken(rows: LinkTokenRow[], nowMs: number): string | null {
+  let best: { token: string; exp: number } | null = null
+  for (const r of rows || []) {
+    if (!r || r.used_at || !r.token) continue
+    const exp = Date.parse(r.expires_at)
+    if (!Number.isFinite(exp) || exp <= nowMs + REUSE_MIN_LEFT_MS) continue
+    if (!best || exp > best.exp) best = { token: r.token, exp }
+  }
+  return best ? best.token : null
+}

@@ -7,7 +7,7 @@
 
 import {
   validateRepairForm, itemsDescription, preferredDayBounds,
-  LIMITS, LOCATIONS, SYMPTOMS, SLOTS, type FormPayload, type FormItem,
+  LIMITS, LOCATIONS, SYMPTOMS, SLOTS, TEXT_MAX, type FormPayload, type FormItem,
 } from './repair-form.ts'
 
 export type CustomerToken = {
@@ -163,15 +163,15 @@ function cleanPayload(p: Record<string, unknown>): FormPayload {
     siteId: str(p.siteId),
     preferredDays: Array.isArray(p.preferredDays) ? p.preferredDays.map(str) : [],
     preferredSlot: (typeof p.preferredSlot === 'string' ? p.preferredSlot : null) as FormPayload['preferredSlot'],
-    note: str(p.note),
+    note: str(p.note).slice(0, TEXT_MAX.note),
     items: items.map((raw): FormItem => {
       const it = isObj(raw) ? raw : {}
       const files = Array.isArray(it.files) ? it.files : []
       return {
         location: str(it.location),
-        room: str(it.room),
+        room: str(it.room).slice(0, TEXT_MAX.room),
         symptom: str(it.symptom),
-        note: str(it.note),
+        note: str(it.note).slice(0, TEXT_MAX.note),
         files: files.map((f) => {
           const o = isObj(f) ? f : {}
           const file: FormItem['files'][number] = {
