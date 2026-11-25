@@ -22,7 +22,7 @@ describe('constants', () => {
       maxItems: 20, maxImages: 5, maxVideos: 1, maxVideoSeconds: 30,
       maxBytes: 50 * 1024 * 1024, maxPreferredDays: 3, maxDaysAhead: 60,
     })
-    expect(SLOTS).toEqual({ morning: 'เช้า', afternoon: 'บ่าย', all_day: 'ทั้งวัน' })
+    expect(SLOTS).toEqual({ day: 'กลางวัน', night: 'กลางคืน' })
   })
 })
 
@@ -83,7 +83,7 @@ describe('validateRepairForm', () => {
     expect(validateRepairForm(okForm(), TODAY)).toEqual([])
   })
   it('valid form with days', () => {
-    expect(validateRepairForm(okForm({ preferredDays: ['2026-11-26', '2027-01-24'], preferredSlot: 'morning' }), TODAY)).toEqual([])
+    expect(validateRepairForm(okForm({ preferredDays: ['2026-11-26', '2027-01-24'], preferredSlot: 'day' }), TODAY)).toEqual([])
   })
   it('0 items', () => {
     expect(validateRepairForm(okForm({ items: [] }), TODAY)).toContain('ยังไม่มีรายการ')
@@ -94,20 +94,20 @@ describe('validateRepairForm', () => {
     expect(validateRepairForm(okForm({ items: items.slice(0, 20) }), TODAY)).toEqual([])
   })
   it('today is not allowed', () => {
-    expect(validateRepairForm(okForm({ preferredDays: ['2026-11-25'], preferredSlot: 'morning' }), TODAY))
+    expect(validateRepairForm(okForm({ preferredDays: ['2026-11-25'], preferredSlot: 'day' }), TODAY))
       .toContain('เลือกวันตั้งแต่พรุ่งนี้')
   })
   it('61 days ahead', () => {
-    expect(validateRepairForm(okForm({ preferredDays: ['2027-01-25'], preferredSlot: 'morning' }), TODAY))
+    expect(validateRepairForm(okForm({ preferredDays: ['2027-01-25'], preferredSlot: 'day' }), TODAY))
       .toContain('เลือกได้ไม่เกิน 60 วัน')
   })
   it('4 days', () => {
     const days = ['2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29']
-    expect(validateRepairForm(okForm({ preferredDays: days, preferredSlot: 'all_day' }), TODAY))
+    expect(validateRepairForm(okForm({ preferredDays: days, preferredSlot: 'day' }), TODAY))
       .toContain('เลือกได้ไม่เกิน 3 วัน')
   })
   it('duplicate days', () => {
-    expect(validateRepairForm(okForm({ preferredDays: ['2026-11-26', '2026-11-26'], preferredSlot: 'afternoon' }), TODAY))
+    expect(validateRepairForm(okForm({ preferredDays: ['2026-11-26', '2026-11-26'], preferredSlot: 'night' }), TODAY))
       .toContain('วันซ้ำกัน')
   })
   it('days without slot', () => {
@@ -118,9 +118,9 @@ describe('validateRepairForm', () => {
     expect(validateRepairForm(okForm({ preferredDays: ['2026-11-26'], preferredSlot: 'toString' }), TODAY)).toContain('เลือกช่วงเวลา')
   })
   it('invalid date strings', () => {
-    expect(validateRepairForm(okForm({ preferredDays: ['2026-02-30'], preferredSlot: 'morning' }), TODAY))
+    expect(validateRepairForm(okForm({ preferredDays: ['2026-02-30'], preferredSlot: 'day' }), TODAY))
       .toContain('วันที่ไม่ถูกต้อง')
-    expect(validateRepairForm(okForm({ preferredDays: ['26/11/2026'], preferredSlot: 'morning' }), TODAY))
+    expect(validateRepairForm(okForm({ preferredDays: ['26/11/2026'], preferredSlot: 'day' }), TODAY))
       .toContain('วันที่ไม่ถูกต้อง')
   })
   it('item errors are prefixed with 1-based index', () => {

@@ -27,8 +27,9 @@ import { planRepairAssignments, repairShifts } from '../lib/repairAssign.js'
 import { uploadRepairPhotos, REPAIR_BUCKET } from '../lib/repairUpload.js'
 import { invokeRepairPush, customerPushDefault } from '../lib/repairPush.js'
 import { releasesCrew, removeFutureUnconfirmedCrew } from '../lib/repairCrew.js'
+import { suggestLeader } from '../lib/repairLeader.js'
 import { OTHER_TYPE_LABEL } from '../pages/assign/lineExport.js'
-import { SLOTS } from '../../supabase/functions/_shared/repair-form.ts'
+import { SLOTS, SLOT_START } from '../../supabase/functions/_shared/repair-form.ts'
 
 const SIGNED_URL_SECONDS = 3600
 const PILL_STEPS = ['pending_review', 'received', 'scheduled', 'in_progress', 'done']
@@ -192,6 +193,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
   const [workerIds, setWorkerIds] = useState([])
   const [workerQuery, setWorkerQuery] = useState('')
   const [crewNames, setCrewNames] = useState({}) // worker id -> label, for crew not in useWorkers()
+  const [leaderRows, setLeaderRows] = useState([]) // [{worker_id, date}] team-leader days at this site
   const [notify, setNotify] = useState(false) // set from customerPushDefault once the ticket loads
   const [sendReport, setSendReport] = useState(false) // R32 (off until the ticket loads): close also pushes the report to the customer
   const [fixNote, setFixNote] = useState('')
@@ -258,17 +260,26 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
         crew = [...new Set((data || []).map((a) => a.worker_id))]
         for (const a of data || []) if (a.workers) names[a.worker_id] = workerLabel(a.workers)
       }
+      // ★ suggested leader: who led the crew at this site most often (suggestion only, never ticked).
+      let leaders = []
+      if (t.site_id) {
+        const { data, error: le } = await supabase.from('worker_assignments').select('worker_id, date')
+          .eq('site_id', t.site_id).eq('is_team_leader', true).order('date', { ascending: false }).limit(2000)
+        if (le) console.error('repair: leader history failed', le.message)
+        leaders = data || []
+      }
       if (!alive) return
       setCrewNames(names)
+      setLeaderRows(leaders)
       // R32: LINE tickets notify by default, staff tickets do not (first open only). R29: never in_progress.
       setNotify(t.status !== 'in_progress' && customerPushDefault(t))
       setSendReport(customerPushDefault(t))
       // No appointment yet: start from the customer's first preferred day that is not in the past (the save
-      // refuses a date before today); none left -> empty as before. Start is 13:00 for บ่าย either way.
+      // refuses a date before today); none left -> empty as before. Start comes from the slot (SLOT_START: กลางวัน 09:00, กลางคืน 22:00).
       const todayNow = bangkokTodayIso()
       const firstPreferred = Array.isArray(t.preferred_days) ? t.preferred_days.find((d) => d && d >= todayNow) : null
       setDate(t.scheduled_date || firstPreferred || '')
-      setStart(startTime(t.scheduled_start) || (!t.scheduled_date && t.preferred_slot === 'afternoon' ? '13:00' : '09:00'))
+      setStart(startTime(t.scheduled_start) || (!t.scheduled_date && SLOT_START[t.preferred_slot]) || '09:00')
       setHours(Number(t.duration_hours) > 0 ? String(Number(t.duration_hours)) : '2')
       setWorkerIds(crew)
       setFixNote(t.fix_note || '')
@@ -312,11 +323,14 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
     .filter(Boolean).join(' · ')
 
   const workerById = useMemo(() => Object.fromEntries((workers || []).map((w) => [w.id, w])), [workers])
+  const leader = useMemo(() => (workers ? suggestLeader(leaderRows, workers.map((w) => w.id)) : null), [leaderRows, workers])
   const shownWorkers = useMemo(() => {
     const q = workerQuery.trim().toLowerCase()
-    const list = workers || []
+    const all = workers || []
+    // the suggested leader is listed first
+    const list = leader ? [...all.filter((w) => w.id === leader.workerId), ...all.filter((w) => w.id !== leader.workerId)] : all
     return q ? list.filter((w) => `${w.name || ''} ${w.nickname || ''}`.toLowerCase().includes(q) || workerIds.includes(w.id)) : list
-  }, [workers, workerQuery, workerIds])
+  }, [workers, workerQuery, workerIds, leader])
   // Crew assigned earlier who no longer show up in Assign (inactive / hidden) still count until unticked.
   const hiddenCrew = workers ? workerIds.filter((id) => !workerById[id]) : []
 
@@ -610,6 +624,15 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                   !tenantLoading && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ต้องเปิดโมดูลค่าแรง/จ่ายงานช่าง เพื่อจัดช่าง</div>
                 ) : (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {leader && workerById[leader.workerId] && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '6px 8px', borderRadius: 6, background: 'rgba(var(--accent-rgb), 0.08)' }}>
+                      <span><b style={{ color: 'var(--amber, #b7791f)' }}>★ หัวหน้างานที่แนะนำ:</b> {workerLabel(workerById[leader.workerId])}</span>
+                      <span style={{ color: 'var(--text3)' }}>คุมงานไซท์นี้ {leader.days} วัน</span>
+                      {!workerIds.includes(leader.workerId) && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleWorker(leader.workerId)}>เลือก</button>
+                      )}
+                    </div>
+                  )}
                   {(workers || []).length > 12 && (
                     <input className="input input-sm" placeholder="ค้นหาช่าง..." value={workerQuery} onChange={(e) => setWorkerQuery(e.target.value)} />
                   )}
@@ -619,6 +642,7 @@ export default function RepairTicketModal({ ticketId, onClose, onChanged }) {
                       return (
                         <label key={w.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--border)', background: on ? 'rgba(var(--accent-rgb), 0.15)' : 'var(--bg2)' }}>
                           <input type="checkbox" checked={on} onChange={() => toggleWorker(w.id)} />
+                          {leader?.workerId === w.id && <span style={{ color: 'var(--amber, #b7791f)' }}>★</span>}
                           {workerLabel(w)}
                         </label>
                       )

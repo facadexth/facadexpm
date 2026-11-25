@@ -253,7 +253,7 @@ describe('submit', () => {
 
   it('preferred day today (Bangkok) is rejected', async () => {
     const d = deps()
-    const r = await handleCustomerForm(submit(payload({ preferredDays: ['2026-11-25'], preferredSlot: 'morning' })), d, NOW)
+    const r = await handleCustomerForm(submit(payload({ preferredDays: ['2026-11-25'], preferredSlot: 'day' })), d, NOW)
     expect(r.status).toBe(400)
     expect(r.body.errors).toContain('เลือกวันตั้งแต่พรุ่งนี้')
   })

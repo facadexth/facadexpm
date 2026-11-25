@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 
-const state = vi.hoisted(() => ({ ticket: null, rpc: null, items: [], media: [], itemUpdate: null, updates: [], signed: [] }))
+const state = vi.hoisted(() => ({ ticket: null, rpc: null, items: [], media: [], itemUpdate: null, updates: [], signed: [], leaders: [] }))
 
 vi.mock('../lib/supabase.js', () => {
   const chain = (table) => {
@@ -14,10 +14,11 @@ vi.mock('../lib/supabase.js', () => {
         return { data: state.items, error: null }
       }
       if (table === 'repair_ticket_media') return { data: state.media, error: null }
+      if (table === 'worker_assignments' && call.eqs.some(([k]) => k === 'is_team_leader')) return { data: state.leaders, error: null }
       return { data: [], error: null }
     }
     const c = {}
-    for (const m of ['select', 'order', 'neq', 'in']) c[m] = () => c
+    for (const m of ['select', 'order', 'neq', 'in', 'limit']) c[m] = () => c
     c.eq = (k, v) => { call.eqs.push([k, v]); return c }
     c.update = (patch) => { call.op = 'update'; call.patch = patch; state.updates.push(call); return c }
     c.maybeSingle = () => Promise.resolve(result())
@@ -215,42 +216,42 @@ describe('RepairTicketModal — customer repair form items', () => {
   const atBangkok = (day) => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(`${day}T05:00:00Z`)) }
   afterEach(() => vi.useRealTimers())
 
-  it('preferred days prefill the date + 13:00 for บ่าย and show ลูกค้าสะดวก', async () => {
+  it('preferred days prefill the date + 22:00 for กลางคืน and show ลูกค้าสะดวก', async () => {
     atBangkok('2026-11-25')
-    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'afternoon' }
+    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'night' }
     open()
     await screen.findByText('บันทึกนัด')
     await waitFor(() => expect(document.querySelector('input[type="date"]').value).toBe('2026-12-02'))
-    expect(document.querySelector('input[type="time"]').value).toBe('13:00')
+    expect(document.querySelector('input[type="time"]').value).toBe('22:00')
     const pref = screen.getByText(/ลูกค้าสะดวก:/)
     expect(pref.textContent).toContain('02/12/2569')
     expect(pref.textContent).toContain('04/12/2569')
-    expect(pref.textContent).toContain('บ่าย')
+    expect(pref.textContent).toContain('กลางคืน')
   })
 
   it('today 2026-12-03: a past preferred day is skipped, the date is the first day from today on', async () => {
     atBangkok('2026-12-03')
-    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'afternoon' }
+    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'night' }
     open()
     await screen.findByText('บันทึกนัด')
     await waitFor(() => expect(document.querySelector('input[type="date"]').value).toBe('2026-12-04'))
-    expect(document.querySelector('input[type="time"]').value).toBe('13:00')
+    expect(document.querySelector('input[type="time"]').value).toBe('22:00')
     expect(screen.getByText(/ลูกค้าสะดวก:/).textContent).toContain('02/12/2569, 04/12/2569')
   })
 
-  it('today 2026-12-05: every preferred day is past, so no date prefill (start still 13:00)', async () => {
+  it('today 2026-12-05: every preferred day is past, so no date prefill (start still 22:00)', async () => {
     atBangkok('2026-12-05')
-    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'afternoon' }
+    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'night' }
     open()
     await screen.findByText('บันทึกนัด')
-    await waitFor(() => expect(document.querySelector('input[type="time"]').value).toBe('13:00'))
+    await waitFor(() => expect(document.querySelector('input[type="time"]').value).toBe('22:00'))
     expect(document.querySelector('input[type="date"]').value).toBe('')
     expect(screen.getByText(/ลูกค้าสะดวก:/).textContent).toContain('02/12/2569, 04/12/2569')
   })
 
   it('today 2026-12-02: a preferred day equal to today is used', async () => {
     atBangkok('2026-12-02')
-    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'morning' }
+    state.ticket = { ...baseTicket, preferred_days: ['2026-12-02', '2026-12-04'], preferred_slot: 'day' }
     open()
     await screen.findByText('บันทึกนัด')
     await waitFor(() => expect(document.querySelector('input[type="date"]').value).toBe('2026-12-02'))
@@ -258,7 +259,7 @@ describe('RepairTicketModal — customer repair form items', () => {
   })
 
   it('a saved schedule wins over the preferred days', async () => {
-    state.ticket = { ...baseTicket, status: 'scheduled', scheduled_date: '2099-11-10', scheduled_start: '10:30', duration_hours: 2, preferred_days: ['2026-12-02'], preferred_slot: 'afternoon' }
+    state.ticket = { ...baseTicket, status: 'scheduled', scheduled_date: '2099-11-10', scheduled_start: '10:30', duration_hours: 2, preferred_days: ['2026-12-02'], preferred_slot: 'night' }
     open()
     await screen.findByText('บันทึกนัด')
     await waitFor(() => expect(document.querySelector('input[type="date"]').value).toBe('2099-11-10'))
@@ -273,3 +274,31 @@ describe('RepairTicketModal — customer repair form items', () => {
   })
 })
 
+describe('RepairTicketModal — suggested team leader', () => {
+  beforeEach(() => { state.items = []; state.media = []; state.updates = []; state.leaders = [] })
+  afterEach(() => { state.leaders = [] })
+  const open = () => render(<RepairTicketModal ticketId="t1" onClose={() => {}} onChanged={() => {}} />)
+
+  it('shows ★ หัวหน้างานที่แนะนำ for the most frequent leader at the site; เลือก ticks only that worker', async () => {
+    state.ticket = { ...baseTicket }
+    state.leaders = [
+      { worker_id: 'w2', date: '2026-10-01' }, { worker_id: 'w2', date: '2026-10-02' }, { worker_id: 'w1', date: '2026-10-03' },
+    ]
+    open()
+    const box = await screen.findByText(/หัวหน้างานที่แนะนำ/)
+    expect(box.parentElement.textContent).toContain('สมศักดิ์ (บอย)')
+    expect(screen.getByText('คุมงานไซท์นี้ 2 วัน')).toBeTruthy()
+    // not ticked until staff choose
+    expect(screen.getByText('ยังไม่เลือก')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'เลือก' }))
+    expect(screen.getByText('1 คน')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'เลือก' })).toBeNull()
+  })
+
+  it('no leader history at the site -> no suggestion', async () => {
+    state.ticket = { ...baseTicket }
+    open()
+    await screen.findByText('บันทึกนัด')
+    expect(screen.queryByText(/หัวหน้างานที่แนะนำ/)).toBeNull()
+  })
+})

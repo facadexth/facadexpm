@@ -1,7 +1,7 @@
 // State for the customer repair form page (/r/<token>, RepairFormPage.jsx).
 // Pure reducer + a localStorage draft so a customer who closes the LINE browser mid-form
 // does not lose the items and photos already uploaded.
-import { validateItem, LIMITS } from '../../supabase/functions/_shared/repair-form.ts'
+import { validateItem, LIMITS, SLOTS } from '../../supabase/functions/_shared/repair-form.ts'
 
 let keySeq = 0
 // draft.key ties an upload to the draft it started in: a file that finishes after the customer
@@ -138,7 +138,8 @@ export function loadDraft(token) {
         files: (Array.isArray(st.draft?.files) ? st.draft.files : []).filter((f) => f && f.path).map(cleanFile) },
       editIndex: Number.isInteger(st.editIndex) ? st.editIndex : null,
       preferredDays: Array.isArray(st.preferredDays) ? st.preferredDays.filter((d) => typeof d === 'string') : [],
-      preferredSlot: typeof st.preferredSlot === 'string' ? st.preferredSlot : null,
+      // a draft saved before the slot list changed may hold an old value: drop it, the customer picks again
+      preferredSlot: typeof st.preferredSlot === 'string' && Object.prototype.hasOwnProperty.call(SLOTS, st.preferredSlot) ? st.preferredSlot : null,
       note: typeof st.note === 'string' ? st.note : '',
       ticketNumber: null,
     }

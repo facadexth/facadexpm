@@ -126,10 +126,10 @@ describe('repairFormReducer', () => {
 
   it('setSlot, setNote and submitted', () => {
     let st = initialFormState({ sites: [s1] })
-    st = repairFormReducer(st, { type: 'setSlot', slot: 'morning' })
+    st = repairFormReducer(st, { type: 'setSlot', slot: 'day' })
     st = repairFormReducer(st, { type: 'setNote', note: 'โทรก่อนเข้า' })
     st = repairFormReducer(st, { type: 'submitted', ticketNumber: 'RP2611-007' })
-    expect(st).toMatchObject({ preferredSlot: 'morning', note: 'โทรก่อนเข้า', step: 'done', ticketNumber: 'RP2611-007' })
+    expect(st).toMatchObject({ preferredSlot: 'day', note: 'โทรก่อนเข้า', step: 'done', ticketNumber: 'RP2611-007' })
   })
 })
 
@@ -158,6 +158,16 @@ describe('saveDraft / loadDraft', () => {
     const back = loadDraft('tok2')
     expect(back.draft.files).toEqual([img])
     expect(back.draft.uploading).toBe(0)
+  })
+
+  it('a draft saved with an old slot (afternoon) comes back with no slot; day survives', () => {
+    const ls = memoryStorage()
+    vi.stubGlobal('localStorage', ls)
+    const st = repairFormReducer(withDraft(valid), { type: 'confirmItem' })
+    saveDraft('tok4', { ...st, preferredSlot: 'afternoon' })
+    expect(loadDraft('tok4').preferredSlot).toBe(null)
+    saveDraft('tok4', { ...st, preferredSlot: 'day' })
+    expect(loadDraft('tok4').preferredSlot).toBe('day')
   })
 
   it('loadDraft returns null when localStorage.getItem throws', () => {

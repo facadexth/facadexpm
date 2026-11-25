@@ -22,9 +22,12 @@ export const LIMITS = Object.freeze({
   maxDaysAhead: 60,
 })
 
-export const SLOTS = Object.freeze({ morning: 'เช้า', afternoon: 'บ่าย', all_day: 'ทั้งวัน' })
+// Owner 2026-11-25: กลางวัน / กลางคืน only (ทั้งวัน removed). SLOT_START = the appointment time the staff
+// screen prefills for that slot.
+export const SLOTS = Object.freeze({ day: 'กลางวัน', night: 'กลางคืน' })
+export const SLOT_START = Object.freeze({ day: '09:00', night: '22:00' })
 
-export type Slot = 'morning' | 'afternoon' | 'all_day'
+export type Slot = 'day' | 'night'
 
 export type FormFile = { path: string; mediaType: 'image' | 'video'; bytes: number; seconds?: number }
 export type FormItem = { location: string; room?: string; symptom: string; note?: string; files: FormFile[] }
