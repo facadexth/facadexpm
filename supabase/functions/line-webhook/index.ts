@@ -128,6 +128,7 @@ import {
 } from '../_shared/line-admin-chat-logic.ts'
 import { getChatMode, canStartAdminChat, claimAckForSession, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
 import { APP_URL } from '../_shared/app-url.ts'
+import { workOrderLines, workOrderTickets, type WorkOrderAssignmentRow } from '../_shared/repair-workorder-link.ts'
 import {
   type GroupActionType, type ActionType, type CommandSettingsByKey,
   SCHEDULE_COMMAND_ORDER, ADVANCE_COMMAND_KEYS, resolveEffectivePhrases, resolveEnabled,
@@ -176,6 +177,42 @@ async function issueLocationFormLink(tenantId: string, workerId: string, actionT
   })
   if (error) { logSafeError('issueLocationFormLink insert failed', error); return null }
   return `${APP_URL}/f/${token}`
+}
+
+// 📄 ใบงานซ่อม links for the งานวันนี้ reply: one /w/<token> per repair ticket this worker is
+// assigned to today (see repair-workorder Edge Function + src/RepairWorkOrderPage.jsx). 24 h, not
+// 30 min like /f/ links -- the crew opens the sheet again during the day; the function still
+// re-checks the assignment on every open, so a worker taken off the job loses access anyway.
+// Never throws: a failed read gives no lines, a failed insert gives the retry text for that ticket.
+async function repairWorkOrderLines(tenantId: string, workerId: string): Promise<string[]> {
+  try {
+    const today = bangkokToday()
+    const { data, error } = await admin.from('worker_assignments')
+      .select('repair_ticket_id, repair_tickets(ticket_number, status, scheduled_date)')
+      .eq('tenant_id', tenantId).eq('worker_id', workerId).eq('date', today)
+      .not('repair_ticket_id', 'is', null)
+    if (error) { logSafeError('repairWorkOrderLines assignments read failed', error); return [] }
+    const tickets = workOrderTickets((data ?? []) as unknown as WorkOrderAssignmentRow[], today)
+    const rows = await Promise.all(tickets.map(async (t) => ({
+      ticketNumber: t.ticketNumber,
+      url: await issueRepairWorkorderLink(tenantId, workerId, t.ticketId),
+    })))
+    return workOrderLines(rows)
+  } catch (e) {
+    logSafeError('repairWorkOrderLines failed', e)
+    return []
+  }
+}
+
+async function issueRepairWorkorderLink(tenantId: string, workerId: string, ticketId: string): Promise<string | null> {
+  const token = crypto.randomUUID().replace(/-/g, '')
+  const { error } = await admin.from('line_deep_link_tokens').insert({
+    tenant_id: tenantId, worker_id: workerId, action_type: 'repair_workorder', token,
+    repair_ticket_id: ticketId,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  })
+  if (error) { logSafeError('issueRepairWorkorderLink insert failed', error); return null }
+  return `${APP_URL}/w/${token}`
 }
 
 const corsHeaders = {
@@ -979,7 +1016,7 @@ async function handleTodaysJobMenu(
   const todays = await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id)
   if (todays.length >= 2) {
     const rows = await loadTodaysAssignmentRows(worker.id, settings.tenant_id)
-    const [blocks, myTasks] = await Promise.all([
+    const [blocks, myTasks, workOrders] = await Promise.all([
       Promise.all(todays.map(async (s) => {
         const [tasks, leaders] = await Promise.all([
           resolveOpenTasksForSite(s.siteId, settings.tenant_id),
@@ -999,6 +1036,7 @@ async function handleTodaysJobMenu(
         return out
       })),
       resolveOpenTasksForWorker(worker.id, settings.tenant_id),
+      repairWorkOrderLines(settings.tenant_id, worker.id),
     ])
     const cur = currentSite(todays)!
     const options = todayMenuOptions({
@@ -1007,7 +1045,7 @@ async function handleTodaysJobMenu(
       hasOpenTasks: myTasks.length > 0,
       tomorrowPhrase,
     })
-    const text = [`📍 วันนี้คุณมี ${todays.length} ไซท์`, ...blocks.flat()].join('\n')
+    const text = [`📍 วันนี้คุณมี ${todays.length} ไซท์`, ...blocks.flat(), ...workOrders].join('\n')
     await sendLineReply(settings.channel_access_token, replyToken, text, options.map((o) => ({ label: truncateLabel(o), text: o })))
     return
   }
@@ -1017,11 +1055,12 @@ async function handleTodaysJobMenu(
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
     return
   }
-  const [checkinResult, siteTasks, myTasks, leaders] = await Promise.all([
+  const [checkinResult, siteTasks, myTasks, leaders, workOrders] = await Promise.all([
     admin.from('worker_checkins').select('checkin_at, checkout_at').eq('worker_id', worker.id).eq('site_id', site.id).eq('date', bangkokToday()).maybeSingle(),
     resolveOpenTasksForSite(site.id, settings.tenant_id),
     resolveOpenTasksForWorker(worker.id, settings.tenant_id),
     resolveTeamLeadersForSite(site.id, settings.tenant_id, bangkokToday()),
+    repairWorkOrderLines(settings.tenant_id, worker.id),
   ])
   const checkin = checkinResult.data
 
@@ -1039,6 +1078,7 @@ async function handleTodaysJobMenu(
     lines.push('', '🔧 งานที่ต้องทำวันนี้ (ทั้งทีม):')
     lines.push(...siteTasks.map((t) => `• ${t.name}`))
   }
+  lines.push(...workOrders)
 
   const options = todayMenuOptions({
     hasCheckedIn: !!checkin?.checkin_at,
