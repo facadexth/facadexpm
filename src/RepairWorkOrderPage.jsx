@@ -178,6 +178,13 @@ export default function RepairWorkOrderPage({ token }) {
     const res = await callFn({ token, action: 'sign_link' })
     if (res.ok && res.body.reason) { setLater({ busy: false, result: '', err: reasonText(res.body.reason) }); return }
     if (!res.ok || !res.body.ok) { setLater({ busy: false, result: '', err: MSG.network }); return }
+    if (res.body.already) {
+      // The customer signed meanwhile (e.g. staff or another crew): say so and show the signature.
+      setLater({ busy: false, result: `ลูกค้าเซ็นไปแล้ว: ${res.body.receipt?.signer_name ?? ''}`, err: '' })
+      load(true)
+      return
+    }
+    // sent: false also covers an existing recent link being returned instead of a new one.
     setLater({ busy: false, result: res.body.sent === true ? MSG.sent : MSG.notSent, err: '' })
   }
 

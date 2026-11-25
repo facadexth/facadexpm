@@ -152,6 +152,22 @@ describe('RepairWorkOrderPage sign-later', () => {
     expect(calls('sign_link')[0][1].body).toEqual({ token: 'tok', action: 'sign_link' })
   })
 
+  it('already signed -> shows who signed (not the not-sent text) and refreshes the view', async () => {
+    let afterLink = false
+    invoke.mockImplementation(async (_n, { body }) => {
+      if (body.action === 'view') return { data: { ok: true, workOrder: wo(afterLink ? { signer_name: 'คุณดี' } : null) }, error: null }
+      afterLink = true
+      return { data: { ok: true, already: true, receipt: { id: 'r1', signer_name: 'คุณดี', signed_at: 'x' } }, error: null }
+    })
+    render(<RepairWorkOrderPage token="tok" />)
+    fireEvent.click(await screen.findByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' }))
+    await waitFor(() => expect(calls('view').length).toBe(2))
+    expect((await screen.findAllByText('ลูกค้าเซ็นไปแล้ว: คุณดี')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('ส่งทาง LINE ไม่ได้ตอนนี้ แจ้งแอดมินให้ส่งลิงก์ให้ลูกค้า')).toBe(null)
+    expect((await screen.findByTestId('sheet')).textContent).toBe('RP2611-007 signed:คุณดี')
+    expect(screen.queryByRole('button', { name: '🔗 ส่งลิงก์ให้ลูกค้าเซ็นทีหลัง' })).toBe(null)
+  })
+
   it('not sent -> tell admin text', async () => {
     invoke.mockImplementation(async (_n, { body }) => (body.action === 'view'
       ? { data: { ok: true, workOrder: wo() }, error: null }
