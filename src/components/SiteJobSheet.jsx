@@ -35,6 +35,7 @@ const S = {
   td: { border: '1px solid #999', padding: 5, verticalAlign: 'top', textAlign: 'left', fontSize: 12 },
   zone: { border: '1px solid #999', padding: 5, background: '#eef4f6', fontWeight: 700, color: '#1f5f78', fontSize: 12 },
   num: { fontVariantNumeric: 'tabular-nums' },
+  no: { textAlign: 'center', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', paddingLeft: 2, paddingRight: 2 },
   tickBox: { display: 'inline-block', width: 11, height: 11, flex: '0 0 11px', boxSizing: 'border-box', border: '1.5px solid #111', marginRight: 5, marginTop: 3 },
   blank: { borderBottom: '1px dotted #777', height: 22 },
   sigs: { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 40, marginTop: 6, ...NO_BREAK },
@@ -148,8 +149,9 @@ export default function SiteJobSheet({ sheet, id }) {
       <div style={S.sec}>{`การ์ดงานวันนี้ (${sheet.cardCount} ใบ)`}</div>
       <table style={S.table}>
         <colgroup>
-          <col style={{ width: 24 }} /><col /><col style={{ width: 110 }} />
-          <col style={{ width: 78 }} /><col style={{ width: 118 }} /><col style={{ width: 150 }} />
+          {/* # fits 3 digits on one line; the notes column gave up the 6px the # column gained. */}
+          <col style={{ width: 30 }} /><col /><col style={{ width: 110 }} />
+          <col style={{ width: 78 }} /><col style={{ width: 118 }} /><col style={{ width: 144 }} />
         </colgroup>
         <thead>
           <tr>
@@ -157,33 +159,42 @@ export default function SiteJobSheet({ sheet, id }) {
             <th style={S.th}>จำนวน (PM)</th><th style={S.th}>วันนี้</th><th style={S.th}>หมายเหตุ</th>
           </tr>
         </thead>
-        <tbody>
-          {groups.map((g) => [
-            <tr key={`z:${g.phaseId}:${g.zone}`} data-zone-row="" style={NO_BREAK}>
-              <td colSpan={6} style={S.zone}>{manyPhases ? `${g.phase} · ${g.zone}` : g.zone}</td>
-            </tr>,
-            ...g.cards.map((c) => {
-              no += 1
-              return (
-                <tr key={c.id} data-card-row="" style={NO_BREAK}>
-                  <td style={S.td}>{no}</td>
-                  <td style={S.td}>
-                    <div>{c.name}</div>
-                    <div style={{ color: GREY }}>{c.statusText}</div>
-                  </td>
-                  <td style={S.td}>{c.ownersText}</td>
-                  <td style={{ ...S.td, ...S.num }}>{c.qtyText}</td>
-                  <td style={S.td}>
-                    <div style={{ display: 'grid', gap: 4, fontSize: 11.5 }}>
-                      <Tick>เสร็จทั้งการ์ด</Tick><Tick>ทำต่อพรุ่งนี้</Tick>
-                    </div>
-                  </td>
-                  <td style={S.td}><div style={S.blank} /><div style={S.blank} /></td>
-                </tr>
-              )
-            }),
-          ])}
-        </tbody>
+        {/* Each zone header is rendered in one unbreakable <tbody> together with the zone's first
+            card, so html2pdf (css mode honours break-inside: avoid) pushes the pair to the next
+            page instead of leaving the header alone at the bottom. The rest of the zone follows
+            in a plain <tbody>; every card row stays unbreakable on its own. */}
+        {groups.map((g) => {
+          const rows = g.cards.map((c) => {
+            no += 1
+            return (
+              <tr key={c.id} data-card-row="" style={NO_BREAK}>
+                <td style={{ ...S.td, ...S.no }} data-card-no="">{no}</td>
+                <td style={S.td}>
+                  <div>{c.name}</div>
+                  <div style={{ color: GREY }}>{c.statusText}</div>
+                </td>
+                <td style={S.td}>{c.ownersText}</td>
+                <td style={{ ...S.td, ...S.num }}>{c.qtyText}</td>
+                <td style={S.td}>
+                  <div style={{ display: 'grid', gap: 4, fontSize: 11.5 }}>
+                    <Tick>เสร็จทั้งการ์ด</Tick><Tick>ทำต่อพรุ่งนี้</Tick>
+                  </div>
+                </td>
+                <td style={S.td}><div style={S.blank} /><div style={S.blank} /></td>
+              </tr>
+            )
+          })
+          const key = `${g.phaseId}:${g.zone}`
+          return [
+            <tbody key={`zs:${key}`} data-zone-start="" style={NO_BREAK}>
+              <tr data-zone-row="" style={NO_BREAK}>
+                <td colSpan={6} style={S.zone}>{manyPhases ? `${g.phase} · ${g.zone}` : g.zone}</td>
+              </tr>
+              {rows[0]}
+            </tbody>,
+            rows.length > 1 ? <tbody key={`zr:${key}`} data-zone-rest="">{rows.slice(1)}</tbody> : null,
+          ]
+        })}
       </table>
 
       <div style={{ ...S.grid2, ...NO_BREAK }}>

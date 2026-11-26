@@ -81,6 +81,7 @@ button.js-task{cursor:pointer}
 .js-zone+.js-task{border-top:0}
 .js-task .nm{overflow-wrap:anywhere}
 .js-box{width:18px;height:18px;border:2px solid #9aa6ab;border-radius:4px;position:relative}
+.js-warn{width:18px;text-align:center;font-size:15px;line-height:18px}
 .js-box.done{background:#2f7d4f;border-color:#2f7d4f}
 .js-box.done::after{content:"";position:absolute;left:4px;top:0;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
 .js-qty{font-variant-numeric:tabular-nums;font-size:13px;white-space:nowrap}
@@ -371,7 +372,8 @@ export default function SiteJobSheetPage({ token }) {
             <b>ปัญหาที่ต้องแก้</b>
             {problems.map((p) => (
               <div key={p.id} className="js-task" data-problem="">
-                <span className="js-box" />
+                {/* PM-only: a warning marker, not a checkbox, so crew do not try to tick it. */}
+                <span className="js-warn" aria-hidden="true">⚠️</span>
                 <span className="nm">{p.name}<br /><span className="js-k">{p.zone}</span></span>
                 <span />
               </div>

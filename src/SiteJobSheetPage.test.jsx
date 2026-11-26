@@ -185,6 +185,16 @@ describe('SiteJobSheetPage view', () => {
     fireEvent.click(await screen.findByText('กระจกร้าว'))
     expect(screen.queryByRole('dialog')).toBe(null)
   })
+
+  it('problem cards show a hidden-from-readers warning marker instead of an empty checkbox', async () => {
+    const { container } = render(<SiteJobSheetPage token="tok" />)
+    await screen.findByText('กระจกร้าว')
+    const prob = container.querySelector('[data-problem]')
+    expect(prob.querySelector('.js-box')).toBe(null)
+    const warn = prob.querySelector('.js-warn')
+    expect(warn.textContent).toBe('⚠️')
+    expect(warn.getAttribute('aria-hidden')).toBe('true')
+  })
 })
 
 describe('SiteJobSheetPage leader card update', () => {

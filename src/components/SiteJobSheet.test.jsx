@@ -71,6 +71,36 @@ describe('SiteJobSheet', () => {
     expect(rows).toEqual(['1', '2', '3'])
   })
 
+  it('number cells never wrap: 12 cards give 1..12 in nowrap cells', () => {
+    const many = Array.from({ length: 12 }, (_, i) => card({ id: `m${i}`, zone: 'ชั้น 1', name: `งาน ${i}`, sort_order: i }))
+    const { container } = render(<SiteJobSheet sheet={sheet({ cards: many })} id="js-doc" />)
+    const cells = [...container.querySelectorAll('[data-card-no]')]
+    expect(cells.map((c) => c.textContent)).toEqual(Array.from({ length: 12 }, (_, i) => String(i + 1)))
+    for (const c of cells) expect(c.style.whiteSpace).toBe('nowrap')
+    expect(container.querySelector('col').style.width).toBe('30px')
+  })
+
+  it('each zone header sits in one unbreakable tbody with its first card; the rest follow outside it', () => {
+    const { container } = render(<SiteJobSheet sheet={sheet()} id="js-doc" />)
+    const starts = [...container.querySelectorAll('tbody[data-zone-start]')]
+    expect(starts).toHaveLength(2)
+    for (const tb of starts) {
+      expect(tb.style.breakInside).toBe('avoid')
+      expect(tb.style.pageBreakInside).toBe('avoid')
+      const rows = [...tb.children]
+      expect(rows).toHaveLength(2)
+      expect(rows[0].hasAttribute('data-zone-row')).toBe(true)
+      expect(rows[1].hasAttribute('data-card-row')).toBe(true)
+    }
+    // ชั้น 21 has two cards: the second one lives in the following plain tbody.
+    const rest = starts[1].nextElementSibling
+    expect(rest.hasAttribute('data-zone-rest')).toBe(true)
+    expect(rest.style.breakInside).toBe('')
+    expect(rest.querySelectorAll('[data-card-row]')).toHaveLength(1)
+    // zone with one card has no rest tbody
+    expect(starts[0].nextElementSibling).toBe(starts[1])
+  })
+
   it('zone rows carry the phase name when the sheet spans several phases', () => {
     const base = input()
     const s = sheet({
