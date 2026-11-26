@@ -107,7 +107,11 @@ Each phase ships on its own version bump. Each phase needs its own implementatio
 - No new batch booking: Assign already books several days at once. Consecutive days a worker is booked at the same site = one "รอบ"; the sheet shows "วันที่ 3/5".
 - Daily link from crew "งานวันนี้" (`/j/<token>`), valid to end of the Bangkok day, only for crew booked at that site today.
 - Items are the site's Kanban cards (open cards; the worker's own cards first, badge "ของคุณ"; issue cards grouped on top for crew only). Crew can mark a card done or "ยังทำต่อพรุ่งนี้" with photos + note — same effect as LINE "งานเสร็จ". **Crew never enter quantities**; qty/% stay PM-only in the web (owner decision 2026-10-17).
-- Open (asked 2026-11-26): who may close a card (card's crew + shift leader?), photo required, site safety text source, A4 print.
+- Owner answers 2026-11-26:
+  1. On the crew sheet only the **team leader** of that day's shift may close or update a card (other crew view only). Admin/owner keep doing it in the web Kanban as today.
+  2. **At least 1 photo** to close or update a card.
+  3. Safety note = a company-wide default text (tenant setting) that each site can override.
+  4. An **A4 PDF** of the day's sheet is needed (staff download; same layout family as ใบงานซ่อม). Mockup before build.
 
 ### H — customer progress in LINE (later)
 - Customer OA menu → a no-login progress page for their site(s) built from the PM-confirmed data only (per the principle above). No issue cards. Design + mockup before build.
