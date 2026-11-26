@@ -15,6 +15,7 @@ import CustomerLineSettings from '../components/CustomerLineSettings.jsx'
 import WebPushSettings from '../components/WebPushSettings.jsx'
 import AssemblySettings from '../components/AssemblySettings.jsx'
 import TravelOriginSettings from '../components/TravelOriginSettings.jsx'
+import SiteSafetyDefaultSettings from '../components/SiteSafetyDefaultSettings.jsx'
 import PhaseTemplateSettings from '../components/PhaseTemplateSettings.jsx'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
@@ -621,6 +622,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan, navSt
         <TravelOriginSettings />
       </div>
       )}
+
+      {/* ── ข้อควรระวังหน้างาน (ค่าเริ่มต้น) on the crew daily job sheet ── */}
+      {activeSection === 'location' && isOwner && <SiteSafetyDefaultSettings />}
 
       {/* ── การสื่อสาร (Communication Center, was its own tab) ── */}
       {activeSection === 'communication' && showCommCenter && (

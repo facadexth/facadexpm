@@ -105,16 +105,27 @@ export function siteFormToPayload(form) {
     warranty_months: (() => { const n = parseInt(form.warranty_months, 10); return Number.isNaN(n) ? 12 : n })(),
     handover_date:  form.handover_date || null,
     ...assemblyModeField(form),
+    ...safetyNoteField(form),
     ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
   }
 }
 
+// sites.safety_note (2026-11-26-01): this site's own safety text on the crew daily job sheet;
+// blank = NULL = use the company default. Like assembly_mode it is not in the site list view, so a
+// form that never loaded it (undefined) writes nothing and an existing note is never cleared.
+export const SITE_SAFETY_NOTE_MAX = 500
+export function safetyNoteField(form) {
+  if (form?.safety_note === undefined) return {}
+  const v = String(form.safety_note ?? '').trim().slice(0, SITE_SAFETY_NOTE_MAX)
+  return { safety_note: v || null }
+}
+
 // The only site fields a PM may change (mirrors pm_update_site's whitelist).
-const PM_SITE_KEYS = ['name', 'short_name', 'status', 'start_date', 'end_date', 'location', 'map_url', 'lat', 'lng', 'distance_km', 'travel_minutes', 'notes']
+const PM_SITE_KEYS = ['name', 'short_name', 'status', 'start_date', 'end_date', 'location', 'map_url', 'lat', 'lng', 'distance_km', 'travel_minutes', 'notes', 'safety_note']
 
 /** PM save: the allowed fields whose value differs from the site as loaded. */
 export function pmSitePatch(site, form) {
-  const clean = v => (typeof v === 'number' && Number.isNaN(v) ? null : v)
+  const clean = v => (v === undefined || (typeof v === 'number' && Number.isNaN(v)) ? null : v)
   const before = siteFormToPayload({ ...EMPTY_FORM, ...site })
   const after = siteFormToPayload(form)
   const patch = {}
@@ -136,6 +147,16 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
     let cancelled = false
     supabase.from('sites').select('assembly_mode').eq('id', initial.id).maybeSingle().then(({ data, error }) => {
       if (!cancelled && !error) setForm(f => ({ ...f, assembly_mode: data?.assembly_mode ?? '' }))
+    })
+    return () => { cancelled = true }
+  }, [initial?.id, pmMode])
+
+  // Same for sites.safety_note (its own query, so one missing column never blocks the other).
+  useEffect(() => {
+    if (pmMode || !initial?.id || initial.safety_note !== undefined) return
+    let cancelled = false
+    supabase.from('sites').select('safety_note').eq('id', initial.id).maybeSingle().then(({ data, error }) => {
+      if (!cancelled && !error) setForm(f => ({ ...f, safety_note: data?.safety_note ?? '' }))
     })
     return () => { cancelled = true }
   }, [initial?.id, pmMode])
@@ -473,6 +494,15 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
         <div>
           <label className="label">หมายเหตุ</label>
           <textarea className="textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="site-safety-note">ข้อควรระวังหน้างาน (ไซท์นี้)</label>
+          <textarea id="site-safety-note" className="textarea" rows={2} maxLength={SITE_SAFETY_NOTE_MAX}
+            value={form.safety_note ?? ''}
+            disabled={!isAdd && !pmMode && form.safety_note === undefined}
+            onChange={e => set('safety_note', e.target.value)}
+            placeholder="ว่างไว้ = ใช้ข้อความกลางของบริษัท" />
         </div>
       </div>
       <div className="modal-footer">

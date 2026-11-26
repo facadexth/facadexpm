@@ -2,7 +2,7 @@
 // DayView — single day grouped by site, morning/evening columns + cost
 // + mini task board of the site's active Kanban phase (if it has one)
 // ============================================================
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { TYPE_COLOR, TYPE_LABEL, SITE_TYPES } from './constants.js'
 import { otCost, workerDayRate } from './otMath.js'
@@ -10,6 +10,7 @@ import { useSitePhases, usePhaseTasks } from '../../hooks/useSupabase.js'
 import { pickActivePhase } from '../sites/phaseTasksCalc.js'
 import { STATUS_COLOR } from '../sites/ganttTimeline.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
+import SiteJobSheetModal from '../../components/SiteJobSheetModal.jsx'
 
 const dayRate = (w) => Math.round(workerDayRate(w))
 
@@ -22,6 +23,7 @@ const MINI_COLUMNS = [
 export default function DayView({ dayIso, assignments, otEntries, sites, travelRate, onEditHalf, showMoney = true }) {
   const { data: allPhases } = useSitePhases()
   const { data: allTasks } = usePhaseTasks()
+  const [sheetSite, setSheetSite] = useState(null) // site id whose ใบงานประจำวัน is open
 
   const phasesBySite = useMemo(() => {
     const m = {}
@@ -37,7 +39,7 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
 
   const siteMeta = useMemo(() => {
     const m = {}
-    ;(sites || []).forEach(s => { m[s.id] = { name: s.name, site_number: s.site_number, distance_km: s.distance_km } })
+    ;(sites || []).forEach(s => { m[s.id] = { name: s.name, short_name: s.short_name, site_number: s.site_number, distance_km: s.distance_km } })
     return m
   }, [sites])
 
@@ -51,9 +53,11 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
   const others = []  // leave/office/holiday
   rows.forEach(a => {
     if (a.site_id && (SITE_TYPES.includes(a.type) || a.type === 'subcontract')) {
-      const g = bySite[a.site_id] ||= { morning: [], evening: [], hasSiteType: false, labor: 0 }
+      const g = bySite[a.site_id] ||= { morning: [], evening: [], hasSiteType: false, hasInstall: false, labor: 0 }
       g[a.shift]?.push(a)
       if (a.type === 'site') g.hasSiteType = true
+      // ใบงานประจำวัน is for install days only: repair visits never produce a job sheet.
+      if (a.type === 'site' && !a.repair_ticket_id) g.hasInstall = true
       if (SITE_TYPES.includes(a.type)) g.labor += 0.5 * dayRate(a.workers)
     } else {
       others.push(a)
@@ -63,7 +67,7 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
   // Sites with OT but no regular assignment that day still need a card,
   // otherwise their OT silently disappears from the view.
   Object.keys(otBySite).forEach(sid => {
-    if (!bySite[sid]) bySite[sid] = { morning: [], evening: [], hasSiteType: false, labor: 0 }
+    if (!bySite[sid]) bySite[sid] = { morning: [], evening: [], hasSiteType: false, hasInstall: false, labor: 0 }
   })
 
   const siteIds = Object.keys(bySite)
@@ -99,6 +103,10 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 11, color: 'var(--accent)' }}>{meta.site_number}</div>
                   <div style={{ fontWeight: 700, fontSize: 14, overflowWrap: 'anywhere' }}>{meta.name}</div>
+                  {g.hasInstall && (
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }}
+                      onClick={() => setSheetSite(sid)}>🖨 ใบงานวันนี้</button>
+                  )}
                 </div>
                 {showMoney && <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <div style={{ fontSize: 10, color: 'var(--text3)' }}>รวมวันนี้</div>
@@ -168,6 +176,11 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
             )
           })}
         </div>
+      )}
+
+      {sheetSite && (
+        <SiteJobSheetModal siteId={sheetSite} date={dayIso} shortName={siteMeta[sheetSite]?.short_name}
+          onClose={() => setSheetSite(null)} />
       )}
     </div>
   )

@@ -88,7 +88,7 @@ vi.mock('../hooks/useSupabase.js', async (orig) => {
   }
 })
 
-import Sites, { pmSitePatch } from './Sites.jsx'
+import Sites, { pmSitePatch, siteFormToPayload, safetyNoteField } from './Sites.jsx'
 import SiteDetail from './SiteDetail.jsx'
 import Dashboard from './Dashboard.jsx'
 import Assign from './Assign.jsx'
@@ -206,6 +206,35 @@ describe('PM site form', () => {
     const site = { ...PM_SITE, lat: null, lng: null, distance_km: null, travel_minutes: null, map_url: null, notes: null, short_name: null, start_date: null }
     expect(pmSitePatch(site, { ...site })).toEqual({})
     expect(pmSitePatch(site, { ...site, lat: '14.1', status: 'On Hold' })).toEqual({ lat: 14.1, status: 'On Hold' })
+  })
+
+  it('safety_note: blank -> NULL, trimmed text kept, never written when the form never loaded it', () => {
+    expect(safetyNoteField({})).toEqual({})
+    expect(safetyNoteField({ safety_note: '   ' })).toEqual({ safety_note: null })
+    expect(safetyNoteField({ safety_note: '' })).toEqual({ safety_note: null })
+    expect(safetyNoteField({ safety_note: '  ใส่หมวก  ' })).toEqual({ safety_note: 'ใส่หมวก' })
+    expect(safetyNoteField({ safety_note: 'x'.repeat(600) }).safety_note).toHaveLength(500)
+    expect('safety_note' in siteFormToPayload({ name: 'A' })).toBe(false)
+    expect(siteFormToPayload({ name: 'A', safety_note: ' ' }).safety_note).toBeNull()
+    const site = { ...PM_SITE }
+    expect(pmSitePatch(site, { ...site })).toEqual({})
+    expect(pmSitePatch(site, { ...site, safety_note: '' })).toEqual({})
+    expect(pmSitePatch(site, { ...site, safety_note: ' ระวังสายไฟ ' })).toEqual({ safety_note: 'ระวังสายไฟ' })
+  })
+
+  it('PM form shows the per-site safety field and sends it through pm_update_site', async () => {
+    const { container } = render(<Sites navigateTo={() => {}} openSiteOverview={() => {}} navState={{}} />)
+    fireEvent.click(container.querySelector('.btn-edit'))
+    const form = container.ownerDocument.querySelector('form')
+    expect(form.textContent).toContain('ข้อควรระวังหน้างาน (ไซท์นี้)')
+    const ta = form.querySelector('#site-safety-note')
+    expect(ta.getAttribute('placeholder')).toBe('ว่างไว้ = ใช้ข้อความกลางของบริษัท')
+    expect(ta.getAttribute('maxlength')).toBe('500')
+    expect(ta.disabled).toBe(false)
+    fireEvent.change(ta, { target: { value: ' ระวังสายไฟ ' } })
+    fireEvent.submit(form)
+    await new Promise(r => setTimeout(r, 0))
+    expect(rpcCalls).toContainEqual(['pm_update_site', { p_site_id: 's1', p_patch: { safety_note: 'ระวังสายไฟ' } }])
   })
 })
 
