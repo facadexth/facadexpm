@@ -41,7 +41,7 @@ export type JobSheetInput = {
     unit?: string | null; issue_report_id?: string | null; has_children?: boolean; worker_ids: string[]
     updated_at?: string | null
   }>
-  drawings: Array<{ id: string; title: string; url: string | null }>
+  drawings: Array<{ id: string; title: string; url: string | null; mime?: string | null }>
   viewerWorkerId?: string | null // crew page: the token's worker
 }
 

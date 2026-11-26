@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// (jsdom: storageSigner comes from repairWorkorderLoad.js -> photoUpload.js -> supabase client, which needs WebSocket)
 import { describe, it, expect, vi } from 'vitest'
 import { loadJobSheetInput, decodeSettingText } from '../../supabase/functions/_shared/site-jobsheet-load.ts'
 import { loadJobSheet } from './siteJobsheetLoad.js'
@@ -76,8 +77,8 @@ function tables(over = {}) {
         boq_items: null, phase_task_workers: [] },
     ], error: null },
     site_drawings: { data: [
-      { id: 'd1', title: 'แปลนชั้น 1', file_path: 'tn1/s1/a.png' },
-      { id: 'd2', title: 'แปลนชั้น 2', file_path: 'tn1/s1/b.pdf' },
+      { id: 'd1', title: 'แปลนชั้น 1', file_path: 'tn1/s1/a.png', mime: 'image/png' },
+      { id: 'd2', title: 'แปลนชั้น 2', file_path: 'tn1/s1/b.pdf', mime: 'application/pdf' },
     ], error: null },
     ...over.tables,
   }
@@ -173,16 +174,17 @@ describe('loadJobSheetInput', () => {
 
   it('drawings are signed in the site-drawings bucket, in order', async () => {
     signUrls.mockClear()
-    const { db } = fakeDb(tables())
+    const { db, calls } = fakeDb(tables())
     const input = await loadJobSheetInput(db, 's1', opts())
     expect(signUrls).toHaveBeenCalledWith('site-drawings', ['tn1/s1/a.png', 'tn1/s1/b.pdf'])
     expect(input.drawings).toEqual([
-      { id: 'd1', title: 'แปลนชั้น 1', url: 'https://signed/site-drawings/tn1/s1/a.png' },
-      { id: 'd2', title: 'แปลนชั้น 2', url: 'https://signed/site-drawings/tn1/s1/b.pdf' },
+      { id: 'd1', title: 'แปลนชั้น 1', url: 'https://signed/site-drawings/tn1/s1/a.png', mime: 'image/png' },
+      { id: 'd2', title: 'แปลนชั้น 2', url: 'https://signed/site-drawings/tn1/s1/b.pdf', mime: 'application/pdf' },
     ])
     const fn = vi.fn(async () => [])
     const none = await loadJobSheetInput(fakeDb(tables({ tables: { site_drawings: { data: [], error: null } } })).db, 's1', opts({ signUrls: fn }))
     expect(none.drawings).toEqual([])
+    expect(calls.find((c) => c.table === 'site_drawings').select).toContain('mime')
     expect(fn).not.toHaveBeenCalled()
   })
 
@@ -219,5 +221,6 @@ describe('loadJobSheet (web wrapper)', () => {
     expect(sheet.runText).toMatch(/^วันที่ 1 จาก 2/)
     expect(sheet.viewerIsLeader).toBe(false)
     expect(sheet.drawings[0].url).toBe('u:tn1/s1/a.png')
+    expect(sheet.drawings.map((d) => d.mime)).toEqual(['image/png', 'application/pdf'])
   })
 })

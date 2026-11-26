@@ -160,11 +160,11 @@ export async function loadJobSheetInput(db: Db, siteId: string, opts: JobSheetLo
   }))
 
   const { data: drawingRows, error: de } = await db.from('site_drawings')
-    .select('id, title, file_path')
+    .select('id, title, file_path, mime')
     .eq('tenant_id', tenantId).eq('site_id', site.id)
     .order('sort_order', { ascending: true })
   if (de) fail(de)
-  const drawingList = (drawingRows || []) as Array<{ id: string; title: string; file_path: string }>
+  const drawingList = (drawingRows || []) as Array<{ id: string; title: string; file_path: string; mime?: string | null }>
   const urls = await signAligned(signUrls, DRAWINGS_BUCKET, drawingList.map((d) => d.file_path))
 
   return {
@@ -181,7 +181,7 @@ export async function loadJobSheetInput(db: Db, siteId: string, opts: JobSheetLo
       id: p.id, name: p.name, sort_order: p.sort_order, is_issue_phase: p.is_issue_phase === true,
     })),
     cards,
-    drawings: drawingList.map((d, i) => ({ id: d.id, title: d.title, url: urls[i] })),
+    drawings: drawingList.map((d, i) => ({ id: d.id, title: d.title, url: urls[i], mime: d.mime ?? null })),
     viewerWorkerId,
   }
 }

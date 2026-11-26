@@ -221,5 +221,7 @@ describe('buildJobSheet cards', () => {
   it('passes drawings through', () => {
     const drawings = [{ id: 'g1', title: 'แบบชั้น 1', url: 'https://x/a.pdf' }]
     expect(buildJobSheet(base({ drawings })).drawings).toEqual(drawings)
+    const typed = [{ id: 'g1', title: 'แบบชั้น 1', url: 'https://x/a.pdf', mime: 'application/pdf' }, { id: 'g2', title: 'รูป', url: 'https://x/b.png', mime: 'image/png' }]
+    expect(buildJobSheet(base({ drawings: typed })).drawings.map((d) => d.mime)).toEqual(['application/pdf', 'image/png'])
   })
 })
