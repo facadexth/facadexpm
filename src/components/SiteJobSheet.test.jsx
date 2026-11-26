@@ -89,6 +89,24 @@ describe('SiteJobSheet', () => {
     expect(screen.getByText(sheet().runText)).toBeTruthy()
   })
 
+  it('dots come from sheet.run, not from parsing runText', () => {
+    const { container } = render(<SiteJobSheet sheet={{ ...sheet(), runText: 'อะไรก็ได้', run: { index: 1, total: 2 } }} id="x" />)
+    const dots = [...container.querySelectorAll('[data-dot]')].map((d) => d.getAttribute('data-dot'))
+    expect(dots).toEqual(['today', 'todo'])
+  })
+
+  it('two phases with the same name still get separate zone rows with the phase name', () => {
+    const base = input()
+    const s = sheet({
+      phases: [...base.phases, { id: 'p2', name: 'ติดตั้งบานกระจก', sort_order: 2 }],
+      cards: [...base.cards, card({ id: 'd', phase_id: 'p2', zone: 'ชั้น 20', name: 'ยิงขอบ' })],
+    })
+    const { container } = render(<SiteJobSheet sheet={s} id="x" />)
+    const zones = [...container.querySelectorAll('[data-zone-row]')].map((r) => r.textContent)
+    expect(zones).toEqual(['ติดตั้งบานกระจก · ชั้น 20', 'ติดตั้งบานกระจก · ชั้น 21', 'ติดตั้งบานกระจก · ชั้น 20'])
+    expect(container.querySelectorAll('[data-card-row]')).toHaveLength(4)
+  })
+
   it('no run -> ไม่มีข้อมูลรอบ and no dots', () => {
     const { container } = render(<SiteJobSheet sheet={sheet({ run: null })} id="x" />)
     expect(screen.getByText('ไม่มีข้อมูลรอบ')).toBeTruthy()

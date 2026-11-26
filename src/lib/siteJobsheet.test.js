@@ -82,6 +82,8 @@ describe('buildJobSheet header', () => {
     expect(s.dateText).toBe('พฤหัส 26/11/2569') // 2026-11-26 is a Thursday
     expect(buildJobSheet(base({ date: '2026-11-25' })).dateText).toBe('พ 25/11/2569')
     expect(s.runText).toBe('วันที่ 3 จาก 5 · 24–28/11/2569')
+    expect(s.run).toEqual({ index: 3, total: 5 })
+    expect(buildJobSheet(base({ run: null })).run).toBeNull()
     expect(s.company).toEqual({ name: 'บจก. ทดสอบ', address: '1 ถนน', phone: '02-111', logoUrl: null })
     expect(s.siteName).toBe('บ้านคุณเอ')
     expect(s.address).toBe('บางนา')
@@ -132,6 +134,7 @@ describe('buildJobSheet cards', () => {
       card({ id: 'e', phase_id: 'p1', zone: 'ชั้น 1', sort_order: 5 }),
     ]
     const s = buildJobSheet(base({ cards }))
+    expect(s.groups.every((g) => typeof g.phaseId === 'string' && g.phaseId)).toBe(true)
     expect(s.groups.map((g) => [g.phase, g.zone, g.cards.map((c) => c.id)])).toEqual([
       ['ติดตั้งโครง', 'ชั้น 1', ['e']],
       ['ติดตั้งโครง', 'ชั้น 2', ['c', 'b']],

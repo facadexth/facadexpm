@@ -43,27 +43,19 @@ const S = {
   foot: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#777', borderTop: '1px solid #ccc', paddingTop: 5 },
 }
 
-// 'วันที่ 3 จาก 5 · …' -> { index: 3, total: 5 }; null when the text has no run.
-function runCounts(runText) {
-  const m = /วันที่\s*(\d+)\s*จาก\s*(\d+)/.exec(String(runText ?? ''))
-  if (!m) return null
-  const index = Number(m[1]), total = Number(m[2])
-  return total > 0 && index >= 1 && index <= total ? { index, total } : null
-}
-
 function Logo({ company }) {
   if (company.logoUrl) return <img crossOrigin="anonymous" src={company.logoUrl} alt="" style={S.logoImg} />
   return <div style={S.logoBox}>{companyInitial(company.name)}</div>
 }
 
 // One bar per day of the run: done days green, today blue, days still to come grey.
-function RunDots({ runText }) {
-  const run = runCounts(runText)
-  if (!run) return null
+function RunDots({ run }) {
+  const total = Number(run?.total), index = Number(run?.index)
+  if (!(total > 0 && index >= 1 && index <= total)) return null
   return (
     <div style={S.dots} data-run-dots="">
-      {Array.from({ length: run.total }, (_, i) => {
-        const kind = i + 1 < run.index ? 'done' : i + 1 === run.index ? 'today' : 'todo'
+      {Array.from({ length: total }, (_, i) => {
+        const kind = i + 1 < index ? 'done' : i + 1 === index ? 'today' : 'todo'
         const background = kind === 'done' ? '#2f7d4f' : kind === 'today' ? '#1f5f78' : '#d5dcdf'
         return <i key={i} data-dot={kind} style={{ ...S.dot, background }} />
       })}
@@ -103,7 +95,7 @@ export default function SiteJobSheet({ sheet, id }) {
   const problems = sheet.problems || []
   const drawings = (sheet.drawings || []).filter((d) => d?.title)
   // Zone rows name the phase too when the sheet spans more than one phase.
-  const manyPhases = new Set(groups.map((g) => g.phase)).size > 1
+  const manyPhases = new Set(groups.map((g) => g.phaseId)).size > 1
   const contact = [company.address, company.phone].filter(Boolean).join(' · ')
   let no = 0
 
@@ -142,7 +134,7 @@ export default function SiteJobSheet({ sheet, id }) {
         <div style={S.card}>
           <span style={S.k}>รอบนี้</span>
           <span style={S.v}>{sheet.runText || 'ไม่มีข้อมูลรอบ'}</span>
-          <RunDots runText={sheet.runText} />
+          <RunDots run={sheet.run} />
           <div style={{ ...S.kv, marginTop: 4 }}>
             <span style={S.kvKey}>หัวหน้าทีม</span><span>{sheet.leaderText}</span>
             <span style={S.kvKey}>ทีม</span><span>{sheet.crewText}</span>
@@ -167,7 +159,7 @@ export default function SiteJobSheet({ sheet, id }) {
         </thead>
         <tbody>
           {groups.map((g) => [
-            <tr key={`z:${g.phase}:${g.zone}`} data-zone-row="" style={NO_BREAK}>
+            <tr key={`z:${g.phaseId}:${g.zone}`} data-zone-row="" style={NO_BREAK}>
               <td colSpan={6} style={S.zone}>{manyPhases ? `${g.phase} · ${g.zone}` : g.zone}</td>
             </tr>,
             ...g.cards.map((c) => {

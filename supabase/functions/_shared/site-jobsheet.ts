@@ -53,6 +53,7 @@ export type JobSheetCard = {
 export type JobSheet = {
   dateText: string
   runText: string | null
+  run: { index: number; total: number } | null
   company: { name: string; address: string; phone: string; logoUrl: string | null }
   siteName: string; address: string; mapUrl: string | null
   leaderText: string
@@ -60,7 +61,7 @@ export type JobSheet = {
   safetyNote: string
   progressText: string | null
   problems: Array<{ id: string; name: string; zone: string }>
-  groups: Array<{ phase: string; zone: string; cards: JobSheetCard[] }>
+  groups: Array<{ phaseId: string; phase: string; zone: string; cards: JobSheetCard[] }>
   cardCount: number // cards in groups (problem cards not counted)
   drawings: JobSheetInput['drawings']
   viewerIsLeader: boolean
@@ -188,7 +189,7 @@ export function buildJobSheet(input: JobSheetInput): JobSheet {
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     .map((c) => ({ id: c.id, name: str(c.name), zone: str(c.zone) || NO_ZONE }))
 
-  type Group = { phase: string; zone: string; order: number; items: Card[] }
+  type Group = { phaseId: string; phase: string; zone: string; order: number; items: Card[] }
   const groupMap = new Map<string, Group>()
   for (const c of cards) {
     if (isIssue(c) || !shown(c)) continue
@@ -197,7 +198,7 @@ export function buildJobSheet(input: JobSheetInput): JobSheet {
     const key = `${c.phase_id}\u0000${zone}`
     let g = groupMap.get(key)
     if (!g) {
-      g = { phase: str(ph?.name) || '-', zone, order: ph?.sort_order ?? Number.MAX_SAFE_INTEGER, items: [] }
+      g = { phaseId: c.phase_id, phase: str(ph?.name) || '-', zone, order: ph?.sort_order ?? Number.MAX_SAFE_INTEGER, items: [] }
       groupMap.set(key, g)
     }
     g.items.push(c)
@@ -206,6 +207,7 @@ export function buildJobSheet(input: JobSheetInput): JobSheet {
   const groups = [...groupMap.values()]
     .sort((a, b) => a.order - b.order || byText(a.phase, b.phase) || byText(a.zone, b.zone))
     .map((g) => ({
+      phaseId: g.phaseId,
       phase: g.phase,
       zone: g.zone,
       cards: [...g.items]
@@ -230,6 +232,7 @@ export function buildJobSheet(input: JobSheetInput): JobSheet {
   return {
     dateText: `${thaiWeekday(date)} ${formatThaiDate(date)}`.trim(),
     runText: runText(input.run),
+    run: input.run ? { index: input.run.index, total: input.run.total } : null,
     company: {
       name: str(tenant?.company_name),
       address: str(tenant?.address),
