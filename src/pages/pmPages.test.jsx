@@ -228,7 +228,7 @@ describe('PM site form', () => {
     const form = container.ownerDocument.querySelector('form')
     expect(form.textContent).toContain('ข้อควรระวังหน้างาน (ไซท์นี้)')
     const ta = form.querySelector('#site-safety-note')
-    expect(ta.getAttribute('placeholder')).toBe('ว่างไว้ = ใช้ข้อความกลางของบริษัท')
+    expect(ta.getAttribute('placeholder')).toBe('ว่างไว้ = ใช้ข้อความกลางของบริษัท: 3') // useAppSetting mock returns '3'
     expect(ta.getAttribute('maxlength')).toBe('500')
     expect(ta.disabled).toBe(false)
     fireEvent.change(ta, { target: { value: ' ระวังสายไฟ ' } })

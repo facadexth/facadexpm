@@ -62,6 +62,26 @@ BEGIN
     RAISE EXCEPTION 'PRE: sites.safety_note already exists';
   END IF;
 
+  -- PM RPCs (R11): live definitions still match 2026-10-17-06, which the migration copies
+  IF pg_get_function_result('public.pm_sites()'::regprocedure) <>
+     'TABLE(id uuid, site_number text, name text, short_name text, status text, start_date date, end_date date, '
+     'client_id uuid, client_name text, location text, map_url text, lat numeric, lng numeric, distance_km numeric, '
+     'travel_minutes integer, is_default boolean, notes text, created_at timestamp with time zone)' THEN
+    RAISE EXCEPTION 'PRE: pm_sites() result differs from 2026-10-17-06: %',
+      pg_get_function_result('public.pm_sites()'::regprocedure);
+  END IF;
+  IF (SELECT prosrc FROM pg_proc WHERE oid = 'public.pm_update_site(uuid,jsonb)'::regprocedure) NOT LIKE
+     '%ARRAY[''name'',''short_name'',''status'',''start_date'',''end_date'',''location'',''map_url'',''lat'',''lng'',''distance_km'',''travel_minutes'',''notes''];%'
+     OR (SELECT prosrc FROM pg_proc WHERE oid = 'public.pm_update_site(uuid,jsonb)'::regprocedure) LIKE '%safety_note%' THEN
+    RAISE EXCEPTION 'PRE: pm_update_site whitelist differs from 2026-10-17-06';
+  END IF;
+  -- nothing tracked depends on pm_sites() (a view or BEGIN ATOMIC body would block the DROP)
+  IF EXISTS (SELECT 1 FROM pg_depend WHERE refobjid = 'public.pm_sites()'::regprocedure AND deptype = 'n') THEN
+    RAISE EXCEPTION 'PRE: objects depend on pm_sites(): %',
+      (SELECT string_agg(classid::regclass::text || ' ' || objid, ', ') FROM pg_depend
+        WHERE refobjid = 'public.pm_sites()'::regprocedure AND deptype = 'n');
+  END IF;
+
   RAISE NOTICE 'pre-checks ok';
 END $$;
 
@@ -77,6 +97,75 @@ ALTER TABLE public.line_deep_link_tokens ADD CONSTRAINT line_deep_link_tokens_si
 ALTER TABLE public.sites ADD COLUMN safety_note text NULL;
 ALTER TABLE public.sites ADD CONSTRAINT sites_safety_note_length_check
   CHECK (char_length(safety_note) <= 500);
+
+-- ---------------------------------------------------------------- PM RPCs (R11)
+DROP FUNCTION public.pm_sites();
+CREATE FUNCTION public.pm_sites()
+RETURNS TABLE(id uuid, site_number text, name text, short_name text, status text, start_date date, end_date date,
+              client_id uuid, client_name text, location text, map_url text, lat numeric, lng numeric,
+              distance_km numeric, travel_minutes integer, is_default boolean, notes text, created_at timestamptz,
+              safety_note text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT s.id, s.site_number, s.name, s.short_name, s.status, s.start_date, s.end_date,
+         s.client_id, COALESCE(c.name, s.client_name), s.location, s.map_url, s.lat, s.lng,
+         s.distance_km, s.travel_minutes, s.is_default, s.notes, s.created_at,
+         s.safety_note
+  FROM sites s LEFT JOIN clients c ON c.id = s.client_id
+  WHERE s.tenant_id = current_tenant_id() AND is_site_staff()
+  ORDER BY s.created_at DESC, s.id
+$$;
+
+CREATE OR REPLACE FUNCTION public.pm_update_site(p_site_id uuid, p_patch jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE k text;
+  allowed text[] := ARRAY['name','short_name','status','start_date','end_date','location','map_url','lat','lng','distance_km','travel_minutes','notes','safety_note'];
+BEGIN
+  IF NOT is_site_staff() OR NOT tenant_can_write() THEN
+    RAISE EXCEPTION 'not allowed' USING ERRCODE = '42501';
+  END IF;
+  FOR k IN SELECT jsonb_object_keys(p_patch) LOOP
+    IF NOT k = ANY (allowed) THEN RAISE EXCEPTION 'field not allowed: %', k USING ERRCODE = '22023'; END IF;
+  END LOOP;
+  -- Unknown or other-tenant site: P0002 before any status guard, so the error
+  -- code says nothing about another tenant's site status.
+  IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'site not found' USING ERRCODE = 'P0002';
+  END IF;
+  -- Finishing a site moves leftover stock and stamps end_date (the OWNER/ADMIN
+  -- finish flow), so a PM may not set Completed; an already-Completed site may stay so.
+  IF p_patch->>'status' = 'Completed'
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Completed' AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'PM cannot complete a site' USING ERRCODE = '22023';
+  END IF;
+  -- Ongoing seat rule from the sites admin_updates policy
+  IF p_patch ? 'status' AND p_patch->>'status' = 'Ongoing'
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Ongoing' AND tenant_id = current_tenant_id())
+     AND NOT tenant_under_seat_limit('sites') THEN
+    RAISE EXCEPTION 'site seat limit reached' USING ERRCODE = '54000';
+  END IF;
+  UPDATE sites s SET
+    name           = CASE WHEN p_patch ? 'name' THEN p_patch->>'name' ELSE s.name END,
+    short_name     = CASE WHEN p_patch ? 'short_name' THEN NULLIF(p_patch->>'short_name','') ELSE s.short_name END,
+    status         = CASE WHEN p_patch ? 'status' THEN p_patch->>'status' ELSE s.status END,
+    start_date     = CASE WHEN p_patch ? 'start_date' THEN (p_patch->>'start_date')::date ELSE s.start_date END,
+    end_date       = CASE WHEN p_patch ? 'end_date' THEN (p_patch->>'end_date')::date ELSE s.end_date END,
+    location       = CASE WHEN p_patch ? 'location' THEN p_patch->>'location' ELSE s.location END,
+    map_url        = CASE WHEN p_patch ? 'map_url' THEN p_patch->>'map_url' ELSE s.map_url END,
+    lat            = CASE WHEN p_patch ? 'lat' THEN (p_patch->>'lat')::numeric ELSE s.lat END,
+    lng            = CASE WHEN p_patch ? 'lng' THEN (p_patch->>'lng')::numeric ELSE s.lng END,
+    distance_km    = CASE WHEN p_patch ? 'distance_km' THEN (p_patch->>'distance_km')::numeric ELSE s.distance_km END,
+    travel_minutes = CASE WHEN p_patch ? 'travel_minutes' THEN (p_patch->>'travel_minutes')::integer ELSE s.travel_minutes END,
+    notes          = CASE WHEN p_patch ? 'notes' THEN p_patch->>'notes' ELSE s.notes END,
+    safety_note    = CASE WHEN p_patch ? 'safety_note' THEN NULLIF(btrim(p_patch->>'safety_note'),'') ELSE s.safety_note END,
+    updated_at     = now()
+  WHERE s.id = p_site_id AND s.tenant_id = current_tenant_id();
+  IF NOT FOUND THEN RAISE EXCEPTION 'site not found' USING ERRCODE = 'P0002'; END IF;
+END $$;
+
+REVOKE ALL ON FUNCTION public.pm_sites(), public.pm_update_site(uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.pm_sites(), public.pm_update_site(uuid, jsonb) TO authenticated;
 
 -- ===================== dry-run cases =====================
 DO $$
@@ -162,6 +251,61 @@ BEGIN
   ASSERT NOT has_table_privilege('anon', 'public.line_deep_link_tokens', 'SELECT'), '(g) anon can SELECT tokens';
   ASSERT has_table_privilege('service_role', 'public.line_deep_link_tokens', 'INSERT'), '(g) service_role lost INSERT';
   RAISE NOTICE 'case g ok';
+END $$;
+
+-- ===================== PM RPC cases (R11) =====================
+DO $$
+DECLARE
+  v_tenant uuid := '8b61c890-0a90-4223-91d3-b5f8f4e89908';
+  v_site uuid;
+  v_email text;
+  v_role text;
+  v_failed boolean;
+  v_note text;
+BEGIN
+  -- (h) pm_sites() returns safety_note; grants: anon none, authenticated execute, on both functions
+  ASSERT pg_get_function_result('public.pm_sites()'::regprocedure) LIKE '%, safety_note text)',
+    '(h) pm_sites() has no safety_note column';
+  ASSERT NOT has_function_privilege('anon', 'public.pm_sites()', 'EXECUTE'), '(h) anon can execute pm_sites';
+  ASSERT has_function_privilege('authenticated', 'public.pm_sites()', 'EXECUTE'), '(h) authenticated cannot execute pm_sites';
+  ASSERT NOT has_function_privilege('anon', 'public.pm_update_site(uuid,jsonb)', 'EXECUTE'), '(h) anon can execute pm_update_site';
+  ASSERT has_function_privilege('authenticated', 'public.pm_update_site(uuid,jsonb)', 'EXECUTE'), '(h) authenticated cannot execute pm_update_site';
+  ASSERT NOT has_function_privilege('public', 'public.pm_sites()', 'EXECUTE'), '(h) PUBLIC can execute pm_sites';
+  RAISE NOTICE 'case h ok';
+
+  -- (i) as a site-staff user of the demo tenant (a PM when there is one, else OWNER/ADMIN; same RPC path)
+  SELECT user_email, role INTO v_email, v_role FROM user_roles
+   WHERE tenant_id = v_tenant AND role IN ('PM','OWNER','ADMIN') AND user_email IS NOT NULL
+   ORDER BY (role = 'PM') DESC, role, user_email LIMIT 1;
+  IF v_email IS NULL THEN RAISE EXCEPTION 'SETUP: no PM/OWNER/ADMIN user in the demo tenant'; END IF;
+  PERFORM set_config('request.jwt.claims', json_build_object('email', v_email, 'role', 'authenticated')::text, true);
+  IF current_tenant_id() IS DISTINCT FROM v_tenant THEN RAISE EXCEPTION 'SETUP: claims did not resolve to the demo tenant'; END IF;
+  IF NOT tenant_can_write() THEN RAISE EXCEPTION 'SETUP: demo tenant cannot write'; END IF;
+  SELECT id INTO v_site FROM sites WHERE tenant_id = v_tenant ORDER BY id LIMIT 1;
+  RAISE NOTICE 'case i as % (%)', v_role, v_email;
+
+  PERFORM pm_update_site(v_site, jsonb_build_object('safety_note', '  ระวังสายไฟ  '));
+  ASSERT (SELECT safety_note FROM sites WHERE id = v_site) = 'ระวังสายไฟ', '(i) note not stored trimmed';
+  SELECT p.safety_note INTO v_note FROM pm_sites() p WHERE p.id = v_site;
+  ASSERT v_note = 'ระวังสายไฟ', '(i) pm_sites() does not return the note';
+  PERFORM pm_update_site(v_site, jsonb_build_object('notes', (SELECT notes FROM sites WHERE id = v_site)));
+  ASSERT (SELECT safety_note FROM sites WHERE id = v_site) = 'ระวังสายไฟ', '(i) a patch without safety_note changed it';
+  PERFORM pm_update_site(v_site, jsonb_build_object('safety_note', '   '));
+  ASSERT (SELECT safety_note FROM sites WHERE id = v_site) IS NULL, '(i) blank note not stored as NULL';
+  v_failed := false;
+  BEGIN
+    PERFORM pm_update_site(v_site, jsonb_build_object('safety_note', repeat('ก', 501)));
+  EXCEPTION WHEN check_violation THEN v_failed := true;
+  END;
+  ASSERT v_failed, '(i) 501-char note accepted through pm_update_site';
+  v_failed := false;
+  BEGIN
+    PERFORM pm_update_site(v_site, jsonb_build_object('contract_value', 1));
+  EXCEPTION WHEN SQLSTATE '22023' THEN v_failed := true;
+  END;
+  ASSERT v_failed, '(i) money field accepted through pm_update_site';
+  PERFORM set_config('request.jwt.claims', '', true);
+  RAISE NOTICE 'case i ok';
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RESULT ok'; END $$;

@@ -13,7 +13,9 @@ import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
 import { autoShortName } from '../lib/siteShortName.js'
 import { ASSEMBLY_MODE_OPTIONS, assemblyModeField } from '../lib/siteAssemblyMode.js'
-import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, usePhaseTasks } from '../hooks/useSupabase.js'
+import { DEFAULT_SAFETY_NOTE } from '../../supabase/functions/_shared/site-jobsheet.ts'
+import { SAFETY_SETTING_KEY } from '../../supabase/functions/_shared/site-jobsheet-load.ts'
+import { useAppSetting, useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, usePhaseTasks } from '../hooks/useSupabase.js'
 import GanttView from './sites/GanttView.jsx'
 import { summarizeTasks } from './sites/phaseTasksCalc.js'
 import { PencilIcon, LinkIcon } from '../components/icons.jsx'
@@ -139,6 +141,9 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  // The company default the job sheet falls back to (Settings card SiteSafetyDefaultSettings; '' = built-in).
+  const { data: safetyDefaultVal } = useAppSetting(SAFETY_SETTING_KEY, '')
+  const safetyDefault = String(safetyDefaultVal ?? '').trim() || DEFAULT_SAFETY_NOTE
 
   // sites.assembly_mode is not in the site list view, so an edit form loads it on its own
   // (assemblyModeField skips the column until it is loaded, so a save never clears it).
@@ -502,7 +507,7 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             value={form.safety_note ?? ''}
             disabled={!isAdd && !pmMode && form.safety_note === undefined}
             onChange={e => set('safety_note', e.target.value)}
-            placeholder="ว่างไว้ = ใช้ข้อความกลางของบริษัท" />
+            placeholder={`ว่างไว้ = ใช้ข้อความกลางของบริษัท: ${safetyDefault}`} />
         </div>
       </div>
       <div className="modal-footer">

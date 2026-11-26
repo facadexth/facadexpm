@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 
-const h = vi.hoisted(() => ({ selects: [], values: { assembly_mode: null, safety_note: 'ระวังกระจก' } }))
+const h = vi.hoisted(() => ({ selects: [], values: { assembly_mode: null, safety_note: 'ระวังกระจก', value: undefined } }))
 
 vi.mock('../lib/supabase.js', async (orig) => {
   const real = await orig()
@@ -21,8 +21,9 @@ vi.mock('../lib/supabase.js', async (orig) => {
 })
 
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
+import { DEFAULT_SAFETY_NOTE } from '../../supabase/functions/_shared/site-jobsheet.ts'
 
-afterEach(() => { cleanup(); h.selects = []; localStorage.clear() })
+afterEach(() => { cleanup(); h.selects = []; h.values.value = undefined; localStorage.clear() })
 
 describe('SiteForm ข้อควรระวังหน้างาน (ไซท์นี้)', () => {
   it('edit: loads the note, then saves the trimmed value; blank saves NULL', async () => {
@@ -32,7 +33,7 @@ describe('SiteForm ข้อควรระวังหน้างาน (ไ�
     await waitFor(() => expect(ta.value).toBe('ระวังกระจก'))
     expect(h.selects).toContain('safety_note')
     expect(ta.disabled).toBe(false)
-    expect(ta.getAttribute('placeholder')).toBe('ว่างไว้ = ใช้ข้อความกลางของบริษัท')
+    expect(ta.getAttribute('placeholder')).toBe(`ว่างไว้ = ใช้ข้อความกลางของบริษัท: ${DEFAULT_SAFETY_NOTE}`)
     fireEvent.change(ta, { target: { value: '   ' } })
     fireEvent.submit(ta.closest('form'))
     await waitFor(() => expect(onSave).toHaveBeenCalled())
@@ -46,6 +47,14 @@ describe('SiteForm ข้อควรระวังหน้างาน (ไ�
     expect(ta.disabled).toBe(true)
     fireEvent.submit(ta.closest('form'))
     expect('safety_note' in siteFormToPayload(onSave.mock.calls[0][0])).toBe(false)
+  })
+
+  it('placeholder shows the company default when one is set', async () => {
+    h.values.value = '  ใส่หมวกนิรภัย  '
+    render(<SiteForm onSave={() => {}} onCancel={() => {}} />)
+    const ta = screen.getByLabelText('ข้อควรระวังหน้างาน (ไซท์นี้)')
+    await waitFor(() => expect(ta.getAttribute('placeholder')).toBe('ว่างไว้ = ใช้ข้อความกลางของบริษัท: ใส่หมวกนิรภัย'))
+    expect(h.selects).toContain('value')
   })
 
   it('add: the field is enabled straight away', () => {
