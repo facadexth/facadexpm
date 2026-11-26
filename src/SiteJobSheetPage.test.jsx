@@ -18,7 +18,7 @@ import SiteJobSheetPage from './SiteJobSheetPage.jsx'
 const TASK = '11111111-1111-4111-8111-111111111111'
 const BLOCKED = '22222222-2222-4222-8222-222222222222'
 const card = (over) => ({
-  id: TASK, name: 'ติดตั้งบานเลื่อน W1–W6', statusText: 'กำลังทำ', qtyText: '-', ownersText: 'บอย',
+  id: TASK, name: 'ติดตั้งบานเลื่อน W1–W6', status: 'in_progress', statusText: 'กำลังทำ', qtyText: '-', ownersText: 'บอย',
   mine: true, canClose: true, blockedText: null, ...over,
 })
 const sheetOf = (over = {}) => ({
@@ -155,6 +155,16 @@ describe('SiteJobSheetPage view', () => {
     expect(screen.queryByText('⏳ ยังทำต่อพรุ่งนี้')).toBe(null)
   })
 
+  it('a done card renders a ticked box (from status), open cards do not', async () => {
+    viewSheet = sheetOf()
+    viewSheet.groups[0].cards.push(card({ id: '33333333-3333-4333-8333-333333333333', name: 'เก็บงาน', status: 'done', statusText: 'เสร็จแล้ว', canClose: false }))
+    const { container } = render(<SiteJobSheetPage token="tok" />)
+    await screen.findByText('เก็บงาน')
+    expect(container.querySelector('[data-card="33333333-3333-4333-8333-333333333333"] .js-box.done')).toBeTruthy()
+    expect(container.querySelector(`[data-card="${TASK}"] .js-box.done`)).toBe(null)
+    expect(container.querySelectorAll('.js-box.done').length).toBe(1)
+  })
+
   it('problem cards are never tappable, even for the leader', async () => {
     render(<SiteJobSheetPage token="tok" />)
     fireEvent.click(await screen.findByText('กระจกร้าว'))
@@ -265,6 +275,28 @@ describe('SiteJobSheetPage leader card update', () => {
     expect(await within(dlg).findByText('รูปได้ไม่เกิน 10 รูป')).toBeTruthy()
     await waitFor(() => expect(uploadToSignedUrl).toHaveBeenCalledTimes(10))
     expect(calls('upload_url').length).toBe(10)
+  })
+
+  it('upload_url 429 too_many shows the daily-limit text', async () => {
+    const base = invoke.getMockImplementation()
+    invoke.mockImplementation(async (n, arg) => (arg.body.action === 'upload_url'
+      ? { data: null, error: { context: { status: 429, json: async () => ({ error: 'too_many' }) } } }
+      : base(n, arg)))
+    const dlg = await openCard('ติดตั้งบานเลื่อน W1–W6')
+    pick(1)
+    expect(await within(dlg).findByText('อัปโหลดรูปครบจำนวนของวันนี้แล้ว')).toBeTruthy()
+    expect(uploadToSignedUrl).not.toHaveBeenCalled()
+    expect(dlg.querySelectorAll('.js-ph').length).toBe(0)
+  })
+
+  it('upload_url page-level reason (expired) replaces the page with the refusal text', async () => {
+    const base = invoke.getMockImplementation()
+    invoke.mockImplementation(async (n, arg) => (arg.body.action === 'upload_url' ? { data: { reason: 'expired' }, error: null } : base(n, arg)))
+    await openCard('ติดตั้งบานเลื่อน W1–W6')
+    pick(1)
+    expect(await screen.findByText('ลิงก์หมดอายุ กด "งานวันนี้" ใน LINE อีกครั้ง')).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBe(null)
+    expect(uploadToSignedUrl).not.toHaveBeenCalled()
   })
 
   it('a failed upload removes the tile and shows the upload error', async () => {

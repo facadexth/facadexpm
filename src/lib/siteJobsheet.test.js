@@ -169,6 +169,8 @@ describe('buildJobSheet cards', () => {
     expect(shown.map((c) => c.id).sort()).toEqual(['open', 'today'])
     expect(shown.find((c) => c.id === 'today').statusText).toBe('เสร็จแล้ว')
     expect(shown.find((c) => c.id === 'open').statusText).toBe('กำลังทำ')
+    expect(shown.find((c) => c.id === 'today').status).toBe('done')
+    expect(shown.find((c) => c.id === 'open').status).toBe('in_progress')
     expect(buildJobSheet(base({ cards: [card()] })).groups[0].cards[0].statusText).toBe('ยังไม่เริ่ม')
   })
   it('qty text', () => {

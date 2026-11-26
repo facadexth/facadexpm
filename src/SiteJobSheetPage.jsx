@@ -78,7 +78,7 @@ const CSS = `
 .js-zone{font-weight:700;font-size:13.5px;color:#1f5f78;margin-top:2px;overflow-wrap:anywhere}
 .js-task{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 0;border:0;border-top:1px dashed var(--border);background:none;color:inherit;font:inherit;text-align:left;width:100%}
 button.js-task{cursor:pointer}
-.js-task:first-of-type{border-top:0}
+.js-zone+.js-task{border-top:0}
 .js-task .nm{overflow-wrap:anywhere}
 .js-box{width:18px;height:18px;border:2px solid #9aa6ab;border-radius:4px;position:relative}
 .js-box.done{background:#2f7d4f;border-color:#2f7d4f}
@@ -89,7 +89,8 @@ button.js-task{cursor:pointer}
 .js-drw a,.js-drw span.t{width:84px;display:grid;gap:3px;justify-items:center;text-align:center;font-size:11.5px;color:var(--text);text-decoration:none;overflow-wrap:anywhere}
 .js-drw .th{width:84px;height:64px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);display:grid;place-items:center;overflow:hidden;font-weight:700;color:var(--text3)}
 .js-drw .th img{width:100%;height:100%;object-fit:cover}
-.js-ok{background:rgba(var(--green-rgb),.18);border:1px solid var(--green);border-radius:10px;padding:8px 10px;display:grid;gap:2px;overflow-wrap:anywhere}
+.js-ok{position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));max-width:536px;margin:0 auto;z-index:40;background:var(--bg2);border:2px solid var(--green);border-radius:12px;padding:10px 40px 10px 12px;display:grid;gap:2px;overflow-wrap:anywhere;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.js-ok .js-x{position:absolute;top:6px;right:6px;font-size:18px}
 .js-hint{font-size:13px;color:var(--text3);text-align:center}
 .js-big{display:block;width:100%;border:0;border-radius:12px;padding:12px;font:inherit;font-size:16px;font-weight:600;cursor:pointer;background:var(--green);color:var(--on-accent)}
 .js-big:disabled{opacity:.45;cursor:not-allowed}
@@ -336,7 +337,7 @@ export default function SiteJobSheetPage({ token }) {
   return (
     <div className="js">
       <style>{CSS}</style>
-      <div className="js-wrap">
+      <div className="js-wrap" style={saved ? { paddingBottom: 120 } : undefined}>
         <div className="js-hdr">
           <div style={{ minWidth: 0 }}>
             <div className="js-k">ใบงานติดตั้ง · {sheet.dateText}</div>
@@ -361,6 +362,7 @@ export default function SiteJobSheetPage({ token }) {
           <div className="js-ok" role="status">
             <b>{MSG.saved}</b>
             {saved.note ? <span>{saved.note}</span> : null}
+            <button type="button" className="js-x" aria-label="ปิดข้อความ" onClick={() => setSaved(null)}>✕</button>
           </div>
         ) : null}
 
@@ -389,7 +391,7 @@ export default function SiteJobSheetPage({ token }) {
               {g.cards.map((c) => {
                 const body = (
                   <>
-                    <span className={c.statusText === 'เสร็จแล้ว' ? 'js-box done' : 'js-box'} />
+                    <span className={c.status === 'done' ? 'js-box done' : 'js-box'} />
                     <span className="nm">
                       {c.name}{c.mine ? <span className="js-me">ของคุณ</span> : null}
                       <br /><span className="js-k">{c.statusText}</span>

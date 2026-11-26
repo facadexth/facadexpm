@@ -46,7 +46,8 @@ export type JobSheetInput = {
 }
 
 export type JobSheetCard = {
-  id: string; name: string; statusText: string; qtyText: string; ownersText: string
+  id: string; name: string; status: 'not_started' | 'in_progress' | 'done'; statusText: string; qtyText: string
+  ownersText: string
   mine: boolean; canClose: boolean; blockedText: string | null
 }
 
@@ -219,6 +220,7 @@ export function buildJobSheet(input: JobSheetInput): JobSheet {
           return {
             id: c.id,
             name: str(c.name),
+            status: c.status,
             statusText: STATUS_TEXT[c.status] ?? c.status,
             qtyText: qtyText(c),
             ownersText: owners.length ? owners.join(', ') : '-',
