@@ -97,6 +97,21 @@ Each phase ships on its own version bump. Each phase needs its own implementatio
 
 ---
 
+### Principle — one record, two views (owner, 2026-11-26)
+- The company's process and what the customer sees come from the **same records** (Kanban cards = `phase_tasks`, PM-entered qty/%, repair items). Nothing is typed separately for customers.
+- The customer view is a **filtered projection**: phase/floor/% level, only data the **PM has confirmed** (PM-entered qty and %, cards PM-checked), photos the PM picked.
+- **Customers never see site problems** (issue cards / แจ้งปัญหา), crew names, shifts, check-ins, crew notes, costs or material shortages. (Owner: "ไม่เห็น".)
+- **Customers open their progress themselves in LINE** (customer OA menu), any time — not a PM push, not a weekly push. (Owner: "เปิดดูผ่าน line".)
+
+### G — crew daily job sheet for installation (mockup https://claude.ai/artifact/SYenKGv2znFJE4Br11deXc v2)
+- No new batch booking: Assign already books several days at once. Consecutive days a worker is booked at the same site = one "รอบ"; the sheet shows "วันที่ 3/5".
+- Daily link from crew "งานวันนี้" (`/j/<token>`), valid to end of the Bangkok day, only for crew booked at that site today.
+- Items are the site's Kanban cards (open cards; the worker's own cards first, badge "ของคุณ"; issue cards grouped on top for crew only). Crew can mark a card done or "ยังทำต่อพรุ่งนี้" with photos + note — same effect as LINE "งานเสร็จ". **Crew never enter quantities**; qty/% stay PM-only in the web (owner decision 2026-10-17).
+- Open (asked 2026-11-26): who may close a card (card's crew + shift leader?), photo required, site safety text source, A4 print.
+
+### H — customer progress in LINE (later)
+- Customer OA menu → a no-login progress page for their site(s) built from the PM-confirmed data only (per the principle above). No issue cards. Design + mockup before build.
+
 ## Data changes
 
 New migrations, prefix `2026-11-2x-NN-…`. Each one gets a `.dryrun.sql` (BEGIN…ROLLBACK) first.
