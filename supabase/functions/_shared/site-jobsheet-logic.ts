@@ -39,6 +39,8 @@ export type SheetCard = {
   progressMode: string | null
   parentTaskId: string | null
   hasChildren: boolean
+  // A problem card (issue_report_id set, or in an issue phase) stays the PM's: crew cannot update it.
+  isProblem: boolean
 }
 export type PhotoInsert = {
   tenant_id: string
@@ -60,11 +62,13 @@ export type SiteJobsheetDeps = {
   hasModule: (tenantId: string) => Promise<boolean>
   loadAssignments: (tenantId: string, workerId: string, date: string) => Promise<SheetAssignment[]>
   loadSheet: (tenantId: string, siteId: string, date: string, viewerWorkerId: string) => Promise<JobSheet>
-  // Objects already uploaded under `<tenant>/<site>/<date>/js-<tokenId>-` (the per-token daily cap).
+  // Objects already uploaded under `<tenant>/<site>/<date>/js-<workerId>-` (the per-worker daily cap).
   countUploads: (prefixDir: string, filePrefix: string) => Promise<number>
   signUpload: (path: string) => Promise<{ signedUrl: string; token: string }>
   // The stored object's size + mimetype (storage metadata), or null when it is not in the bucket.
   photoMeta: (path: string) => Promise<{ size: number | null; mimetype: string | null } | null>
+  // The paths among `paths` that already have a line_site_photos row in this tenant (no double attach).
+  attachedPhotos: (tenantId: string, paths: string[]) => Promise<string[]>
   loadCard: (tenantId: string, siteId: string, taskId: string) => Promise<SheetCard | null>
   // Sets status on the card (tenant + site + id filters). fromStatus, when given, is an extra filter
   // (continue only moves a card that is still not_started).
@@ -79,7 +83,7 @@ export const TOKEN_ACTION = 'site_jobsheet'
 export const PHOTO_BUCKET = 'line-site-photos'
 export const SIGNED_URL_SECONDS = 30 * 60
 export const MAX_PHOTO_BYTES = 15 * 1024 * 1024
-export const MAX_UPLOADS_PER_TOKEN_PER_DAY = 30
+export const MAX_UPLOADS_PER_WORKER_PER_DAY = 30
 export const NOTE_MAX = 500
 export const MAX_PHOTOS = 10
 export const MIME_EXT: Readonly<Record<string, string>> = Object.freeze({ 'image/jpeg': 'jpg', 'image/png': 'png' })
@@ -126,8 +130,11 @@ async function checkToken(token: string, deps: SiteJobsheetDeps, now: number): P
 
 const sheetOf = (c: Checked, deps: SiteJobsheetDeps) => deps.loadSheet(c.tok.tenantId, c.tok.siteId, c.today, c.worker.id)
 
-// Every photo path the crew page may send: `<tenant>/<site>/<date>/js-…` of today's sheet.
+// Every photo path the crew page may send: `<tenant>/<site>/<date>/js-<workerId>-…` of today's sheet.
+// Keyed on the worker, not the token: LINE "งานวันนี้" can issue a worker several tokens a day, and the
+// cap and the ownership check must not reset with each new token.
 const photoDir = (c: Checked) => `${c.tok.tenantId}/${c.tok.siteId}/${c.today}`
+const photoFilePrefix = (c: Checked) => `js-${c.tok.workerId}-`
 
 async function view(c: Checked, deps: SiteJobsheetDeps): Promise<JobsheetResult> {
   return ok({ ok: true, sheet: await sheetOf(c, deps) })
@@ -136,9 +143,9 @@ async function view(c: Checked, deps: SiteJobsheetDeps): Promise<JobsheetResult>
 async function uploadUrl(c: Checked, ext: string, deps: SiteJobsheetDeps, now: number): Promise<JobsheetResult> {
   if (!c.isLeader) return ok({ reason: 'not_leader' })
   const dir = photoDir(c)
-  // The token id is part of the file name, so the cap counts this token's uploads only.
-  const filePrefix = `js-${c.tok.id}-`
-  if ((await deps.countUploads(dir, filePrefix)) >= MAX_UPLOADS_PER_TOKEN_PER_DAY) return ok({ error: 'too_many' }, 429)
+  // The worker id is part of the file name, so the cap counts this worker's uploads at this site today.
+  const filePrefix = photoFilePrefix(c)
+  if ((await deps.countUploads(dir, filePrefix)) >= MAX_UPLOADS_PER_WORKER_PER_DAY) return ok({ error: 'too_many' }, 429)
   const path = `${dir}/${filePrefix}${now}-${randomSuffix()}.${ext}`
   const signed = await deps.signUpload(path)
   return ok({ path, signedUrl: signed.signedUrl, uploadToken: signed.token })
@@ -167,8 +174,8 @@ async function cardUpdate(c: Checked, input: CardInput, deps: SiteJobsheetDeps):
   const tenantId = c.tok.tenantId
   const siteId = c.tok.siteId
 
-  // Only this token's own uploads of today (upload_url names them js-<tokenId>-…).
-  const prefix = `${photoDir(c)}/js-${c.tok.id}-`
+  // Only this worker's own uploads of today at this site (upload_url names them js-<workerId>-…).
+  const prefix = `${photoDir(c)}/${photoFilePrefix(c)}`
   if (input.photos.some((p) => !photoShapeOk(p, prefix))) return ok({ error: 'bad_photo' }, 400)
   // Ruling R9: the stored object, not the client's upload_url claim, must be a JPEG/PNG within the limit.
   for (const p of input.photos) {
@@ -179,9 +186,12 @@ async function cardUpdate(c: Checked, input: CardInput, deps: SiteJobsheetDeps):
     }
     if (!meta.mimetype || !PHOTO_MIMES.has(meta.mimetype)) return ok({ error: 'bad_photo' }, 400)
   }
+  // A photo already attached to a card (by an earlier card_update) cannot be attached again.
+  if ((await deps.attachedPhotos(tenantId, input.photos)).length) return ok({ error: 'bad_photo' }, 400)
 
   const card = await deps.loadCard(tenantId, siteId, input.taskId)
-  if (!card || card.tenantId !== tenantId || card.siteId !== siteId) return ok({ reason: 'card_not_found' })
+  // Problem cards are the PM's (fix in the web app), so the crew page treats them as not found.
+  if (!card || card.tenantId !== tenantId || card.siteId !== siteId || card.isProblem) return ok({ reason: 'card_not_found' })
 
   const rule = { progress_mode: card.progressMode, parent_task_id: card.parentTaskId, has_children: card.hasChildren }
   const doneable = isWorkerDoneable(rule)

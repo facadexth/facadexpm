@@ -70,10 +70,10 @@ function tables(over = {}) {
     ], error: null },
     phase_tasks: { data: [
       { id: 'k1', phase_id: 'p1', name: 'กรอบชั้น 1', zone: 'A', status: 'in_progress', sort_order: 1, progress_mode: 'quantity',
-        planned_qty: 10, done_qty: 4, issue_report_id: null, parent_task_id: null, updated_at: null,
+        planned_qty: 10, done_qty: 4, issue_report_id: null, parent_task_id: null, status_changed_at: null,
         boq_items: { unit: 'ชุด' }, phase_task_workers: [{ worker_id: 'w1' }, { worker_id: 'w2' }] },
       { id: 'k2', phase_id: 'p1', name: 'บานย่อย', zone: 'A', status: 'not_started', sort_order: 2, progress_mode: 'status',
-        planned_qty: null, done_qty: 0, issue_report_id: null, parent_task_id: 'k1', updated_at: null,
+        planned_qty: null, done_qty: 0, issue_report_id: null, parent_task_id: 'k1', status_changed_at: '2026-11-26T02:00:00Z',
         boq_items: null, phase_task_workers: [] },
     ], error: null },
     site_drawings: { data: [
@@ -155,6 +155,17 @@ describe('loadJobSheetInput', () => {
     expect(none.crew).toEqual([])
     expect(none.run).toBeNull()
     expect(empty.calls.filter((c) => c.table === 'worker_assignments')).toHaveLength(1)
+  })
+
+  it('cards: status_changed_at (not updated_at) and parent_task_id read and passed on', async () => {
+    const { db, calls } = fakeDb(tables())
+    const input = await loadJobSheetInput(db, 's1', opts())
+    const sel = calls.find((c) => c.table === 'phase_tasks').select
+    expect(sel).toContain('status_changed_at')
+    expect(sel).not.toContain('updated_at')
+    expect(input.cards[0]).toMatchObject({ id: 'k1', parent_task_id: null, status_changed_at: null })
+    expect(input.cards[1]).toMatchObject({ id: 'k2', parent_task_id: 'k1', status_changed_at: '2026-11-26T02:00:00Z' })
+    expect(input.cards[0]).not.toHaveProperty('updated_at')
   })
 
   it('cards: unit from the BOQ line, has_children from the same rows, worker ids; phases + site mapped', async () => {
@@ -244,7 +255,9 @@ describe('loadJobSheet (web wrapper)', () => {
     db.storage = { from: vi.fn(() => ({ createSignedUrls: vi.fn() })) }
     return { db, calls, rpcCalls }
   }
-  const { tenant_id: _omit, ...PM_SITE_ROW } = { ...SITE, safety_note: 'ระวังสายไฟ', client_name: 'x' }
+  // pm_sites() rows carry no tenant_id
+  const PM_SITE_ROW = { ...SITE, safety_note: 'ระวังสายไฟ', client_name: 'x' }
+  delete PM_SITE_ROW.tenant_id
 
   it('PM: site from pm_sites() (tenant from the logged-in tenant), crew names from pm_workers(), no drawings', async () => {
     const { db, calls, rpcCalls } = pmDb({

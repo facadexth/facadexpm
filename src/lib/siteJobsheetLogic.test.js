@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  handleSiteJobsheet, SIGNED_URL_SECONDS, MAX_UPLOADS_PER_TOKEN_PER_DAY, MAX_PHOTO_BYTES, PHOTO_BUCKET,
+  handleSiteJobsheet, SIGNED_URL_SECONDS, MAX_UPLOADS_PER_WORKER_PER_DAY, MAX_PHOTO_BYTES, PHOTO_BUCKET,
   STATUS_UNCHANGED_NOTE,
 } from '../../supabase/functions/_shared/site-jobsheet-logic.ts'
 import {
@@ -11,8 +11,8 @@ import {
 const NOW = Date.UTC(2026, 10, 26, 3, 0, 0)
 const TODAY = '2026-11-26'
 const DIR = `tn1/s1/${TODAY}`
-const P1 = `${DIR}/js-tok1-${NOW}-aaaaaa.jpg`
-const P2 = `${DIR}/js-tok1-${NOW}-bbbbbb.png`
+const P1 = `${DIR}/js-w1-${NOW}-aaaaaa.jpg`
+const P2 = `${DIR}/js-w1-${NOW}-bbbbbb.png`
 const TASK = '0b6f2c1e-7a4d-4c3b-9e21-5d8f0a1b2c3d'
 const PLAN_DB_ERROR = 'บันทึก PLAN v1 ของไซท์นี้ก่อนเริ่มบันทึกความคืบหน้า'
 
@@ -23,7 +23,7 @@ const tokenRow = (over = {}) => ({
 const workerRow = (over = {}) => ({ id: 'w1', tenantId: 'tn1', status: 'active', ...over })
 const leaderRow = (over = {}) => ({ siteId: 's1', type: 'site', repairTicketId: null, isTeamLeader: true, ...over })
 const cardRow = (over = {}) => ({
-  id: TASK, tenantId: 'tn1', siteId: 's1', status: 'not_started', progressMode: 'status', parentTaskId: null, hasChildren: false, ...over,
+  id: TASK, tenantId: 'tn1', siteId: 's1', status: 'not_started', progressMode: 'status', parentTaskId: null, hasChildren: false, isProblem: false, ...over,
 })
 const SHEET = { siteName: 'ไซต์ A', groups: [], viewerIsLeader: true }
 
@@ -53,6 +53,7 @@ function deps(over = {}) {
     countUploads: vi.fn(async () => 0),
     signUpload: vi.fn(async () => ({ signedUrl: 'https://x/upload', token: 'up1' })),
     photoMeta: vi.fn(async () => ({ size: 400_000, mimetype: 'image/jpeg' })),
+    attachedPhotos: vi.fn(async () => []),
     loadCard: vi.fn(async () => cardRow()),
     updateCardStatus: vi.fn(async () => ({ updated: 1 })),
     insertPhotos: vi.fn(async (rows) => rows.map((_, i) => `ph${i + 1}`)),
@@ -170,7 +171,7 @@ describe('bad input → 400', () => {
     expect((await r({ note: 'ก'.repeat(501) })).body).toEqual({ error: 'bad_note' })
     expect((await r({ photos: [] })).body).toEqual({ error: 'bad_photos' })
     expect((await r({ photos: undefined })).body).toEqual({ error: 'bad_photos' })
-    expect((await r({ photos: Array.from({ length: 11 }, (_, i) => `${DIR}/js-tok1-${i}.jpg`) })).body).toEqual({ error: 'bad_photos' })
+    expect((await r({ photos: Array.from({ length: 11 }, (_, i) => `${DIR}/js-w1-${i}.jpg`) })).body).toEqual({ error: 'bad_photos' })
     expect((await r({ photos: [P1, P1] })).body).toEqual({ error: 'bad_photo' })
     expect((await r({ photos: [7] })).body).toEqual({ error: 'bad_photo' })
     expect((await r({ photos: [P1] })).status).toBe(200)
@@ -211,14 +212,14 @@ describe('view', () => {
 })
 
 describe('upload_url', () => {
-  it('leader → signed upload under <tenant>/<site>/<date>/js-<token>-<now>-<rand>.<ext>', async () => {
+  it('leader → signed upload under <tenant>/<site>/<date>/js-<worker>-<now>-<rand>.<ext>', async () => {
     const d = deps()
     const r = await handleSiteJobsheet(upload(), d, NOW)
     expect(r.status).toBe(200)
-    expect(r.body.path).toMatch(new RegExp(`^tn1/s1/${TODAY}/js-tok1-${NOW}-[a-z0-9]{6}\\.jpg$`))
+    expect(r.body.path).toMatch(new RegExp(`^tn1/s1/${TODAY}/js-w1-${NOW}-[a-z0-9]{6}\\.jpg$`))
     expect(r.body).toMatchObject({ signedUrl: 'https://x/upload', uploadToken: 'up1' })
     expect(d.signUpload).toHaveBeenCalledWith(r.body.path)
-    expect(d.countUploads).toHaveBeenCalledWith(DIR, 'js-tok1-')
+    expect(d.countUploads).toHaveBeenCalledWith(DIR, 'js-w1-')
   })
 
   it('png → .png', async () => {
@@ -231,13 +232,21 @@ describe('upload_url', () => {
     expect(d.signUpload).not.toHaveBeenCalled()
   })
 
-  it(`cap: ${MAX_UPLOADS_PER_TOKEN_PER_DAY} per token per day → 429 too_many`, async () => {
-    expect(MAX_UPLOADS_PER_TOKEN_PER_DAY).toBe(30)
+  it(`cap: ${MAX_UPLOADS_PER_WORKER_PER_DAY} per worker per site per day → 429 too_many`, async () => {
+    expect(MAX_UPLOADS_PER_WORKER_PER_DAY).toBe(30)
     const d = deps({ countUploads: vi.fn(async () => 30) })
     expect(await handleSiteJobsheet(upload(), d, NOW)).toEqual({ status: 429, body: { error: 'too_many' } })
     expect(d.signUpload).not.toHaveBeenCalled()
     const d2 = deps({ countUploads: vi.fn(async () => 29) })
     expect((await handleSiteJobsheet(upload(), d2, NOW)).status).toBe(200)
+  })
+
+  it('the cap and the path follow the worker, not the token (a second token the same day counts the same uploads)', async () => {
+    const d = deps({ loadToken: vi.fn(async () => tokenRow({ id: 'tok9' })), countUploads: vi.fn(async () => 30) })
+    expect(await handleSiteJobsheet(upload(), d, NOW)).toEqual({ status: 429, body: { error: 'too_many' } })
+    expect(d.countUploads).toHaveBeenCalledWith(DIR, 'js-w1-')
+    const d2 = deps({ loadToken: vi.fn(async () => tokenRow({ id: 'tok9' })) })
+    expect((await handleSiteJobsheet(upload(), d2, NOW)).body.path).toMatch(new RegExp(`^${DIR}/js-w1-${NOW}-`))
   })
 
   it('signing fails → 500 generic', async () => {
@@ -282,16 +291,16 @@ describe('card_update', () => {
 
   describe('photo prefix check → 400 bad_photo, nothing written', () => {
     const bad = {
-      'other tenant': `tn2/s1/${TODAY}/js-tok1-1-a.jpg`,
-      'other site': `tn1/s2/${TODAY}/js-tok1-1-a.jpg`,
-      'other day': `tn1/s1/2026-11-25/js-tok1-1-a.jpg`,
-      'other token (someone else\'s upload)': `${DIR}/js-tok2-1-a.jpg`,
-      'js- without token': `${DIR}/js-${NOW}-aaaaaa.jpg`,
+      'other tenant': `tn2/s1/${TODAY}/js-w1-1-a.jpg`,
+      'other site': `tn1/s2/${TODAY}/js-w1-1-a.jpg`,
+      'other day': `tn1/s1/2026-11-25/js-w1-1-a.jpg`,
+      'other worker (someone else\'s upload)': `${DIR}/js-w2-1-a.jpg`,
+      'js- without worker': `${DIR}/js-${NOW}-aaaaaa.jpg`,
       'LINE photo (not js-)': `${DIR}/line-1.jpg`,
-      'dot dot': `${DIR}/js-tok1-../../x.jpg`,
-      'sub folder': `${DIR}/js-tok1-x/y.jpg`,
-      'not an image': `${DIR}/js-tok1-1-a.mp4`,
-      'prefix only': `${DIR}/js-tok1-`,
+      'dot dot': `${DIR}/js-w1-../../x.jpg`,
+      'sub folder': `${DIR}/js-w1-x/y.jpg`,
+      'not an image': `${DIR}/js-w1-1-a.mp4`,
+      'prefix only': `${DIR}/js-w1-`,
     }
     for (const [name, path] of Object.entries(bad)) {
       it(name, async () => {
@@ -327,6 +336,29 @@ describe('card_update', () => {
       const d = deps({ photoMeta: vi.fn(async () => ({ size: MAX_PHOTO_BYTES, mimetype: 'image/png' })) })
       expect((await handleSiteJobsheet(update(), d, NOW)).body.ok).toBe(true)
     })
+  })
+
+  it('a photo from an earlier token of the same worker today is accepted (ownership is the worker)', async () => {
+    const d = deps({ loadToken: vi.fn(async () => tokenRow({ id: 'tok9' })) })
+    expect((await handleSiteJobsheet(update(), d, NOW)).body.ok).toBe(true)
+  })
+
+  it('a photo that already has a line_site_photos row → 400 bad_photo, nothing written (no double attach)', async () => {
+    const d = deps({ attachedPhotos: vi.fn(async (_t, paths) => paths.filter((p) => p === P2)) })
+    expect(await handleSiteJobsheet(update({ photos: [P1, P2] }), d, NOW)).toEqual({ status: 400, body: { error: 'bad_photo' } })
+    expect(d.attachedPhotos).toHaveBeenCalledWith('tn1', [P1, P2])
+    expect(d.loadCard).not.toHaveBeenCalled()
+    expect(d.insertPhotos).not.toHaveBeenCalled()
+    expect(d.updateCardStatus).not.toHaveBeenCalled()
+  })
+
+  it('problem card (issue report / issue phase) → card_not_found, nothing written', async () => {
+    for (const mode of ['done', 'continue']) {
+      const d = deps({ loadCard: vi.fn(async () => cardRow({ isProblem: true })) })
+      expect((await handleSiteJobsheet(update({ mode }), d, NOW)).body).toEqual({ reason: 'card_not_found' })
+      expect(d.updateCardStatus).not.toHaveBeenCalled()
+      expect(d.insertPhotos).not.toHaveBeenCalled()
+    }
   })
 
   it('card of another site / tenant / gone → card_not_found', async () => {

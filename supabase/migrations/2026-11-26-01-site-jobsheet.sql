@@ -16,8 +16,13 @@
 --    DROP fail, not cascade).
 -- 4) app_settings pm_reads: + 'site_safety_note_default' (PMs see the company default on the form and sheet).
 -- DROP CONSTRAINT has no IF EXISTS on purpose: a missing name means live drifted from this file — stop.
--- No view selects line_deep_link_tokens.* or sites.* (grep of supabase/ 2026-11-26; the only x.* views are
--- expenses_view e.*), so no view to recreate.
+-- 5) phase_tasks.status_changed_at (final review F1): when the card's status last changed, stamped by a
+--    trigger. The job sheet's "done today" reads it (updated_at is not maintained by any trigger, so a card
+--    closed today used to vanish). No backfill: old done cards stay NULL and so are never "done today".
+-- 6) line-site-photos bucket (final review F2): 15 MB per object, JPEG/PNG only. Every uploader sends
+--    image/jpeg (LINE webhook x3, src/lib/photoUpload.js) or image/jpeg|image/png (crew page signed upload).
+-- No view selects line_deep_link_tokens.*, sites.* or phase_tasks.* (grep of supabase/ 2026-11-26; the only
+-- x.* views are expenses_view e.*; no view in supabase/ reads phase_tasks at all), so no view to recreate.
 
 BEGIN;
 
@@ -115,5 +120,38 @@ DO $p$ BEGIN
     AND key = ANY (ARRAY['require_checkin_confirmation', 'regular_shift_end_time', 'checkin_radius_m',
                          'phase_template', 'phase_templates_extra', 'site_safety_note_default']))$q$;
 END $p$;
+
+-- ---------------------------------------------------------------- phase_tasks.status_changed_at (F1)
+ALTER TABLE public.phase_tasks ADD COLUMN status_changed_at timestamptz NULL;
+
+CREATE FUNCTION public.touch_status_changed_at() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = public
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status IS DISTINCT FROM 'not_started' THEN NEW.status_changed_at := now(); END IF;
+  ELSIF NEW.status IS DISTINCT FROM OLD.status THEN
+    NEW.status_changed_at := now();
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.touch_status_changed_at() FROM PUBLIC, anon, authenticated;
+
+-- BEFORE triggers fire in name order (trg_a_card_weight, trg_check_task_refs, trg_guard_derived_status,
+-- trg_require_site_plan[_ins]); trg_z_* fires last. It only stamps a timestamp, so it cannot change what
+-- the others accept or refuse; firing last means it sees the final NEW.status, including a quantity card's
+-- status re-derived by guard_derived_status. For the same reason the UPDATE trigger has no column list
+-- (UPDATE OF status would miss a status changed by an earlier trigger when the statement did not name it);
+-- the WHEN clause, evaluated just before the function runs, keeps it to real status changes.
+CREATE TRIGGER trg_z_status_changed_at BEFORE UPDATE ON public.phase_tasks
+  FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION public.touch_status_changed_at();
+CREATE TRIGGER trg_z_status_changed_at_ins BEFORE INSERT ON public.phase_tasks
+  FOR EACH ROW WHEN (NEW.status IS DISTINCT FROM 'not_started') EXECUTE FUNCTION public.touch_status_changed_at();
+
+-- ---------------------------------------------------------------- line-site-photos bucket limits (F2)
+-- Was NULL/NULL (any size, any type). Every existing object is image/jpeg, at most 1.4 MB (checked live
+-- 2026-11-26), so nothing already stored is affected (limits apply to new uploads only).
+UPDATE storage.buckets SET file_size_limit = 15728640, allowed_mime_types = ARRAY['image/jpeg','image/png']
+ WHERE id = 'line-site-photos';
 
 COMMIT;

@@ -13,7 +13,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks() })
 const card = (over = {}) => ({
   id: 'c1', phase_id: 'p1', name: 'งาน', zone: null, status: 'not_started', sort_order: 0,
   progress_mode: 'status', planned_qty: null, done_qty: null, unit: null, issue_report_id: null,
-  has_children: false, worker_ids: [], updated_at: '2026-11-20T03:00:00Z', ...over,
+  has_children: false, worker_ids: [], status_changed_at: '2026-11-20T03:00:00Z', ...over,
 })
 
 const input = (over = {}) => ({

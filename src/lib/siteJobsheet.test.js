@@ -7,7 +7,7 @@ import { QUANTITY_BLOCKED_MESSAGE, PARENT_BLOCKED_MESSAGE } from '../../supabase
 const card = (over = {}) => ({
   id: 'c1', phase_id: 'p1', name: 'งาน', zone: null, status: 'not_started', sort_order: 0,
   progress_mode: 'status', planned_qty: null, done_qty: null, unit: null, issue_report_id: null,
-  has_children: false, worker_ids: [], updated_at: '2026-11-20T03:00:00Z', ...over,
+  has_children: false, worker_ids: [], status_changed_at: '2026-11-20T03:00:00Z', ...over,
 })
 
 const base = (over = {}) => ({
@@ -147,7 +147,7 @@ describe('buildJobSheet cards', () => {
     const cards = [
       card({ id: 'i1', phase_id: 'pi', name: 'กระจกแตก', zone: 'ชั้น 3' }),
       card({ id: 'i2', phase_id: 'p1', name: 'รั่ว', issue_report_id: 'r1' }),
-      card({ id: 'i3', phase_id: 'pi', name: 'แก้แล้ว', status: 'done', updated_at: '2026-11-26T02:00:00Z' }),
+      card({ id: 'i3', phase_id: 'pi', name: 'แก้แล้ว', status: 'done', status_changed_at: '2026-11-26T02:00:00Z' }),
       card({ id: 'n1', phase_id: 'p1' }),
     ]
     const s = buildJobSheet(base({ cards }))
@@ -159,9 +159,9 @@ describe('buildJobSheet cards', () => {
   })
   it('done today (Bangkok date) kept, done earlier dropped', () => {
     const cards = [
-      card({ id: 'today', status: 'done', updated_at: '2026-11-25T18:30:00Z' }), // 01:30 on 26th in Bangkok
-      card({ id: 'yday', status: 'done', updated_at: '2026-11-25T16:00:00Z' }), // 23:00 on 25th in Bangkok
-      card({ id: 'nodate', status: 'done', updated_at: null }),
+      card({ id: 'today', status: 'done', status_changed_at: '2026-11-25T18:30:00Z' }), // 01:30 on 26th in Bangkok
+      card({ id: 'yday', status: 'done', status_changed_at: '2026-11-25T16:00:00Z' }), // 23:00 on 25th in Bangkok
+      card({ id: 'nodate', status: 'done', status_changed_at: null }),
       card({ id: 'open', status: 'in_progress' }),
     ]
     const s = buildJobSheet(base({ cards }))
@@ -172,6 +172,13 @@ describe('buildJobSheet cards', () => {
     expect(shown.find((c) => c.id === 'today').status).toBe('done')
     expect(shown.find((c) => c.id === 'open').status).toBe('in_progress')
     expect(buildJobSheet(base({ cards: [card()] })).groups[0].cards[0].statusText).toBe('ยังไม่เริ่ม')
+  })
+  it('done today is read from status_changed_at only: an updated_at of today does not count', () => {
+    const cards = [
+      card({ id: 'old', status: 'done', status_changed_at: '2026-11-20T03:00:00Z', updated_at: '2026-11-26T03:00:00Z' }),
+      card({ id: 'new', status: 'done', status_changed_at: '2026-11-26T03:00:00Z', updated_at: '2026-11-01T03:00:00Z' }),
+    ]
+    expect(buildJobSheet(base({ cards })).groups.flatMap((g) => g.cards.map((c) => c.id))).toEqual(['new'])
   })
   it('qty text', () => {
     const cards = [
@@ -197,7 +204,8 @@ describe('buildJobSheet cards', () => {
       card({ id: 'q', sort_order: 1, progress_mode: 'quantity', planned_qty: 5, done_qty: 1 }),
       card({ id: 'p', sort_order: 2, has_children: true }),
       card({ id: 's', sort_order: 3 }),
-      card({ id: 'd', sort_order: 4, status: 'done', updated_at: '2026-11-26T05:00:00Z' }),
+      card({ id: 'd', sort_order: 4, status: 'done', status_changed_at: '2026-11-26T05:00:00Z' }),
+      card({ id: 'c', sort_order: 5, parent_task_id: 'p' }), // a child card closes like any status card
     ]
     const shown = buildJobSheet(base({ cards })).groups[0].cards
     expect(shown.map((c) => [c.id, c.canClose, c.blockedText])).toEqual([
@@ -205,6 +213,7 @@ describe('buildJobSheet cards', () => {
       ['p', false, PARENT_BLOCKED_MESSAGE],
       ['s', true, null],
       ['d', false, null],
+      ['c', true, null],
     ])
     expect(QUANTITY_BLOCKED_MESSAGE).toBe('งานนี้นับเป็นจำนวน ให้ PM บันทึกยอดในแอป')
     expect(PARENT_BLOCKED_MESSAGE).toBe('งานนี้มีงานย่อย ให้กดเสร็จที่งานย่อย')

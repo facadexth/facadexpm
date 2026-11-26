@@ -131,12 +131,23 @@ const deps: SiteJobsheetDeps = {
     }
   },
 
+  async attachedPhotos(tenantId, paths) {
+    if (!paths.length) return []
+    const { data, error } = await admin.from('line_site_photos').select('photo_path')
+      .eq('tenant_id', tenantId).in('photo_path', paths)
+    if (error) throw error
+    return [...new Set((data ?? []).map((r) => r.photo_path as string))]
+  },
+
   async loadCard(tenantId, siteId, taskId) {
     const { data: t, error } = await admin.from('phase_tasks')
-      .select('id, tenant_id, site_id, status, progress_mode, parent_task_id')
+      .select('id, tenant_id, site_id, phase_id, status, progress_mode, parent_task_id, issue_report_id')
       .eq('tenant_id', tenantId).eq('site_id', siteId).eq('id', taskId).maybeSingle()
     if (error) throw error
     if (!t) return null
+    const { data: ph, error: pe } = await admin.from('site_phases').select('is_issue_phase')
+      .eq('tenant_id', tenantId).eq('id', t.phase_id).maybeSingle()
+    if (pe) throw pe
     const { data: kids, error: ke } = await admin.from('phase_tasks').select('id')
       .eq('tenant_id', tenantId).eq('parent_task_id', taskId).limit(1)
     if (ke) throw ke
@@ -148,6 +159,7 @@ const deps: SiteJobsheetDeps = {
       progressMode: (t.progress_mode as string | null) ?? null,
       parentTaskId: (t.parent_task_id as string | null) ?? null,
       hasChildren: (kids ?? []).length > 0,
+      isProblem: !!t.issue_report_id || ph?.is_issue_phase === true,
     }
   },
 

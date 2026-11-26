@@ -165,6 +165,21 @@ describe('SiteJobSheetPage view', () => {
     expect(container.querySelectorAll('.js-box.done').length).toBe(1)
   })
 
+  it('the tick follows status, not statusText (the two disagree on purpose)', async () => {
+    const A = '44444444-4444-4444-8444-444444444444'
+    const B = '55555555-5555-4555-8555-555555555555'
+    viewSheet = sheetOf()
+    viewSheet.groups[0].cards = [
+      card({ id: A, name: 'การ์ด ก', status: 'done', statusText: 'กำลังทำ', canClose: false }),
+      card({ id: B, name: 'การ์ด ข', status: 'in_progress', statusText: 'เสร็จแล้ว' }),
+    ]
+    const { container } = render(<SiteJobSheetPage token="tok" />)
+    await screen.findByText('การ์ด ก')
+    expect(container.querySelector(`[data-card="${A}"] .js-box.done`)).toBeTruthy()
+    expect(container.querySelector(`[data-card="${B}"] .js-box`)).toBeTruthy()
+    expect(container.querySelector(`[data-card="${B}"] .js-box.done`)).toBe(null)
+  })
+
   it('problem cards are never tappable, even for the leader', async () => {
     render(<SiteJobSheetPage token="tok" />)
     fireEvent.click(await screen.findByText('กระจกร้าว'))

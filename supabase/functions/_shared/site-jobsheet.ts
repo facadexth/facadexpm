@@ -38,8 +38,11 @@ export type JobSheetInput = {
   cards: Array<{
     id: string; phase_id: string; name: string; zone?: string | null; status: 'not_started' | 'in_progress' | 'done'
     sort_order?: number | null; progress_mode?: string | null; planned_qty?: number | null; done_qty?: number | null
-    unit?: string | null; issue_report_id?: string | null; has_children?: boolean; worker_ids: string[]
-    updated_at?: string | null
+    unit?: string | null; issue_report_id?: string | null; parent_task_id?: string | null; has_children?: boolean
+    worker_ids: string[]
+    // When the status last changed (phase_tasks.status_changed_at, set by trigger); NULL for cards last
+    // moved before 2026-11-26-01. A done card is shown only when this is today (Bangkok).
+    status_changed_at?: string | null
   }>
   drawings: Array<{ id: string; title: string; url: string | null; mime?: string | null }>
   viewerWorkerId?: string | null // crew page: the token's worker
@@ -182,7 +185,7 @@ export function buildJobSheet(input: JobSheetInput): JobSheet {
   const nameOf = new Map(crew.map((c) => [c.worker_id, str(c.name)]))
 
   const isIssue = (c: Card) => !!c.issue_report_id || phases.get(c.phase_id)?.is_issue_phase === true
-  const shown = (c: Card) => c.status !== 'done' || bangkokDate(c.updated_at) === date
+  const shown = (c: Card) => c.status !== 'done' || bangkokDate(c.status_changed_at) === date
 
   // Crew hint only: share of cards done in the phase with the most open cards. The weighted
   // 100-point % is the PM's figure in the web app; this deliberately just counts cards.
@@ -237,7 +240,8 @@ export function buildJobSheet(input: JobSheetInput): JobSheet {
         .sort((a, b) => Number(isMine(b)) - Number(isMine(a)) || (a.sort_order ?? 0) - (b.sort_order ?? 0)
           || byText(str(a.name), str(b.name)))
         .map((c): JobSheetCard => {
-          const rule = { progress_mode: c.progress_mode ?? null, has_children: c.has_children === true }
+          // Same rule input as the crew page's server check (site-jobsheet-logic.ts cardUpdate).
+          const rule = { progress_mode: c.progress_mode ?? null, parent_task_id: c.parent_task_id ?? null, has_children: c.has_children === true }
           const owners = (c.worker_ids || []).map((id) => nameOf.get(id)).filter((n): n is string => !!n)
           return {
             id: c.id,

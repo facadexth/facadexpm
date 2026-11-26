@@ -78,7 +78,7 @@ type AssignmentRow = {
 type TaskRow = {
   id: string; phase_id: string; name: string; zone?: string | null; status: JobSheetInput['cards'][number]['status']
   sort_order?: number | null; progress_mode?: string | null; planned_qty?: number | null; done_qty?: number | null
-  issue_report_id?: string | null; parent_task_id?: string | null; updated_at?: string | null
+  issue_report_id?: string | null; parent_task_id?: string | null; status_changed_at?: string | null
   boq_items?: { unit?: string | null } | null
   phase_task_workers?: Array<{ worker_id: string }> | null
 }
@@ -152,7 +152,7 @@ export async function loadJobSheetInput(db: Db, siteId: string, opts: JobSheetLo
   if (pe) fail(pe)
 
   const { data: tasks, error: ke } = await db.from('phase_tasks')
-    .select('id, phase_id, name, zone, status, sort_order, progress_mode, planned_qty, done_qty, issue_report_id, parent_task_id, updated_at, boq_items(unit), phase_task_workers(worker_id)')
+    .select('id, phase_id, name, zone, status, sort_order, progress_mode, planned_qty, done_qty, issue_report_id, parent_task_id, status_changed_at, boq_items(unit), phase_task_workers(worker_id)')
     .eq('tenant_id', tenantId).eq('site_id', site.id)
     .order('sort_order', { ascending: true })
   if (ke) fail(ke)
@@ -162,9 +162,9 @@ export async function loadJobSheetInput(db: Db, siteId: string, opts: JobSheetLo
     id: t.id, phase_id: t.phase_id, name: t.name, zone: t.zone ?? null, status: t.status,
     sort_order: t.sort_order ?? null, progress_mode: t.progress_mode ?? null,
     planned_qty: t.planned_qty ?? null, done_qty: t.done_qty ?? null, unit: t.boq_items?.unit ?? null,
-    issue_report_id: t.issue_report_id ?? null, has_children: parents.has(t.id),
+    issue_report_id: t.issue_report_id ?? null, parent_task_id: t.parent_task_id ?? null, has_children: parents.has(t.id),
     worker_ids: [...new Set((t.phase_task_workers || []).map((w) => w.worker_id).filter(Boolean))],
-    updated_at: t.updated_at ?? null,
+    status_changed_at: t.status_changed_at ?? null,
   }))
 
   const { data: drawingRows, error: de } = await db.from('site_drawings')

@@ -2,7 +2,8 @@
 --   npx supabase db query --linked -f <this file>
 -- BEGIN, pre-checks on the live constraints, the migration inlined verbatim (without its BEGIN/COMMIT),
 -- cases as DO blocks with ASSERTs, then RAISE EXCEPTION 'RESULT ok' so everything rolls back. Writes nothing.
--- Demo tenant on CHANG, any of its sites / workers; demo ticket RP2611-001 for the repair_workorder case.
+-- Demo tenant on CHANG, any of its sites / workers / non-issue phases; demo ticket RP2611-001 for the
+-- repair_workorder case.
 -- No psql meta-commands.
 BEGIN;
 
@@ -93,6 +94,32 @@ BEGIN
      OR v_def NOT LIKE '%''phase_templates_extra''%' THEN
     RAISE EXCEPTION 'PRE: app_settings pm_reads differs from 2026-10-24-01: %', v_def;
   END IF;
+
+  -- F1: phase_tasks.status_changed_at + its function/triggers not there yet
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+              AND table_name = 'phase_tasks' AND column_name = 'status_changed_at') THEN
+    RAISE EXCEPTION 'PRE: phase_tasks.status_changed_at already exists';
+  END IF;
+  IF to_regprocedure('public.touch_status_changed_at()') IS NOT NULL THEN
+    RAISE EXCEPTION 'PRE: touch_status_changed_at() already exists';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.phase_tasks'::regclass
+              AND tgname IN ('trg_z_status_changed_at', 'trg_z_status_changed_at_ins')) THEN
+    RAISE EXCEPTION 'PRE: a trg_z_status_changed_at trigger already exists';
+  END IF;
+  -- views reading phase_tasks (a view's x.* list freezes; none is expected): listed for the controller
+  RAISE NOTICE 'views on phase_tasks: %', COALESCE((
+    SELECT string_agg(DISTINCT r.ev_class::regclass::text, ', ')
+      FROM pg_depend d JOIN pg_rewrite r ON r.oid = d.objid
+     WHERE d.refobjid = 'public.phase_tasks'::regclass AND d.classid = 'pg_rewrite'::regclass
+       AND r.ev_class <> 'public.phase_tasks'::regclass), 'none');
+
+  -- F2: bucket exists, still unlimited (verified live 2026-11-26)
+  SELECT CASE WHEN file_size_limit IS NULL AND allowed_mime_types IS NULL THEN 'unlimited'
+              ELSE coalesce(file_size_limit::text, 'null') || ' ' || coalesce(allowed_mime_types::text, 'null') END
+    INTO v_def FROM storage.buckets WHERE id = 'line-site-photos';
+  IF v_def IS NULL THEN RAISE EXCEPTION 'PRE: bucket line-site-photos not found'; END IF;
+  IF v_def <> 'unlimited' THEN RAISE EXCEPTION 'PRE: line-site-photos limits already set: %', v_def; END IF;
 
   RAISE NOTICE 'pre-checks ok';
 END $$;
@@ -190,6 +217,39 @@ DO $p$ BEGIN
     AND key = ANY (ARRAY['require_checkin_confirmation', 'regular_shift_end_time', 'checkin_radius_m',
                          'phase_template', 'phase_templates_extra', 'site_safety_note_default']))$q$;
 END $p$;
+
+-- ---------------------------------------------------------------- phase_tasks.status_changed_at (F1)
+ALTER TABLE public.phase_tasks ADD COLUMN status_changed_at timestamptz NULL;
+
+CREATE FUNCTION public.touch_status_changed_at() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = public
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status IS DISTINCT FROM 'not_started' THEN NEW.status_changed_at := now(); END IF;
+  ELSIF NEW.status IS DISTINCT FROM OLD.status THEN
+    NEW.status_changed_at := now();
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.touch_status_changed_at() FROM PUBLIC, anon, authenticated;
+
+-- BEFORE triggers fire in name order (trg_a_card_weight, trg_check_task_refs, trg_guard_derived_status,
+-- trg_require_site_plan[_ins]); trg_z_* fires last. It only stamps a timestamp, so it cannot change what
+-- the others accept or refuse; firing last means it sees the final NEW.status, including a quantity card's
+-- status re-derived by guard_derived_status. For the same reason the UPDATE trigger has no column list
+-- (UPDATE OF status would miss a status changed by an earlier trigger when the statement did not name it);
+-- the WHEN clause, evaluated just before the function runs, keeps it to real status changes.
+CREATE TRIGGER trg_z_status_changed_at BEFORE UPDATE ON public.phase_tasks
+  FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION public.touch_status_changed_at();
+CREATE TRIGGER trg_z_status_changed_at_ins BEFORE INSERT ON public.phase_tasks
+  FOR EACH ROW WHEN (NEW.status IS DISTINCT FROM 'not_started') EXECUTE FUNCTION public.touch_status_changed_at();
+
+-- ---------------------------------------------------------------- line-site-photos bucket limits (F2)
+-- Was NULL/NULL (any size, any type). Every existing object is image/jpeg, at most 1.4 MB (checked live
+-- 2026-11-26), so nothing already stored is affected (limits apply to new uploads only).
+UPDATE storage.buckets SET file_size_limit = 15728640, allowed_mime_types = ARRAY['image/jpeg','image/png']
+ WHERE id = 'line-site-photos';
 
 -- ===================== dry-run cases =====================
 DO $$
@@ -365,6 +425,59 @@ BEGIN
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claims', '', true);
   RAISE NOTICE 'case j ok';
+END $$;
+
+-- ===================== F1/F2 cases (k-n) =====================
+-- The derived-status flag skips the plan gate and the worker guards (both outside this test); the new
+-- trigger does not read it, so the stamping under test is the same with or without it.
+DO $$
+DECLARE
+  v_tenant uuid := '8b61c890-0a90-4223-91d3-b5f8f4e89908';
+  v_phase record;
+  v_card uuid;
+  v_card2 uuid;
+  v_past timestamptz := '2026-01-01 00:00:00+00';
+  v_at timestamptz;
+BEGIN
+  SELECT id, site_id INTO v_phase FROM site_phases WHERE tenant_id = v_tenant AND NOT is_issue_phase ORDER BY id LIMIT 1;
+  IF v_phase.id IS NULL THEN RAISE EXCEPTION 'SETUP: no site phase in the demo tenant'; END IF;
+  PERFORM set_config('app.derived_status', '1', true);
+
+  -- (k) insert not_started -> NULL; update not_started -> in_progress stamps now()
+  INSERT INTO phase_tasks (phase_id, site_id, tenant_id, name, status)
+  VALUES (v_phase.id, v_phase.site_id, v_tenant, 'dryrun-status-k', 'not_started') RETURNING id INTO v_card;
+  ASSERT (SELECT status_changed_at FROM phase_tasks WHERE id = v_card) IS NULL, '(k) not_started insert was stamped';
+  UPDATE phase_tasks SET status = 'in_progress' WHERE id = v_card;
+  ASSERT (SELECT status_changed_at FROM phase_tasks WHERE id = v_card) = now(), '(k) status change not stamped';
+  RAISE NOTICE 'case k ok';
+
+  -- (l) updates that do not change status leave it: another column, and status set to the same value
+  UPDATE phase_tasks SET status_changed_at = v_past WHERE id = v_card;
+  UPDATE phase_tasks SET name = 'dryrun-status-l' WHERE id = v_card;
+  ASSERT (SELECT status_changed_at FROM phase_tasks WHERE id = v_card) = v_past, '(l) name update re-stamped';
+  UPDATE phase_tasks SET status = 'in_progress' WHERE id = v_card;
+  ASSERT (SELECT status_changed_at FROM phase_tasks WHERE id = v_card) = v_past, '(l) same-status update re-stamped';
+  UPDATE phase_tasks SET status = 'done' WHERE id = v_card;
+  ASSERT (SELECT status_changed_at FROM phase_tasks WHERE id = v_card) = now(), '(l) in_progress -> done not stamped';
+  RAISE NOTICE 'case l ok';
+
+  -- (m) insert with status done stamps it
+  INSERT INTO phase_tasks (phase_id, site_id, tenant_id, name, status)
+  VALUES (v_phase.id, v_phase.site_id, v_tenant, 'dryrun-status-m', 'done') RETURNING id INTO v_card2;
+  SELECT status_changed_at INTO v_at FROM phase_tasks WHERE id = v_card2;
+  ASSERT v_at = now(), format('(m) done insert not stamped: %s', v_at);
+  -- and the existing done cards were not backfilled
+  ASSERT NOT EXISTS (SELECT 1 FROM phase_tasks WHERE status_changed_at IS NOT NULL AND id NOT IN (v_card, v_card2)),
+    '(m) existing cards got a status_changed_at';
+  PERFORM set_config('app.derived_status', '', true);
+  RAISE NOTICE 'case m ok';
+
+  -- (n) bucket limits set; trigger function not callable by anon
+  ASSERT (SELECT file_size_limit FROM storage.buckets WHERE id = 'line-site-photos') = 15728640, '(n) size limit not set';
+  ASSERT (SELECT allowed_mime_types FROM storage.buckets WHERE id = 'line-site-photos') = ARRAY['image/jpeg','image/png'],
+    '(n) mime types not set';
+  ASSERT NOT has_function_privilege('anon', 'public.touch_status_changed_at()', 'EXECUTE'), '(n) anon can execute touch_status_changed_at';
+  RAISE NOTICE 'case n ok';
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RESULT ok'; END $$;
