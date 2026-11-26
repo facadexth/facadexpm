@@ -129,6 +129,8 @@ import {
 import { getChatMode, canStartAdminChat, claimAckForSession, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
 import { APP_URL } from '../_shared/app-url.ts'
 import { workOrderLines, workOrderTickets, workOrderTokenExpiry, type WorkOrderAssignmentRow } from '../_shared/repair-workorder-link.ts'
+import { installSitesToday, jobSheetLines, jobSheetRunText, type InstallAssignmentRow } from '../_shared/site-jobsheet-link.ts'
+import { runAtSite, RUN_WINDOW_DAYS } from '../_shared/site-jobsheet.ts'
 import {
   type GroupActionType, type ActionType, type CommandSettingsByKey,
   SCHEDULE_COMMAND_ORDER, ADVANCE_COMMAND_KEYS, resolveEffectivePhrases, resolveEnabled,
@@ -202,6 +204,56 @@ async function repairWorkOrderLines(tenantId: string, workerId: string): Promise
     logSafeError('repairWorkOrderLines failed', e)
     return []
   }
+}
+
+// 📋 ใบงานวันนี้ links for the งานวันนี้ reply: one /j/<token> per install site this worker is booked
+// at today (type 'site', repair_ticket_id null -- the only case the site-jobsheet function accepts;
+// see src/SiteJobSheetPage.jsx). Valid until the end of the Bangkok day; the function re-checks the
+// assignment on every open. Never throws: a failed read gives no lines, a failed run lookup just drops
+// the (วันที่ x/y) bracket, a failed insert gives the retry text for that site.
+async function siteJobSheetLines(tenantId: string, workerId: string): Promise<string[]> {
+  try {
+    const today = bangkokToday()
+    const { data, error } = await admin.from('worker_assignments')
+      .select('site_id, type, repair_ticket_id, sites(name)')
+      .eq('tenant_id', tenantId).eq('worker_id', workerId).eq('date', today)
+      .eq('type', 'site').is('repair_ticket_id', null)
+    if (error) { logSafeError('siteJobSheetLines assignments read failed', error); return [] }
+    const sites = installSitesToday((data ?? []) as unknown as InstallAssignmentRow[])
+    if (!sites.length) return []
+    let runRows: Array<{ date: string; site_id: string | null }> | null = null
+    try {
+      const { data: rr, error: re } = await admin.from('worker_assignments')
+        .select('date, site_id')
+        .eq('tenant_id', tenantId).eq('worker_id', workerId).eq('type', 'site')
+        .is('repair_ticket_id', null)
+        .gte('date', bangkokDateISO(today, -RUN_WINDOW_DAYS)).lte('date', bangkokDateISO(today, RUN_WINDOW_DAYS))
+      if (re) logSafeError('siteJobSheetLines run read failed', re)
+      else runRows = (rr ?? []) as Array<{ date: string; site_id: string | null }>
+    } catch (e) {
+      logSafeError('siteJobSheetLines run read failed', e)
+    }
+    const rows = await Promise.all(sites.map(async (s) => ({
+      siteName: s.siteName,
+      runText: runRows ? jobSheetRunText(runAtSite(runRows, s.siteId, today)) : null,
+      url: await issueSiteJobsheetLink(tenantId, workerId, s.siteId),
+    })))
+    return jobSheetLines(rows)
+  } catch (e) {
+    logSafeError('siteJobSheetLines failed', e)
+    return []
+  }
+}
+
+async function issueSiteJobsheetLink(tenantId: string, workerId: string, siteId: string): Promise<string | null> {
+  const token = crypto.randomUUID().replace(/-/g, '')
+  const { error } = await admin.from('line_deep_link_tokens').insert({
+    tenant_id: tenantId, worker_id: workerId, action_type: 'site_jobsheet', token,
+    site_id: siteId,
+    expires_at: workOrderTokenExpiry(Date.now()),
+  })
+  if (error) { logSafeError('issueSiteJobsheetLink insert failed', error); return null }
+  return `${APP_URL}/j/${token}`
 }
 
 async function issueRepairWorkorderLink(tenantId: string, workerId: string, ticketId: string): Promise<string | null> {
@@ -1016,7 +1068,7 @@ async function handleTodaysJobMenu(
   const todays = await loadTodaysSitesWithCheckins(worker.id, settings.tenant_id)
   if (todays.length >= 2) {
     const rows = await loadTodaysAssignmentRows(worker.id, settings.tenant_id)
-    const [blocks, myTasks, workOrders] = await Promise.all([
+    const [blocks, myTasks, jobSheets, workOrders] = await Promise.all([
       Promise.all(todays.map(async (s) => {
         const [tasks, leaders] = await Promise.all([
           resolveOpenTasksForSite(s.siteId, settings.tenant_id),
@@ -1036,6 +1088,7 @@ async function handleTodaysJobMenu(
         return out
       })),
       resolveOpenTasksForWorker(worker.id, settings.tenant_id),
+      siteJobSheetLines(settings.tenant_id, worker.id),
       repairWorkOrderLines(settings.tenant_id, worker.id),
     ])
     const cur = currentSite(todays)!
@@ -1045,7 +1098,7 @@ async function handleTodaysJobMenu(
       hasOpenTasks: myTasks.length > 0,
       tomorrowPhrase,
     })
-    const text = [`📍 วันนี้คุณมี ${todays.length} ไซท์`, ...blocks.flat(), ...workOrders].join('\n')
+    const text = [`📍 วันนี้คุณมี ${todays.length} ไซท์`, ...blocks.flat(), ...jobSheets, ...workOrders].join('\n')
     await sendLineReply(settings.channel_access_token, replyToken, text, options.map((o) => ({ label: truncateLabel(o), text: o })))
     return
   }
@@ -1055,11 +1108,12 @@ async function handleTodaysJobMenu(
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
     return
   }
-  const [checkinResult, siteTasks, myTasks, leaders, workOrders] = await Promise.all([
+  const [checkinResult, siteTasks, myTasks, leaders, jobSheets, workOrders] = await Promise.all([
     admin.from('worker_checkins').select('checkin_at, checkout_at').eq('worker_id', worker.id).eq('site_id', site.id).eq('date', bangkokToday()).maybeSingle(),
     resolveOpenTasksForSite(site.id, settings.tenant_id),
     resolveOpenTasksForWorker(worker.id, settings.tenant_id),
     resolveTeamLeadersForSite(site.id, settings.tenant_id, bangkokToday()),
+    siteJobSheetLines(settings.tenant_id, worker.id),
     repairWorkOrderLines(settings.tenant_id, worker.id),
   ])
   const checkin = checkinResult.data
@@ -1078,7 +1132,7 @@ async function handleTodaysJobMenu(
     lines.push('', '🔧 งานที่ต้องทำวันนี้ (ทั้งทีม):')
     lines.push(...siteTasks.map((t) => `• ${t.name}`))
   }
-  lines.push(...workOrders)
+  lines.push(...jobSheets, ...workOrders)
 
   const options = todayMenuOptions({
     hasCheckedIn: !!checkin?.checkin_at,

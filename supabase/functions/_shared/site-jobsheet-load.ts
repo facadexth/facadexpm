@@ -7,11 +7,10 @@
 // Signed URLs come from the caller (signUrls), so the storage client and expiry stay the caller's choice.
 // Every query error throws Error('โหลดใบงานไม่สำเร็จ: …').
 
-import { runOfDays, type JobSheetInput } from './site-jobsheet.ts'
+import { runAtSite, RUN_WINDOW_DAYS, type JobSheetInput } from './site-jobsheet.ts'
 
 export const DRAWINGS_BUCKET = 'site-drawings'
 export const SAFETY_SETTING_KEY = 'site_safety_note_default'
-const RUN_WINDOW_DAYS = 21 // run of days is looked up within today ±21 days
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // deno-lint-ignore no-explicit-any
@@ -142,21 +141,8 @@ export async function loadJobSheetInput(db: Db, siteId: string, opts: JobSheetLo
       .is('repair_ticket_id', null)
       .gte('date', shiftDay(date, -RUN_WINDOW_DAYS)).lte('date', shiftDay(date, RUN_WINDOW_DAYS))
     if (re) fail(re)
-    const here = new Set<string>()
-    const elsewhere = new Set<string>()
-    for (const r of (runRows || []) as Array<{ date: string; site_id: string | null }>) {
-      if (!r.site_id) continue
-      ;(r.site_id === site.id ? here : elsewhere).add(String(r.date).slice(0, 10))
-    }
     // A day at another site (even half a day) breaks the run; today itself is always this sheet's day.
-    elsewhere.delete(date)
-    let lo = ''
-    let hi = '9999-99-99'
-    for (const d of elsewhere) {
-      if (d < date && d > lo) lo = d
-      if (d > date && d < hi) hi = d
-    }
-    run = runOfDays([...here].filter((d) => d > lo && d < hi), date)
+    run = runAtSite((runRows || []) as Array<{ date: string; site_id: string | null }>, site.id, date)
   }
 
   const { data: phases, error: pe } = await db.from('site_phases')

@@ -96,6 +96,28 @@ export function runOfDays(dates: string[], today: string): JobSheetRun | null {
   return { index: at - start + 1, total: end - start + 1, from: uniq[start], to: uniq[end] }
 }
 
+// The run of days that today is part of at one site, from a worker's install assignments
+// (worker_assignments type 'site', repair_ticket_id null, date within today ±RUN_WINDOW_DAYS; any
+// order, morning + evening rows allowed). A day at another site (even half a day) breaks the run;
+// today itself is always this site's day. Shared by the job-sheet loader and LINE "งานวันนี้".
+export const RUN_WINDOW_DAYS = 21
+export function runAtSite(rows: Array<{ date: string; site_id: string | null }>, siteId: string, today: string): JobSheetRun | null {
+  const here = new Set<string>()
+  const elsewhere = new Set<string>()
+  for (const r of rows || []) {
+    if (!r.site_id) continue
+    ;(r.site_id === siteId ? here : elsewhere).add(String(r.date).slice(0, 10))
+  }
+  elsewhere.delete(today)
+  let lo = ''
+  let hi = '9999-99-99'
+  for (const d of elsewhere) {
+    if (d < today && d > lo) lo = d
+    if (d > today && d < hi) hi = d
+  }
+  return runOfDays([...here].filter((d) => d > lo && d < hi), today)
+}
+
 // 'วันที่ 3 จาก 5 · 24–28/11/2569' (same month), '28/11–02/12/2569' (same year), full dates otherwise.
 function runText(run: JobSheetRun | null): string | null {
   if (!run) return null
