@@ -13,6 +13,7 @@
 
 import type { JobSheet } from './site-jobsheet.ts'
 import { isWorkerDoneable, doneBlockedMessage, doneErrorReply } from './lineTaskRules.ts'
+import { bangkokDay } from './customer-form-logic.ts'
 
 export type SheetToken = {
   id: string
@@ -62,12 +63,14 @@ export type SiteJobsheetDeps = {
   // Objects already uploaded under `<tenant>/<site>/<date>/js-<tokenId>-` (the per-token daily cap).
   countUploads: (prefixDir: string, filePrefix: string) => Promise<number>
   signUpload: (path: string) => Promise<{ signedUrl: string; token: string }>
-  photoExists: (path: string) => Promise<boolean>
+  // The stored object's size + mimetype (storage metadata), or null when it is not in the bucket.
+  photoMeta: (path: string) => Promise<{ size: number | null; mimetype: string | null } | null>
   loadCard: (tenantId: string, siteId: string, taskId: string) => Promise<SheetCard | null>
   // Sets status on the card (tenant + site + id filters). fromStatus, when given, is an extra filter
   // (continue only moves a card that is still not_started).
   updateCardStatus: (tenantId: string, siteId: string, taskId: string, status: SheetCard['status'], fromStatus?: SheetCard['status']) => Promise<CardUpdateResult>
-  insertPhotos: (rows: PhotoInsert[]) => Promise<void>
+  insertPhotos: (rows: PhotoInsert[]) => Promise<string[]> // new line_site_photos ids
+  deletePhotos: (tenantId: string, ids: string[]) => Promise<void>
 }
 
 export type JobsheetResult = { status: number; body: Record<string, unknown> }
@@ -81,17 +84,16 @@ export const NOTE_MAX = 500
 export const MAX_PHOTOS = 10
 export const MIME_EXT: Readonly<Record<string, string>> = Object.freeze({ 'image/jpeg': 'jpg', 'image/png': 'png' })
 const PHOTO_EXTS = new Set(['jpg', 'png'])
+const PHOTO_MIMES = new Set(Object.keys(MIME_EXT))
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Shown on the crew page when a continue kept its photos but the card's status could not move.
+export const STATUS_UNCHANGED_NOTE = 'สถานะการ์ดไม่เปลี่ยน แจ้ง PM'
 
 const ok = (body: Record<string, unknown>, status = 200): JobsheetResult => ({ status, body })
 const failed = (): JobsheetResult => ({ status: 500, body: { error: 'failed' } })
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x)
 const str = (x: unknown): string => (typeof x === 'string' ? x : '')
 const errName = (e: unknown) => (e as Error)?.name ?? 'Error'
-
-// Bangkok has no DST: a fixed +7 h offset is always right.
-function bangkokDay(nowMs: number): string {
-  return new Date(nowMs + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
-}
 
 function randomSuffix(): string {
   const abc = 'abcdefghijklmnopqrstuvwxyz0123456789'
@@ -153,51 +155,43 @@ function photoShapeOk(path: string, prefix: string): boolean {
 
 type CardInput = { taskId: string; mode: 'done' | 'continue'; note: string; photos: string[] }
 
+// Ruling R8 + fix round 1: photos are saved first, then the status moves.
+//  - done: rules on the DB row (progress_mode, children) first -> blocked. If the status update is
+//    refused (doneErrorReply text) -> blocked; any other failure -> failed. Either way the photo rows
+//    just inserted are deleted again, so a refused "done" leaves nothing behind.
+//  - continue: photos always stay. not_started -> in_progress is only tried when the card is
+//    worker-doneable (quantity/parent status is derived by DB triggers). If the DB refuses or fails,
+//    the photos are kept and the reply carries statusNote.
 async function cardUpdate(c: Checked, input: CardInput, deps: SiteJobsheetDeps): Promise<JobsheetResult> {
   if (!c.isLeader) return ok({ reason: 'not_leader' })
   const tenantId = c.tok.tenantId
   const siteId = c.tok.siteId
 
-  const prefix = `${photoDir(c)}/js-`
+  // Only this token's own uploads of today (upload_url names them js-<tokenId>-…).
+  const prefix = `${photoDir(c)}/js-${c.tok.id}-`
   if (input.photos.some((p) => !photoShapeOk(p, prefix))) return ok({ error: 'bad_photo' }, 400)
+  // Ruling R9: the stored object, not the client's upload_url claim, must be a JPEG/PNG within the limit.
   for (const p of input.photos) {
-    if (!(await deps.photoExists(p))) return ok({ error: 'bad_photo' }, 400)
+    const meta = await deps.photoMeta(p)
+    if (!meta) return ok({ error: 'bad_photo' }, 400)
+    if (typeof meta.size !== 'number' || !Number.isFinite(meta.size) || meta.size <= 0 || meta.size > MAX_PHOTO_BYTES) {
+      return ok({ error: 'bad_photo' }, 400)
+    }
+    if (!meta.mimetype || !PHOTO_MIMES.has(meta.mimetype)) return ok({ error: 'bad_photo' }, 400)
   }
 
   const card = await deps.loadCard(tenantId, siteId, input.taskId)
   if (!card || card.tenantId !== tenantId || card.siteId !== siteId) return ok({ reason: 'card_not_found' })
 
-  // What the card was before this call, so a failed photo insert can put it back.
-  let changedFrom: SheetCard['status'] | null = null
-  if (input.mode === 'done') {
-    // Rules are checked on the DB row (progress_mode, children), never on what the page claims.
-    const rule = { progress_mode: card.progressMode, parent_task_id: card.parentTaskId, has_children: card.hasChildren }
-    if (!isWorkerDoneable(rule)) {
-      return ok({ reason: 'blocked', message: doneBlockedMessage(rule) ?? 'ปิดงานนี้ไม่ได้' })
-    }
-    if (card.status !== 'done') {
-      const res = await deps.updateCardStatus(tenantId, siteId, card.id, 'done')
-      if ('errorMessage' in res) {
-        const reply = doneErrorReply(res.errorMessage)
-        if (reply) return ok({ reason: 'blocked', message: reply })
-        console.error('site-jobsheet: card update failed')
-        return failed()
-      }
-      if (res.updated === 0) return ok({ reason: 'card_not_found' })
-      changedFrom = card.status
-    }
-  } else if (card.status === 'not_started') {
-    const res = await deps.updateCardStatus(tenantId, siteId, card.id, 'in_progress', 'not_started')
-    if ('errorMessage' in res) {
-      console.error('site-jobsheet: card update failed')
-      return failed()
-    }
-    // 0 rows: someone moved the card meanwhile -- it is no longer not_started, which is fine.
-    if (res.updated > 0) changedFrom = 'not_started'
+  const rule = { progress_mode: card.progressMode, parent_task_id: card.parentTaskId, has_children: card.hasChildren }
+  const doneable = isWorkerDoneable(rule)
+  if (input.mode === 'done' && !doneable) {
+    return ok({ reason: 'blocked', message: doneBlockedMessage(rule) ?? 'ปิดงานนี้ไม่ได้' })
   }
 
+  let photoIds: string[]
   try {
-    await deps.insertPhotos(input.photos.map((p) => ({
+    photoIds = await deps.insertPhotos(input.photos.map((p) => ({
       tenant_id: tenantId,
       worker_id: c.worker.id,
       site_id: siteId,
@@ -209,18 +203,58 @@ async function cardUpdate(c: Checked, input: CardInput, deps: SiteJobsheetDeps):
     })))
   } catch (e) {
     console.error('site-jobsheet: photo insert failed', errName(e))
-    if (changedFrom) {
-      // Best effort: the action needs its photos, so undo the status change.
-      try {
-        await deps.updateCardStatus(tenantId, siteId, card.id, changedFrom)
-      } catch {
-        // The status stays changed; the PM sees it on the Kanban.
-      }
-    }
     return failed()
   }
 
-  return ok({ ok: true, sheet: await sheetOf(c, deps) })
+  const undoPhotos = async () => {
+    try {
+      await deps.deletePhotos(tenantId, photoIds)
+    } catch (e) {
+      console.error('site-jobsheet: photo cleanup failed', errName(e))
+    }
+  }
+
+  let statusNote: string | null = null
+  if (input.mode === 'done') {
+    if (card.status !== 'done') {
+      let res: CardUpdateResult
+      try {
+        res = await deps.updateCardStatus(tenantId, siteId, card.id, 'done')
+      } catch (e) {
+        console.error('site-jobsheet: card update failed', errName(e))
+        await undoPhotos()
+        return failed()
+      }
+      if ('errorMessage' in res) {
+        await undoPhotos()
+        const reply = doneErrorReply(res.errorMessage)
+        if (reply) return ok({ reason: 'blocked', message: reply })
+        console.error('site-jobsheet: card update failed')
+        return failed()
+      }
+      if (res.updated === 0) {
+        await undoPhotos()
+        return ok({ reason: 'card_not_found' })
+      }
+    }
+  } else if (card.status === 'not_started') {
+    if (!doneable) {
+      // Quantity/parent cards: status follows qty/children, so it is not touched; photos are kept.
+      statusNote = doneBlockedMessage(rule) ?? STATUS_UNCHANGED_NOTE
+    } else {
+      try {
+        const res = await deps.updateCardStatus(tenantId, siteId, card.id, 'in_progress', 'not_started')
+        // 0 rows: someone moved the card meanwhile -- it is no longer not_started, which is fine.
+        if ('errorMessage' in res) statusNote = doneErrorReply(res.errorMessage) ?? STATUS_UNCHANGED_NOTE
+      } catch (e) {
+        console.error('site-jobsheet: card update failed', errName(e))
+        statusNote = STATUS_UNCHANGED_NOTE
+      }
+    }
+  }
+
+  const sheet = await sheetOf(c, deps)
+  return ok(statusNote ? { ok: true, sheet, statusNote } : { ok: true, sheet })
 }
 
 export async function handleSiteJobsheet(body: unknown, deps: SiteJobsheetDeps, now: number): Promise<JobsheetResult> {
@@ -242,7 +276,7 @@ export async function handleSiteJobsheet(body: unknown, deps: SiteJobsheetDeps, 
   }
   if (action === 'card_update') {
     const taskId = str(body.taskId)
-    if (!taskId || taskId.length > 64) return ok({ error: 'bad_task' }, 400)
+    if (!UUID_RE.test(taskId)) return ok({ error: 'bad_task' }, 400)
     const mode = body.mode
     if (mode !== 'done' && mode !== 'continue') return ok({ error: 'bad_mode' }, 400)
     if (body.note !== undefined && body.note !== null && typeof body.note !== 'string') return ok({ error: 'bad_note' }, 400)

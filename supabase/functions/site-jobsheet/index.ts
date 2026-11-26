@@ -117,10 +117,18 @@ const deps: SiteJobsheetDeps = {
     return { signedUrl: data.signedUrl, token: data.token }
   },
 
-  async photoExists(path) {
+  async photoMeta(path) {
     const cut = path.lastIndexOf('/')
     const file = path.slice(cut + 1)
-    return (await listNames(path.slice(0, cut), file)).includes(file)
+    const { data, error } = await admin.storage.from(PHOTO_BUCKET).list(path.slice(0, cut), { search: file, limit: 100 })
+    if (error) throw error
+    const obj = (data ?? []).find((o) => o.id !== null && o.name === file)
+    if (!obj) return null
+    const meta = (obj.metadata ?? {}) as { size?: unknown; mimetype?: unknown }
+    return {
+      size: typeof meta.size === 'number' ? meta.size : null,
+      mimetype: typeof meta.mimetype === 'string' ? meta.mimetype : null,
+    }
   },
 
   async loadCard(tenantId, siteId, taskId) {
@@ -153,7 +161,16 @@ const deps: SiteJobsheetDeps = {
   },
 
   async insertPhotos(rows) {
-    const { error } = await admin.from('line_site_photos').insert(rows)
+    const { data, error } = await admin.from('line_site_photos').insert(rows).select('id')
+    if (error) throw error
+    const ids = (data ?? []).map((r) => r.id as string)
+    if (ids.length !== rows.length) throw new Error('photo insert count mismatch')
+    return ids
+  },
+
+  async deletePhotos(tenantId, ids) {
+    if (!ids.length) return
+    const { error } = await admin.from('line_site_photos').delete().eq('tenant_id', tenantId).in('id', ids)
     if (error) throw error
   },
 }
