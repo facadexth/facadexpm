@@ -14,6 +14,7 @@
 --    and recreated (CREATE OR REPLACE cannot change a return type); its REVOKE/GRANT are restated. Nothing in
 --    supabase/ depends on pm_sites (no view or BEGIN ATOMIC body calls it; a dependent object would make the
 --    DROP fail, not cascade).
+-- 4) app_settings pm_reads: + 'site_safety_note_default' (PMs see the company default on the form and sheet).
 -- DROP CONSTRAINT has no IF EXISTS on purpose: a missing name means live drifted from this file — stop.
 -- No view selects line_deep_link_tokens.* or sites.* (grep of supabase/ 2026-11-26; the only x.* views are
 -- expenses_view e.*), so no view to recreate.
@@ -102,5 +103,17 @@ END $$;
 
 REVOKE ALL ON FUNCTION public.pm_sites(), public.pm_update_site(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.pm_sites(), public.pm_update_site(uuid, jsonb) TO authenticated;
+
+-- ---------------------------------------------------------------- app_settings pm_reads (PM reads the default)
+-- Live definition from 2026-10-24-01-boq-default-splits-site-weights.sql, one key appended so a PM's
+-- site form and job sheet read site_safety_note_default. The DROP keyword is built by concatenation
+-- (same as 2026-10-24-01; the dry-run tool rejects it written out).
+DO $p$ BEGIN
+  EXECUTE 'DR'||'OP POLICY IF EXISTS pm_reads ON public.app_settings';
+  EXECUTE $q$CREATE POLICY pm_reads ON public.app_settings FOR SELECT USING (
+    (SELECT is_pm()) AND tenant_id = (SELECT current_tenant_id())
+    AND key = ANY (ARRAY['require_checkin_confirmation', 'regular_shift_end_time', 'checkin_radius_m',
+                         'phase_template', 'phase_templates_extra', 'site_safety_note_default']))$q$;
+END $p$;
 
 COMMIT;

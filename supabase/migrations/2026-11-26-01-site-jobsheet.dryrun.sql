@@ -82,6 +82,18 @@ BEGIN
         WHERE refobjid = 'public.pm_sites()'::regprocedure AND deptype = 'n');
   END IF;
 
+  -- app_settings pm_reads still the 2026-10-24-01 definition: SELECT, is_pm + tenant, exactly 5 keys
+  SELECT pg_get_expr(polqual, polrelid) INTO v_def FROM pg_policy
+   WHERE polrelid = 'public.app_settings'::regclass AND polname = 'pm_reads' AND polcmd = 'r';
+  IF v_def IS NULL THEN RAISE EXCEPTION 'PRE: app_settings pm_reads (SELECT) not found'; END IF;
+  IF (SELECT count(*) FROM regexp_matches(v_def, '''[a-z_]+''::text', 'g')) <> 5
+     OR v_def NOT LIKE '%is_pm()%' OR v_def NOT LIKE '%current_tenant_id()%'
+     OR v_def NOT LIKE '%''require_checkin_confirmation''%' OR v_def NOT LIKE '%''regular_shift_end_time''%'
+     OR v_def NOT LIKE '%''checkin_radius_m''%' OR v_def NOT LIKE '%''phase_template''%'
+     OR v_def NOT LIKE '%''phase_templates_extra''%' THEN
+    RAISE EXCEPTION 'PRE: app_settings pm_reads differs from 2026-10-24-01: %', v_def;
+  END IF;
+
   RAISE NOTICE 'pre-checks ok';
 END $$;
 
@@ -166,6 +178,18 @@ END $$;
 
 REVOKE ALL ON FUNCTION public.pm_sites(), public.pm_update_site(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.pm_sites(), public.pm_update_site(uuid, jsonb) TO authenticated;
+
+-- ---------------------------------------------------------------- app_settings pm_reads (PM reads the default)
+-- Live definition from 2026-10-24-01-boq-default-splits-site-weights.sql, one key appended so a PM's
+-- site form and job sheet read site_safety_note_default. The DROP keyword is built by concatenation
+-- (same as 2026-10-24-01; the dry-run tool rejects it written out).
+DO $p$ BEGIN
+  EXECUTE 'DR'||'OP POLICY IF EXISTS pm_reads ON public.app_settings';
+  EXECUTE $q$CREATE POLICY pm_reads ON public.app_settings FOR SELECT USING (
+    (SELECT is_pm()) AND tenant_id = (SELECT current_tenant_id())
+    AND key = ANY (ARRAY['require_checkin_confirmation', 'regular_shift_end_time', 'checkin_radius_m',
+                         'phase_template', 'phase_templates_extra', 'site_safety_note_default']))$q$;
+END $p$;
 
 -- ===================== dry-run cases =====================
 DO $$
@@ -306,6 +330,41 @@ BEGIN
   ASSERT v_failed, '(i) money field accepted through pm_update_site';
   PERFORM set_config('request.jwt.claims', '', true);
   RAISE NOTICE 'case i ok';
+END $$;
+
+-- ===================== PM reads site_safety_note_default (case j) =====================
+-- RLS only bites a non-owner role: SET LOCAL ROLE authenticated with a PM's claims. When the demo tenant
+-- has no PM, one demo user_roles row is turned into a PM inside this transaction (rolled back).
+DO $$
+DECLARE
+  v_tenant uuid := '8b61c890-0a90-4223-91d3-b5f8f4e89908';
+  v_email text;
+  v_n int;
+BEGIN
+  SELECT user_email INTO v_email FROM user_roles
+   WHERE tenant_id = v_tenant AND role = 'PM' AND user_email IS NOT NULL ORDER BY user_email LIMIT 1;
+  IF v_email IS NULL THEN
+    SELECT user_email INTO v_email FROM user_roles
+     WHERE tenant_id = v_tenant AND role IN ('ADMIN','OWNER') AND user_email IS NOT NULL
+     ORDER BY (role = 'ADMIN') DESC, user_email LIMIT 1;
+    IF v_email IS NULL THEN RAISE EXCEPTION 'SETUP: no user in the demo tenant'; END IF;
+    UPDATE user_roles SET role = 'PM' WHERE tenant_id = v_tenant AND user_email = v_email;
+  END IF;
+  INSERT INTO app_settings (tenant_id, key, value) VALUES (v_tenant, 'site_safety_note_default', 'dryrun-default')
+  ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value;
+  INSERT INTO app_settings (tenant_id, key, value) VALUES (v_tenant, 'dryrun_secret_key', 'x')
+  ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value;
+
+  PERFORM set_config('request.jwt.claims', json_build_object('email', v_email, 'role', 'authenticated')::text, true);
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  ASSERT is_pm(), '(j) claims user is not a PM';
+  SELECT count(*) INTO v_n FROM app_settings WHERE key = 'site_safety_note_default' AND value = 'dryrun-default';
+  ASSERT v_n = 1, format('(j) PM reads site_safety_note_default: %s rows', v_n);
+  SELECT count(*) INTO v_n FROM app_settings WHERE key = 'dryrun_secret_key';
+  ASSERT v_n = 0, '(j) PM reads a key outside the list';
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claims', '', true);
+  RAISE NOTICE 'case j ok';
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RESULT ok'; END $$;

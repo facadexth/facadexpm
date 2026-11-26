@@ -22,6 +22,17 @@ export type JobSheetLoadOptions = {
   tenant: JobSheetInput['tenant']
   viewerWorkerId?: string | null // crew page: the token's worker; staff PDF: omitted
   signUrls: SignUrls
+  // Web only, for a PM (RLS hides sites and workers from PMs; they go through pm_sites()/pm_workers()):
+  //   siteFallback -- the site row (with tenant_id) when the direct sites read returns no row;
+  //   workerNames  -- names for crew whose workers(...) embed came back empty.
+  // The edge function (service role) passes neither.
+  siteFallback?: (siteId: string) => Promise<SiteRow | null>
+  workerNames?: (workerIds: string[]) => Promise<Record<string, { name?: string | null; nickname?: string | null }>>
+}
+
+export type SiteRow = {
+  id: string; tenant_id: string; name: string; site_number?: string | null; location?: string | null
+  map_url?: string | null; lat?: number | null; lng?: number | null; safety_note?: string | null
 }
 
 const FAIL = 'โหลดใบงานไม่สำเร็จ: '
@@ -77,11 +88,13 @@ export async function loadJobSheetInput(db: Db, siteId: string, opts: JobSheetLo
   const { date, tenant, signUrls } = opts
   const viewerWorkerId = opts.viewerWorkerId || null
 
-  const { data: site, error: se } = await db.from('sites')
+  const { data: siteRead, error: se } = await db.from('sites')
     .select('id, tenant_id, name, site_number, location, map_url, lat, lng, safety_note')
     .eq('id', siteId).maybeSingle()
   if (se) fail(se)
-  if (!site) fail({ message: 'ไม่พบไซต์นี้' })
+  let site = siteRead as SiteRow | null
+  if (!site && opts.siteFallback) site = await opts.siteFallback(siteId)
+  if (!site || !site.tenant_id) fail({ message: 'ไม่พบไซต์นี้' })
   const tenantId = site.tenant_id
 
   const { data: setting, error: ae } = await db.from('app_settings')
@@ -108,6 +121,15 @@ export async function loadJobSheetInput(db: Db, siteId: string, opts: JobSheetLo
     }
     if (r.shift && !entry.shifts.includes(r.shift)) entry.shifts.push(r.shift)
     if (r.is_team_leader) entry.is_team_leader = true
+  }
+  const nameless = crew.filter((c) => !c.name).map((c) => c.worker_id)
+  if (nameless.length && opts.workerNames) {
+    const names = await opts.workerNames(nameless)
+    for (const c of crew) {
+      if (c.name) continue
+      const n = names?.[c.worker_id]
+      if (n) { c.name = n.name || ''; c.nickname = n.nickname || null }
+    }
   }
 
   // Run of days: the viewer (crew page) or else the first leader / first crew member (staff PDF).

@@ -2,7 +2,7 @@
 // (jsdom: storageSigner comes from repairWorkorderLoad.js -> photoUpload.js -> supabase client, which needs WebSocket)
 import { describe, it, expect, vi } from 'vitest'
 import { loadJobSheetInput, decodeSettingText } from '../../supabase/functions/_shared/site-jobsheet-load.ts'
-import { loadJobSheet } from './siteJobsheetLoad.js'
+import { loadJobSheet, pmSiteFallback, pmWorkerNames } from './siteJobsheetLoad.js'
 
 // Fake supabase-js client: each table returns a canned { data, error } (or a function of the recorded
 // call); every call is recorded with its filters.
@@ -222,5 +222,63 @@ describe('loadJobSheet (web wrapper)', () => {
     expect(sheet.viewerIsLeader).toBe(false)
     expect(sheet.drawings[0].url).toBe('u:tn1/s1/a.png')
     expect(sheet.drawings.map((d) => d.mime)).toEqual(['image/png', 'application/pdf'])
+  })
+
+  // PM: RLS hides sites + workers (OWNER/ADMIN only) and site_drawings; pm_sites()/pm_workers() fill in.
+  function pmDb(rpcData, rpcError = null) {
+    const blankCrew = TODAY_ROWS.map((r) => ({ ...r, workers: null }))
+    const { db, calls } = fakeDb(tables({ todayRows: blankCrew, tables: { sites: { data: null, error: null }, site_drawings: { data: [], error: null } } }))
+    const rpcCalls = []
+    db.rpc = (fn) => {
+      const call = { fn, filters: [] }
+      rpcCalls.push(call)
+      const out = () => (rpcError ? { data: null, error: rpcError } : { data: rpcData[fn] ?? null, error: null })
+      const b = {
+        eq: (k, v) => { call.filters.push(['eq', k, v]); return b },
+        in: (k, v) => { call.filters.push(['in', k, v]); return b },
+        maybeSingle: () => Promise.resolve(out()),
+        then: (res, rej) => Promise.resolve(out()).then(res, rej),
+      }
+      return b
+    }
+    db.storage = { from: vi.fn(() => ({ createSignedUrls: vi.fn() })) }
+    return { db, calls, rpcCalls }
+  }
+  const { tenant_id: _omit, ...PM_SITE_ROW } = { ...SITE, safety_note: 'ระวังสายไฟ', client_name: 'x' }
+
+  it('PM: site from pm_sites() (tenant from the logged-in tenant), crew names from pm_workers(), no drawings', async () => {
+    const { db, calls, rpcCalls } = pmDb({
+      pm_sites: PM_SITE_ROW,
+      pm_workers: [{ id: 'w1', name: 'สมศักดิ์', nickname: 'ศักดิ์' }, { id: 'w2', name: 'บุญมี', nickname: null }],
+    })
+    const sheet = await loadJobSheet(db, 's1', { ...TENANT, id: 'tn1' }, DATE)
+    expect(rpcCalls[0]).toEqual({ fn: 'pm_sites', filters: [['eq', 'id', 's1']] })
+    expect(rpcCalls[1].fn).toBe('pm_workers')
+    expect(rpcCalls[1].filters[0][0]).toBe('in')
+    expect([...rpcCalls[1].filters[0][2]].sort()).toEqual(['w1', 'w2'])
+    // every later query still filtered by the tenant
+    for (const c of calls.filter((c) => c.table !== 'sites')) expect(c.eqs).toContainEqual(['tenant_id', 'tn1'])
+    expect(sheet.siteName).toBe('บ้านคุณสมชาย')
+    expect(sheet.safetyNote).toBe('ระวังสายไฟ')
+    expect(sheet.leaderText).toContain('ศักดิ์')
+    expect(sheet.crewText).toContain('บุญมี')
+    expect(sheet.drawings).toEqual([])
+  })
+
+  it('PM fallback: no tenant id or an RPC error -> ไม่พบไซต์นี้ / names left blank', async () => {
+    await expect(loadJobSheet(pmDb({ pm_sites: PM_SITE_ROW }).db, 's1', { ...TENANT }, DATE))
+      .rejects.toThrow('โหลดใบงานไม่สำเร็จ: ไม่พบไซต์นี้')
+    await expect(loadJobSheet(pmDb({}, { message: 'x' }).db, 's1', { ...TENANT, id: 'tn1' }, DATE))
+      .rejects.toThrow('โหลดใบงานไม่สำเร็จ: ไม่พบไซต์นี้')
+    expect(await pmWorkerNames(pmDb({}, { message: 'x' }).db)(['w1'])).toEqual({})
+    expect(await pmSiteFallback(pmDb({ pm_sites: PM_SITE_ROW }).db, 'tn1')('s1')).toEqual({ ...PM_SITE_ROW, tenant_id: 'tn1' })
+  })
+
+  it('admin: the direct reads win, no RPC is called', async () => {
+    const { db } = fakeDb(tables())
+    db.rpc = vi.fn()
+    db.storage = { from: vi.fn(() => ({ createSignedUrls: async (p) => ({ data: p.map((x) => ({ path: x, signedUrl: x })), error: null }) })) }
+    await loadJobSheet(db, 's1', { ...TENANT, id: 'tn1' }, DATE)
+    expect(db.rpc).not.toHaveBeenCalled()
   })
 })
